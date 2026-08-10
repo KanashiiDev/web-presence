@@ -1,0 +1,12 @@
+project_id: "%CROWDIN_PROJECT_ID%"
+api_token: "%CROWDIN_PERSONAL_TOKEN%"
+
+files:
+  - source: /locales/en/extension.json
+    translation: /locales/%locale%/extension.json
+
+  - source: /locales/en/server.json
+    translation: /locales/%locale%/server.json
+
+  - source: /locales/en/shared.json
+    translation: /locales/%locale%/shared.json
