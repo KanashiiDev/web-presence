@@ -20,7 +20,13 @@
         <button id="btnNew" data-i18n="userscript.listControls.newScript">+ New Script</button>
         <button id="btnImport" data-i18n="userscript.listControls.import">Import</button>
         <button id="btnExport" data-i18n="userscript.listControls.export">Export</button>
+        <button id="btnGithubSettings" title="GitHub Token Settings"></button>
       </div>
+    </div>
+
+    <div class="script-tabs">
+      <button id="tabMyScripts" class="script-tab active" data-tab="my">My Scripts</button>
+      <button id="tabRepoScripts" class="script-tab" data-tab="repo">Installed from Repo</button>
     </div>
 
     <ul id="scriptList"></ul>
@@ -37,7 +43,13 @@
           </div>
           <div class="container">
             <p data-i18n="userscript.editor.version.label">Version:</p>
-            <input type="text" id="inVersion" placeholder="1.0.0" />
+            <div class="version-inputs">
+              <input type="number" id="inVersionMajor" min="0" value="1" />
+              <span class="version-sep">.</span>
+              <input type="number" id="inVersionMinor" min="0" value="0" />
+              <span class="version-sep">.</span>
+              <input type="number" id="inVersionPatch" min="0" value="0" />
+            </div>
           </div>
           <div class="container">
             <p data-i18n="userscript.editor.category.label">Category</p>
@@ -276,6 +288,7 @@
     <script src="../libs/codemirror/codemirror.js"></script>
     <script src="../libs/tom-select.js"></script>
     <script src="userScriptWorker.js"></script>
+    <script src="githubContributeService.js"></script>
     <script src="userScriptManager.js"></script>
   </body>
 </html>

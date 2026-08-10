@@ -1,9 +1,41 @@
 const $ = (id) => document.getElementById(id);
 
+// Small, reusable utility helpers
+function clearChildren(el) {
+  if (!el) return;
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+}
+
+function splitAndTrim(str = "") {
+  return str
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 class UserScriptUI {
   constructor() {
     this.editingId = null;
+    this.activeTab = "my"; // "my" | "repo"
     this.init();
+  }
+
+  async fetchScriptById(id) {
+    // First check the list of the active tab
+    const activeParams = this.activeTab === "repo" ? { showOnlyStore: true } : {};
+    let resp = await sendAction("listUserScripts", activeParams);
+    let found = (resp?.list || []).find((x) => x.id === id);
+
+    // If not found, search in the other tab
+    if (!found) {
+      const otherParams = this.activeTab === "repo" ? {} : { showOnlyStore: true };
+      resp = await sendAction("listUserScripts", otherParams);
+      found = (resp?.list || []).find((x) => x.id === id);
+    }
+
+    return found || null;
   }
 
   async init() {
@@ -81,6 +113,9 @@ class UserScriptUI {
     checkUserScriptsPermission();
     initApplyAttrs();
     initStorageListener();
+
+    // GitHub auth badge - show connected state on header button
+    this.refreshGithubAuthBadge();
   }
 
   bindEvents() {
@@ -95,19 +130,35 @@ class UserScriptUI {
     $("btnExport").addEventListener("click", (e) => {
       this.exportMenuClick(e);
     });
+
+    // Editor Input Checks
     $("inDomain").addEventListener("input", () => this.handlePatternStatus());
     $("inUrlPatterns").addEventListener("input", () => this.handlePatternStatus());
 
+    // Header Tab
+    $("tabMyScripts")?.addEventListener("click", () => this.switchTab("my"));
+    $("tabRepoScripts")?.addEventListener("click", () => this.switchTab("repo"));
+
     // List events
     $("scriptList").addEventListener("click", (e) => this.handleListClick(e));
+
+    // GitHub Contribute settings
+    $("btnGithubSettings").addEventListener("click", () => this.onGithubSettingsClick());
+  }
+
+  async switchTab(tab) {
+    if (this.activeTab === tab) return;
+    this.activeTab = tab;
+    document.querySelectorAll(".script-tab").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === tab);
+    });
+    this.hideEditor();
+    await this.refreshList();
   }
 
   handlePatternStatus() {
     const domainRaw = $("inDomain").value.trim();
-    const domains = domainRaw
-      .split(",")
-      .map((d) => d.trim())
-      .filter(Boolean);
+    const domains = splitAndTrim(domainRaw);
 
     // Userscript Matches
     const matches = domains.flatMap((d) => {
@@ -125,9 +176,7 @@ class UserScriptUI {
     const patternStatus = $("patternStatus");
 
     // Clear previous content
-    while (patternStatus.firstChild) {
-      patternStatus.removeChild(patternStatus.firstChild);
-    }
+    clearChildren(patternStatus);
 
     if (normalizedList.length > 0) {
       normalizedList.forEach((p) => {
@@ -205,7 +254,7 @@ class UserScriptUI {
       function (cm) {
         const isMatch = this.checkSettings(cm);
         if (isMatch && container.getAttribute("activeMode") === "edit") {
-          clearContainer();
+          clearChildren(container);
           this.useSettingEditor.loadFromCode();
         }
       }.bind(this),
@@ -287,20 +336,13 @@ class UserScriptUI {
     const createBtn = document.getElementById("createSettingsBtn");
     const container = document.getElementById("useSettingsContainer");
 
-    // Clear Container
-    function clearContainer() {
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-    }
-
     editBtn.addEventListener("click", () => {
       if (container.getAttribute("activeMode") === "edit") {
-        clearContainer();
+        clearChildren(container);
         container.removeAttribute("activeMode");
         editBtn.classList.remove("active");
       } else {
-        clearContainer();
+        clearChildren(container);
         container.setAttribute("activeMode", "edit");
         editBtn.classList.add("active");
         createBtn.classList.remove("active");
@@ -310,11 +352,11 @@ class UserScriptUI {
 
     createBtn.addEventListener("click", () => {
       if (container.getAttribute("activeMode") === "create") {
-        clearContainer();
+        clearChildren(container);
         container.removeAttribute("activeMode");
         createBtn.classList.remove("active");
       } else {
-        clearContainer();
+        clearChildren(container);
         container.setAttribute("activeMode", "create");
         createBtn.classList.add("active");
         editBtn.classList.remove("active");
@@ -342,14 +384,15 @@ class UserScriptUI {
   }
 
   async refreshList() {
-    const listResp = await sendAction("listUserScripts");
+    const params = this.activeTab === "repo" ? { showOnlyStore: true } : {};
+    const listResp = await sendAction("listUserScripts", params);
+
     if (!listResp || !listResp.ok) {
       logError("[userScriptManager]: List fetch failed", listResp);
       return;
     }
 
     this.renderList(listResp.list || []);
-
     await this.restoreContext();
   }
 
@@ -369,11 +412,14 @@ class UserScriptUI {
     this.hideEditor();
     const editor = $("editor");
     document.body.appendChild(editor);
-
     const ul = $("scriptList");
     ul.innerHTML = "";
 
     if (!list.length) {
+      const emptyMsg = document.createElement("li");
+      emptyMsg.className = "script-empty-message";
+      emptyMsg.textContent = this.activeTab === "repo" ? i18n.t("userscript.list.empty.repo") : i18n.t("userscript.list.empty.my");
+      ul.appendChild(emptyMsg);
       return;
     }
 
@@ -485,17 +531,23 @@ class UserScriptUI {
       btnExport.setAttribute("data-id", script.id);
       btnExport.appendChild(createSVG(svg_paths.exportIconPaths, { strokeWidth: 1.5 }));
 
+      const btnContribute = document.createElement("button");
+      btnContribute.className = "btnContribute";
+      btnContribute.title = i18n.t("userscript.contribute.button");
+      btnContribute.setAttribute("data-id", script.id);
+      btnContribute.appendChild(createSVG(svg_paths.githubIconPaths));
+
       const btnRegister = document.createElement("button");
       btnRegister.className = "btnRegister";
       btnRegister.title = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
-      btnRegister.textContent = script.registered ? i18n.t("userscript.register") : i18n.t("userscript.unregister");
+      btnRegister.textContent = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btnDelete";
       btnDelete.title = i18n.t("common.delete");
       btnDelete.appendChild(createSVG(svg_paths.trashIconPaths));
 
-      actions.append(btnToggle, btnEdit, btnExport, btnDelete);
+      actions.append(btnToggle, btnEdit, btnExport, btnContribute, btnDelete);
 
       li.append(info, actions);
       ul.appendChild(li);
@@ -531,16 +583,15 @@ class UserScriptUI {
     if (button.classList.contains("btnExport")) return this.exportMenuClick(e);
     if (button.classList.contains("btnDelete")) return this.onDelete(id, title);
     if (button.classList.contains("btnToggle")) return this.onToggle(id);
+    if (button.classList.contains("btnContribute")) return this.onContribute(id);
   }
 
-  showEditor(script = null, insertAfterEl = null) {
+  async showEditor(script = null, insertAfterEl = null) {
     this.editingId = script?.id || null;
     const editor = $("editor");
-
     const listContainer = $("scriptList");
     if (!editor || !listContainer) return;
 
-    // If it's already visible -> hide it
     const currentSection = script?.id || "new";
     if (editor.getAttribute("current") === currentSection) {
       editor.setAttribute("current", "0");
@@ -554,27 +605,50 @@ class UserScriptUI {
     if (insertAfterEl) {
       insertAfterEl.insertAdjacentElement("afterend", editor);
     } else {
-      // New script -> add to the top of the list
       listContainer.prepend(editor);
+    }
+
+    const authorsInput = $("inAuthors");
+    const authorsLinksInput = $("inAuthorsLinks");
+    const githubUser = typeof githubContributeService !== "undefined" ? await githubContributeService.getCachedUser() : null;
+
+    const isRepoScript = !!script?.storeFilePath;
+
+    if (!script && githubUser && githubUser.login) {
+      // New script and GitHub login - auto-fill, disabled
+      authorsInput.value = githubUser.login;
+      authorsLinksInput.value = `https://github.com/${githubUser.login}`;
+      authorsInput.disabled = true;
+      authorsLinksInput.disabled = true;
+    } else if (isRepoScript) {
+      // Repo script - always disabled, shows original values
+      authorsInput.disabled = true;
+      authorsLinksInput.disabled = true;
+      authorsInput.value = Array.isArray(script?.authors) ? script.authors.join(", ") : script?.authors || "";
+      authorsLinksInput.value = Array.isArray(script?.authorsLinks) ? script.authorsLinks.join(", ") : script?.authorsLinks || "";
+    } else {
+      // My Scripts - editable
+      authorsInput.disabled = false;
+      authorsLinksInput.disabled = false;
+      authorsInput.value = Array.isArray(script?.authors) ? script.authors.join(", ") : script?.authors || "";
+      authorsLinksInput.value = Array.isArray(script?.authorsLinks) ? script.authorsLinks.join(", ") : script?.authorsLinks || "";
     }
 
     $("editorTitle").textContent = script ? `${i18n.t("userscript.editor.editScript")} [${script.title}]` : i18n.t("userscript.editor.newScript");
     $("inTitle").value = script?.title || "";
-    $("inVersion").value = script?.version || "1.0.0";
+
+    const [vMaj, vMin, vPat] = (script?.version || "1.0.0").split(".").map((n) => parseInt(n, 10) || 0);
+    $("inVersionMajor").value = vMaj;
+    $("inVersionMinor").value = vMin;
+    $("inVersionPatch").value = vPat;
     $("inDesc").value = script?.description || "";
-    $("inAuthors").value = script?.authors || "";
-    $("inAuthorsLinks").value = script?.authorsLinks || "";
+
     $("inDomain").value = Array.isArray(script?.domain) ? script.domain.join(", ") : script?.domain || "";
     $("inHomepage").value = script?.homepage || "";
     this.inModeTom.setValue(script?.mode || "listen");
     $("inWatchAutoDetect").value = script?.watchAutoDetect || "disable";
     const rawCategory = script?.category ?? "";
-    const categoryItems = Array.isArray(rawCategory)
-      ? rawCategory
-      : rawCategory
-          .split(",")
-          .map((c) => c.trim())
-          .filter(Boolean);
+    const categoryItems = Array.isArray(rawCategory) ? rawCategory : splitAndTrim(rawCategory);
 
     this.categorySelect.clear(true);
     this.categorySelect.setValue(categoryItems, true);
@@ -625,9 +699,7 @@ class UserScriptUI {
     // Reset useSettings Container
     const container = document.getElementById("useSettingsContainer");
     container.removeAttribute("activeMode");
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
+    clearChildren(container);
 
     const activeContainer = document.querySelector("div.code-notes.useSettings .active");
     if (activeContainer) activeContainer.className = "";
@@ -648,12 +720,7 @@ class UserScriptUI {
 
   async saveScript() {
     const domainRaw = $("inDomain").value.trim();
-    const domain = domainRaw.includes(",")
-      ? domainRaw
-          .split(",")
-          .map((d) => this.cleanDomain(d))
-          .filter(Boolean)
-      : this.cleanDomain(domainRaw);
+    const domain = domainRaw.includes(",") ? splitAndTrim(domainRaw).map((d) => this.cleanDomain(d)) : this.cleanDomain(domainRaw);
     const domainEmpty = Array.isArray(domain) ? domain.length === 0 : !domain;
     if (domainEmpty) {
       this.showMessage(i18n.t("userscript.editor.warn.emptyDomain"), "error");
@@ -741,22 +808,15 @@ class UserScriptUI {
       }
     }
 
-    const authorsData = $("inAuthors")
-      .value.trim()
-      .split(",")
-      .map((a) => a.trim())
-      .filter(Boolean);
+    const authorsData = splitAndTrim($("inAuthors").value);
 
     const script = {
       id: this.editingId || generateParserKey(domain, normalizedList, authorsData),
       title: $("inTitle").value.trim(),
-      version: $("inVersion").value.trim(),
+      version: `${parseInt($("inVersionMajor").value) || 0}.${parseInt($("inVersionMinor").value) || 0}.${parseInt($("inVersionPatch").value) || 0}`,
       description: $("inDesc").value.trim(),
       authors: authorsData,
-      authorsLinks: $("inAuthorsLinks")
-        .value.trim()
-        .split(",")
-        .map((a) => a.trim()),
+      authorsLinks: splitAndTrim($("inAuthorsLinks").value),
       domain,
       homepage: $("inHomepage").value.trim(),
       urlPatterns: normalizedList,
@@ -772,11 +832,7 @@ class UserScriptUI {
         if (vals.length === 1) return vals[0];
         return vals;
       })(),
-      tags: $("inTags")
-        .value.trim()
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
+      tags: splitAndTrim($("inTags").value),
       debug: $("inDebug").checked,
       settings: extractSettingsFromCode(this.codeEditor.getValue()),
     };
@@ -867,8 +923,7 @@ class UserScriptUI {
   }
 
   async onEdit(id) {
-    const resp = await sendAction("listUserScripts");
-    const script = (resp?.list || []).find((x) => x.id === id);
+    const script = await this.fetchScriptById(id);
     if (!script) return;
 
     const li = document.querySelector(`li[data-id="${id}"]`);
@@ -885,9 +940,7 @@ class UserScriptUI {
   }
 
   async onRegisterToggle(id) {
-    const resp = await sendAction("listUserScripts");
-    const script = (resp?.list || []).find((x) => x.id === id);
-
+    const script = await this.fetchScriptById(id);
     if (!script) return;
 
     const action = script.registered ? "unregister" : "register";
@@ -901,9 +954,7 @@ class UserScriptUI {
   }
 
   async onToggle(id) {
-    const resp = await sendAction("listUserScripts");
-    const script = (resp?.list || []).find((x) => x.id === id);
-
+    const script = await this.fetchScriptById(id);
     if (!script) return;
 
     const newState = !script.registered ? true : !script.enabled;
@@ -1107,16 +1158,9 @@ ${codeIndented}
 
       const authors = extractStr("authors");
       const authorsLinks = extractStr("authorsLinks");
-      const splitList = (s) =>
-        s
-          ? s
-              .split(",")
-              .map((x) => x.trim())
-              .filter(Boolean)
-          : [];
 
-      const authorsStr = splitList(authors);
-      const authorsLinksStr = splitList(authorsLinks);
+      const authorsStr = splitAndTrim(authors);
+      const authorsLinksStr = splitAndTrim(authorsLinks);
 
       scripts.push({
         title: extractStr("title"),
@@ -1445,6 +1489,760 @@ ${codeIndented}
     const scriptId = li?.dataset?.id || null;
     const isSingle = !!scriptId;
     this.handleExport(isSingle ? { type: "single", scriptId } : { type: "all" });
+  }
+
+  // GitHub Contribute
+  async onContribute(id) {
+    const script = await this.fetchScriptById(id);
+    if (!script) return;
+
+    let token = await githubContributeService.getToken();
+    if (!token) {
+      token = await this.showDeviceFlowModal();
+      if (!token) return;
+    }
+
+    const upstreamInfo = await githubContributeService.fetchUpstreamScriptInfo(script, token);
+
+    if (upstreamInfo) {
+      const versionCmp = githubContributeService._compareVersions(upstreamInfo.version, script.version);
+
+      // Block the upstream version if it is the same as or newer than the local script version.
+      if (versionCmp >= 0) {
+        this._showVersionBlockModal(script, upstreamInfo);
+        return;
+      }
+    }
+
+    const confirmResult = await this.showContributeConfirmModal(script, upstreamInfo);
+    if (!confirmResult || !confirmResult.confirmed) return;
+
+    await this.runContributeFlow(script, token, confirmResult.commitMessage);
+  }
+
+  _showVersionBlockModal(script, upstreamInfo) {
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.style.display = "flex";
+
+    const content = document.createElement("div");
+    content.className = "modal-content contribute-confirm-content";
+
+    const title = document.createElement("h2");
+    title.textContent = i18n.t("userscript.contribute.version.blocked.title");
+
+    const msg = document.createElement("p");
+    msg.className = "contribute-status error";
+    msg.textContent = i18n.t("userscript.contribute.version.blocked.message", { ver: script.version || "1.0.0", repover: upstreamInfo.version || "?" });
+
+    const hint = document.createElement("p");
+    hint.className = "contribute-confirm-desc";
+    hint.textContent = i18n.t("userscript.contribute.version.blocked.hint");
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "button-group footer-buttons";
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "confirm-button";
+    editBtn.textContent = i18n.t("common.edit");
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "close-button";
+    closeBtn.textContent = i18n.t("common.close");
+
+    editBtn.addEventListener("click", () => {
+      modal.remove();
+      // Open editor for this script
+      const li = document.querySelector(`li[data-id="${script.id}"]`);
+      const btnEdit = li?.querySelector(".btnEdit");
+      btnEdit?.click();
+    });
+
+    closeBtn.addEventListener("click", () => modal.remove());
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    btnRow.append(editBtn, closeBtn);
+    content.append(title, msg, hint, btnRow);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+  }
+
+  async showContributeConfirmModal(script, upstreamInfo = null) {
+    return new Promise((resolve) => {
+      const isUpdate = !!upstreamInfo;
+      const isDifferentAuthor = isUpdate && githubContributeService.isDifferentAuthor(script, upstreamInfo);
+
+      const modal = document.createElement("div");
+      modal.className = "modal";
+      modal.style.display = "flex";
+
+      const content = document.createElement("div");
+      content.className = "modal-content contribute-confirm-content";
+
+      const title = document.createElement("h2");
+      title.textContent = isUpdate ? i18n.t("userscript.contribute.confirm.titleUpdate") : i18n.t("userscript.contribute.confirm.title");
+
+      const desc = document.createElement("p");
+      desc.className = "contribute-confirm-desc";
+      desc.textContent = isUpdate ? i18n.t("userscript.contribute.confirm.descriptionUpdate") : i18n.t("userscript.contribute.confirm.description");
+
+      if (isDifferentAuthor) {
+        const authorWarn = document.createElement("p");
+        authorWarn.className = "contribute-status error contribute-author-warn";
+        authorWarn.textContent = i18n.t("userscript.contribute.confirm.differentAuthor", { authors: upstreamInfo.authors.join(", ") });
+        content.appendChild(authorWarn);
+      }
+
+      if (isUpdate) {
+        const compareContainer = document.createElement("div");
+        compareContainer.className = "contribute-compare";
+
+        // Header row
+        const headerRow = document.createElement("div");
+        headerRow.className = "contribute-compare-row contribute-compare-header";
+        ["", i18n.t("userscript.contribute.confirm.inRepo"), i18n.t("userscript.contribute.confirm.yours")].forEach((text) => {
+          const cell = document.createElement("span");
+          cell.className = "contribute-compare-cell";
+          cell.textContent = text;
+          headerRow.appendChild(cell);
+        });
+        compareContainer.appendChild(headerRow);
+
+        // Data rows
+        const compareRows = [
+          [i18n.t("userscript.editor.scriptName.label"), upstreamInfo.title, script.title],
+          [i18n.t("userscript.editor.version.label"), upstreamInfo.version, script.version || "1.0.0"],
+          [i18n.t("userscript.editor.authors.label"), upstreamInfo.authors.join(", "), [script.authors].flat().join(", ")],
+        ];
+
+        compareRows.forEach(([label, repoVal, yourVal]) => {
+          const row = document.createElement("div");
+          row.className = "contribute-compare-row";
+
+          const labelCell = document.createElement("span");
+          labelCell.className = "contribute-compare-cell contribute-compare-label";
+          labelCell.textContent = label.replace(/:$/, "");
+
+          const repoCell = document.createElement("span");
+          repoCell.className = "contribute-compare-cell";
+          repoCell.textContent = repoVal || "—";
+
+          const yoursCell = document.createElement("span");
+          yoursCell.className = "contribute-compare-cell";
+          yoursCell.textContent = yourVal || "—";
+          if (repoVal !== yourVal) yoursCell.classList.add("changed");
+
+          row.append(labelCell, repoCell, yoursCell);
+          compareContainer.appendChild(row);
+        });
+
+        content.append(title, desc, compareContainer);
+      } else {
+        const table = document.createElement("table");
+        table.className = "contribute-confirm-table";
+
+        const filePath = githubContributeService.getFilePath(script);
+        const domains = [script.domain].flat().filter(Boolean).join(", ");
+        const authors = [script.authors].flat().filter(Boolean).join(", ");
+
+        const rows = [
+          [i18n.t("userscript.editor.scriptName.label"), script.title],
+          [i18n.t("userscript.editor.version.label"), script.version || "1.0.0"],
+          [i18n.t("userscript.editor.domains.label"), domains],
+          [i18n.t("userscript.editor.authors.label"), authors || "—"],
+          [i18n.t("userscript.editor.activityMode.label"), script.mode || "listen"],
+          [i18n.t("userscript.contribute.confirm.filePath"), filePath],
+        ];
+
+        if (script.description) {
+          rows.splice(2, 0, [i18n.t("userscript.editor.description.label"), script.description]);
+        }
+
+        rows.forEach(([label, value]) => {
+          const tr = document.createElement("tr");
+          const th = document.createElement("th");
+          th.textContent = label.replace(/:$/, "");
+          const td = document.createElement("td");
+          td.textContent = value;
+          tr.append(th, td);
+          table.appendChild(tr);
+        });
+
+        content.append(title, desc, table);
+      }
+
+      // Commit Message Input Field
+      const defaultCommitMsg = githubContributeService.getDefaultCommitMessage(script, isUpdate);
+
+      const commitGroup = document.createElement("div");
+      commitGroup.className = "form-row contribute-commit-group";
+      commitGroup.style.margin = "12px 0";
+
+      const commitLabel = document.createElement("label");
+      commitLabel.textContent = i18n.t("userscript.contribute.confirm.commitMessage");
+      commitLabel.style.display = "block";
+      commitLabel.style.marginBottom = "4px";
+
+      const commitInput = document.createElement("input");
+      commitInput.type = "text";
+      commitInput.className = "input-text";
+      commitInput.value = defaultCommitMsg;
+      commitInput.style.width = "100%";
+
+      commitGroup.append(commitLabel, commitInput);
+      content.appendChild(commitGroup);
+
+      const btnRow = document.createElement("div");
+      btnRow.className = "button-group footer-buttons";
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "close-button";
+      cancelBtn.textContent = i18n.t("common.cancel");
+
+      const submitBtn = document.createElement("button");
+      submitBtn.className = "confirm-button";
+      submitBtn.textContent = isUpdate ? i18n.t("userscript.contribute.confirm.submitUpdate") : i18n.t("userscript.contribute.confirm.submit");
+
+      cancelBtn.addEventListener("click", () => {
+        modal.remove();
+        resolve(null);
+      });
+      submitBtn.addEventListener("click", () => {
+        const customCommitMsg = commitInput.value.trim() || defaultCommitMsg;
+        modal.remove();
+        resolve({ confirmed: true, commitMessage: customCommitMsg });
+      });
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          modal.remove();
+          resolve(null);
+        }
+      });
+
+      btnRow.append(cancelBtn, submitBtn);
+      content.appendChild(btnRow);
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+    });
+  }
+
+  async runContributeFlow(script, token, customCommitMessage = null) {
+    const modal = this.createContributeModal(script);
+    document.body.appendChild(modal);
+
+    const statusEl = modal.querySelector(".contribute-status");
+    const prLinkEl = modal.querySelector(".contribute-pr-link");
+    const closeBtn = modal.querySelector(".contribute-close");
+    const retryBtn = modal.querySelector(".contribute-retry");
+    const reAuthBtn = modal.querySelector(".contribute-reauth");
+
+    closeBtn.addEventListener("click", () => modal.remove());
+
+    const STATUS_LABELS = {
+      validating: i18n.t("userscript.contribute.status.validating"),
+      forking: i18n.t("userscript.contribute.status.forking"),
+      syncing: i18n.t("userscript.contribute.status.syncing"),
+      branching: i18n.t("userscript.contribute.status.branching"),
+      checking: i18n.t("userscript.contribute.status.checking"),
+      pushing: i18n.t("userscript.contribute.status.pushing"),
+      opening_pr: i18n.t("userscript.contribute.status.opening_pr"),
+    };
+
+    const run = async (t) => {
+      statusEl.className = "contribute-status loading";
+      statusEl.textContent = STATUS_LABELS.validating;
+      prLinkEl.hidden = true;
+      retryBtn.hidden = true;
+      reAuthBtn.hidden = true;
+
+      try {
+        const fileContent = this.exportToRegisterParser([script]);
+        const { prUrl, isUpdate, skipped } = await githubContributeService.contribute(
+          script,
+          fileContent,
+          t,
+          (step) => {
+            statusEl.textContent = STATUS_LABELS[step] || step;
+          },
+          customCommitMessage,
+        );
+
+        if (skipped) {
+          statusEl.className = "contribute-status warning";
+          statusEl.textContent = i18n.t("userscript.contribute.status.noChanges");
+          prLinkEl.href = prUrl;
+          prLinkEl.hidden = false;
+          prLinkEl.textContent = prUrl;
+          return;
+        }
+
+        statusEl.className = "contribute-status success";
+        statusEl.textContent = isUpdate ? i18n.t("userscript.contribute.status.successUpdate") : i18n.t("userscript.contribute.status.success");
+        prLinkEl.href = prUrl;
+        prLinkEl.hidden = false;
+        prLinkEl.textContent = prUrl;
+      } catch (err) {
+        statusEl.className = "contribute-status error";
+
+        // Auth Errors
+        const isAuthError = err.status === 401 || err.message.includes("Bad credentials") || err.message.includes("requires authentication");
+
+        if (isAuthError) {
+          statusEl.textContent = i18n.t("userscript.contribute.status.authFailed");
+          retryBtn.hidden = false;
+          reAuthBtn.hidden = false;
+          return;
+        }
+
+        // Fork Timeout
+        if (err.message.includes("Fork is taking too long")) {
+          statusEl.textContent = i18n.t("userscript.contribute.error.forkTimeout");
+          retryBtn.hidden = false;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // Rate Limit
+        if (err.status === 429 || err.message.includes("rate limit") || err.message.includes("secondary rate")) {
+          statusEl.textContent = i18n.t("userscript.contribute.error.rateLimited");
+          retryBtn.hidden = false;
+          reAuthBtn.hidden = true;
+          return;
+        }
+        // PR Already Exists
+        if (err.message.includes("pull request already exists") || (err.message.includes("Validation Failed") && err.message.includes("PullRequest"))) {
+          statusEl.className = "contribute-status success";
+          statusEl.textContent = i18n.t("userscript.contribute.status.successUpdate");
+          retryBtn.hidden = true;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // PR Same Version
+        if (err.message === "VERSION_SAME") {
+          statusEl.className = "contribute-status error";
+          statusEl.textContent = i18n.t("userscript.contribute.status.versionSame", {
+            branchVersion: err.branchVersion,
+          });
+          retryBtn.hidden = true;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // Open PR has a higher version than what we're trying to commit
+        if (err.message === "VERSION_OUTDATED") {
+          statusEl.className = "contribute-status error";
+          statusEl.textContent = i18n.t("userscript.contribute.status.versionOutdated", {
+            branchVersion: err.branchVersion,
+          });
+          retryBtn.hidden = true;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // Already Up To Date
+        if (err.message === "ALREADY_UP_TO_DATE") {
+          statusEl.className = "contribute-status warning";
+          statusEl.textContent = i18n.t("userscript.contribute.status.alreadyUpToDate");
+          retryBtn.hidden = true;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // Network / Generic
+        statusEl.textContent = err.message || i18n.t("userscript.contribute.error.unknown");
+        retryBtn.hidden = false;
+        reAuthBtn.hidden = true;
+      }
+    };
+
+    retryBtn.addEventListener("click", () => run(token));
+    reAuthBtn.addEventListener("click", async () => {
+      modal.remove();
+      await githubContributeService.clearToken();
+      const newToken = await this.showDeviceFlowModal();
+      if (newToken) {
+        token = newToken;
+        await this.runContributeFlow(script, token);
+      }
+    });
+
+    await run(token);
+  }
+
+  createContributeModal(script) {
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.style.display = "flex";
+
+    const content = document.createElement("div");
+    content.className = "modal-content contribute-modal-content";
+
+    const title = document.createElement("h2");
+    title.textContent = i18n.t("userscript.contribute.modal.title");
+
+    const scriptName = document.createElement("p");
+    scriptName.className = "contribute-script-name";
+    scriptName.textContent = script.title;
+
+    const statusEl = document.createElement("p");
+    statusEl.className = "contribute-status loading";
+    statusEl.textContent = i18n.t("userscript.contribute.status.starting");
+
+    const prLinkEl = document.createElement("a");
+    prLinkEl.className = "contribute-pr-link link";
+    prLinkEl.target = "_blank";
+    prLinkEl.rel = "noopener noreferrer";
+    prLinkEl.hidden = true;
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "button-group footer-buttons";
+
+    const retryBtn = document.createElement("button");
+    retryBtn.className = "contribute-retry button";
+    retryBtn.textContent = i18n.t("setup.permission.grant.retry");
+    retryBtn.hidden = true;
+
+    const reAuthBtn = document.createElement("button");
+    reAuthBtn.className = "contribute-reauth button";
+    reAuthBtn.textContent = i18n.t("userscript.contribute.reauth");
+    reAuthBtn.hidden = true;
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "contribute-close close-button";
+    closeBtn.textContent = i18n.t("common.close");
+
+    btnRow.append(retryBtn, reAuthBtn, closeBtn);
+    content.append(title, scriptName, statusEl, prLinkEl, btnRow);
+    modal.appendChild(content);
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    return modal;
+  }
+
+  async refreshGithubAuthBadge() {
+    const btn = $("btnGithubSettings");
+    if (!btn) return;
+    const token = await githubContributeService.getToken();
+
+    btn.classList.toggle("github-connected", !!token);
+    btn.title = token ? i18n.t("userscript.contribute.oauth.connectedTitle") : i18n.t("userscript.contribute.oauth.connectTitle");
+
+    // Clear existing avatar if any
+    btn.querySelector(".github-avatar")?.remove();
+    btn.querySelector("svg")?.remove();
+
+    if (token) {
+      const user = await githubContributeService.getCachedUser();
+      if (user?.avatar_url) {
+        const avatar = document.createElement("img");
+        avatar.className = "github-avatar";
+        avatar.src = user.avatar_url;
+        avatar.alt = user.login || "";
+        avatar.width = 20;
+        avatar.height = 20;
+        btn.appendChild(avatar);
+      } else {
+        btn.appendChild(createSVG(svg_paths.githubIconPaths));
+      }
+    } else {
+      btn.appendChild(createSVG(svg_paths.githubIconPaths));
+    }
+  }
+
+  async onGithubSettingsClick() {
+    const token = await githubContributeService.getToken();
+    if (token) {
+      await this.showGithubConnectedModal();
+    } else {
+      const newToken = await this.showDeviceFlowModal();
+      if (newToken) this.refreshGithubAuthBadge();
+    }
+  }
+
+  showGithubConnectedModal() {
+    return new Promise((resolve) => {
+      const modal = document.createElement("div");
+      modal.className = "modal";
+      modal.style.display = "flex";
+
+      const content = document.createElement("div");
+      content.className = "modal-content github-connected-content";
+
+      const title = document.createElement("h2");
+      title.textContent = i18n.t("userscript.contribute.oauth.connectedTitle");
+
+      const userEl = document.createElement("div");
+      userEl.className = "github-connected-user";
+
+      const renderUser = (user) => {
+        userEl.innerHTML = "";
+        if (!user) return;
+
+        const avatar = document.createElement("img");
+        avatar.className = "github-avatar";
+        avatar.src = user.avatar_url;
+        avatar.alt = user.login;
+        avatar.width = 36;
+        avatar.height = 36;
+
+        const info = document.createElement("div");
+        info.className = "github-user-info";
+
+        const nameEl = document.createElement("span");
+        nameEl.className = "github-username";
+        nameEl.textContent = user.login;
+
+        info.appendChild(nameEl);
+        userEl.append(avatar, info);
+      };
+
+      // Use cached user - no API call
+      githubContributeService.getCachedUser().then((cachedUser) => {
+        renderUser(cachedUser);
+      });
+
+      const btnRow = document.createElement("div");
+      btnRow.className = "button-group footer-buttons";
+
+      const disconnectBtn = document.createElement("button");
+      disconnectBtn.className = "button github-disconnect-btn";
+      disconnectBtn.textContent = i18n.t("userscript.contribute.oauth.disconnect");
+
+      const reloadBtn = document.createElement("button");
+      reloadBtn.className = "button";
+      reloadBtn.appendChild(createSVG(svg_paths.refreshIconPaths));
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "close-button";
+      closeBtn.textContent = i18n.t("common.close");
+
+      reloadBtn.addEventListener("click", async () => {
+        reloadBtn.disabled = true;
+        try {
+          const user = await githubContributeService.fetchAndCacheUser();
+          renderUser(user);
+          this.refreshGithubAuthBadge();
+        } catch (_) {}
+        reloadBtn.disabled = false;
+      });
+
+      disconnectBtn.addEventListener("click", async () => {
+        await githubContributeService.clearToken();
+        this.refreshGithubAuthBadge();
+        modal.remove();
+        resolve();
+      });
+
+      closeBtn.addEventListener("click", () => {
+        modal.remove();
+        resolve();
+      });
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          modal.remove();
+          resolve();
+        }
+      });
+
+      btnRow.append(disconnectBtn, reloadBtn, closeBtn);
+      content.append(title, userEl, btnRow);
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+    });
+  }
+
+  showDeviceFlowModal() {
+    return new Promise((resolve) => {
+      const existing = document.querySelector(".device-flow-modal");
+      if (existing) existing.remove();
+
+      const modal = document.createElement("div");
+      modal.className = "modal device-flow-modal";
+      modal.style.display = "flex";
+
+      const content = document.createElement("div");
+      content.className = "modal-content device-flow-content";
+
+      const title = document.createElement("h2");
+      title.textContent = i18n.t("userscript.contribute.oauth.title");
+
+      // State: loading → code → success/error
+      const stateEl = document.createElement("div");
+      stateEl.className = "device-flow-state";
+
+      const loadingEl = document.createElement("p");
+      loadingEl.className = "contribute-status loading";
+      loadingEl.textContent = i18n.t("userscript.contribute.oauth.requesting");
+      stateEl.appendChild(loadingEl);
+
+      const btnRow = document.createElement("div");
+      btnRow.className = "button-group footer-buttons";
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "close-button";
+      cancelBtn.textContent = i18n.t("common.cancel");
+
+      const disconnectBtn = document.createElement("button");
+      disconnectBtn.className = "button github-disconnect-btn";
+      disconnectBtn.textContent = i18n.t("userscript.contribute.oauth.disconnect");
+
+      disconnectBtn.addEventListener("click", async () => {
+        abortController.abort();
+        await githubContributeService.clearToken();
+        modal.remove();
+        resolve(null);
+      });
+
+      btnRow.append(disconnectBtn, cancelBtn);
+      content.append(title, stateEl, btnRow);
+      modal.appendChild(content);
+
+      const abortController = new AbortController();
+
+      cancelBtn.addEventListener("click", () => {
+        abortController.abort();
+        modal.remove();
+        resolve(null);
+      });
+
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          abortController.abort();
+          modal.remove();
+          resolve(null);
+        }
+      });
+
+      document.body.appendChild(modal);
+
+      // Start Device Flow via IIFE or promise chain safely inside executor
+      (async () => {
+        try {
+          const { device_code, user_code, verification_uri, interval, expires_in } = await githubContributeService.requestDeviceCode();
+
+          // Build code display UI
+          stateEl.innerHTML = "";
+
+          const desc = document.createElement("p");
+          desc.className = "device-flow-desc";
+          desc.textContent = i18n.t("userscript.contribute.oauth.description");
+          stateEl.appendChild(desc);
+
+          // Big user code display
+          const codeWrap = document.createElement("div");
+          codeWrap.className = "device-flow-code-wrap";
+
+          const codeEl = document.createElement("span");
+          codeEl.className = "device-flow-code";
+          codeEl.textContent = user_code;
+
+          const copyBtn = document.createElement("button");
+          copyBtn.className = "device-flow-copy";
+          copyBtn.appendChild(createSVG(svg_paths.copyIconPaths));
+          copyBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(user_code).then(() => {
+              copyBtn.innerHTML = "";
+              copyBtn.appendChild(createSVG(svg_paths.checkIconPaths));
+              setTimeout(() => {
+                copyBtn.innerHTML = "";
+                copyBtn.appendChild(createSVG(svg_paths.copyIconPaths));
+              }, 2000);
+            });
+          });
+
+          codeWrap.append(codeEl, copyBtn);
+          stateEl.appendChild(codeWrap);
+
+          // Open GitHub button
+          const openBtn = document.createElement("button");
+          openBtn.className = "device-flow-open-btn confirm-button";
+          openBtn.target = "_blank";
+          openBtn.rel = "noopener noreferrer";
+          openBtn.textContent = i18n.t("userscript.contribute.oauth.openGitHub");
+          openBtn.addEventListener("click", () => {
+            window.open(verification_uri, "_blank", "noopener,noreferrer");
+          });
+          stateEl.appendChild(openBtn);
+
+          // Waiting indicator
+          const waitingEl = document.createElement("p");
+          waitingEl.className = "contribute-status loading device-flow-waiting";
+          waitingEl.textContent = i18n.t("userscript.contribute.oauth.waiting");
+          stateEl.appendChild(waitingEl);
+
+          // Countdown timer
+          const timerEl = document.createElement("small");
+          timerEl.className = "device-flow-timer";
+          stateEl.appendChild(timerEl);
+
+          let secondsLeft = expires_in;
+          const timerInterval = setInterval(() => {
+            secondsLeft--;
+            const mins = Math.floor(secondsLeft / 60);
+            const secs = secondsLeft % 60;
+            timerEl.textContent = i18n.t("userscript.contribute.oauth.expires", { count: `${mins}:${String(secs).padStart(2, "0")}` });
+            if (secondsLeft <= 0) clearInterval(timerInterval);
+          }, 1000);
+
+          // Poll for token
+          try {
+            const accessToken = await githubContributeService.pollForToken(device_code, interval || 5, abortController.signal);
+
+            clearInterval(timerInterval);
+
+            await githubContributeService.saveToken(accessToken);
+            await githubContributeService.fetchAndCacheUser();
+            this.refreshGithubAuthBadge();
+
+            // Success state
+            stateEl.innerHTML = "";
+            const successEl = document.createElement("p");
+            successEl.className = "contribute-status success";
+            successEl.textContent = i18n.t("userscript.contribute.oauth.success");
+            stateEl.appendChild(successEl);
+
+            setTimeout(() => {
+              modal.remove();
+              resolve(accessToken);
+            }, 800);
+          } catch (pollErr) {
+            clearInterval(timerInterval);
+            if (pollErr.message === "cancelled") return;
+
+            stateEl.innerHTML = "";
+            const errEl = document.createElement("p");
+            errEl.className = "contribute-status error";
+            errEl.textContent =
+              pollErr.message === "expired"
+                ? i18n.t("userscript.contribute.oauth.expired")
+                : pollErr.message === "denied"
+                  ? i18n.t("userscript.contribute.oauth.denied")
+                  : pollErr.message;
+            stateEl.appendChild(errEl);
+
+            const retryBtn = document.createElement("button");
+            retryBtn.className = "confirm-button";
+            retryBtn.textContent = i18n.t("setup.permission.grant.retry");
+            retryBtn.addEventListener("click", () => {
+              modal.remove();
+              resolve(this.showDeviceFlowModal());
+            });
+            stateEl.appendChild(retryBtn);
+          }
+        } catch (initErr) {
+          stateEl.innerHTML = "";
+          const errEl = document.createElement("p");
+          errEl.className = "contribute-status error";
+          errEl.textContent = initErr.message;
+          stateEl.appendChild(errEl);
+        }
+      })();
+    });
   }
 
   showMessage(message, type = "info") {

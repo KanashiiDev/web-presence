@@ -1,8 +1,14 @@
 // UserScript Actions
-const handleListUserScripts = async (showStoreParsers = false) => {
+const handleListUserScripts = async (req) => {
+  const { showStoreParsers, showOnlyStore } = req;
   logInfo("[background:handleListUserScripts]: Fetching scripts...");
   const scripts = await scriptManager.storage.getScripts();
-  const filteredScripts = showStoreParsers ? scripts : scripts.filter((script) => !script.storeFilePath);
+  const filteredScripts = showOnlyStore
+    ? scripts.filter((script) => script.storeFilePath)
+    : showStoreParsers
+      ? scripts
+      : scripts.filter((script) => !script.storeFilePath);
+
   const { parserEnabledState = {} } = await browser.storage.local.get("parserEnabledState");
   const scriptsWithStatus = filteredScripts.map((script) => ({
     ...script,
@@ -1457,7 +1463,7 @@ const setupListeners = () => {
         let result;
         switch (req.action) {
           case "listUserScripts":
-            result = await handleListUserScripts();
+            result = await handleListUserScripts(req);
             break;
           case "saveUserScript":
             result = await handleSaveUserScript(req);
