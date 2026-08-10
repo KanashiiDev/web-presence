@@ -583,6 +583,7 @@ body {
   display: grid;
   gap: 18px;
   padding: 14px;
+  min-height: 170px;
 }
 
 @media (width >= 768px) {
@@ -665,6 +666,7 @@ body {
   -ms-flex-direction: column;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
   padding: 14px;
   border-radius: 14px;
   background: var(--foreground-color-200);
@@ -725,10 +727,8 @@ body {
 }
 
 .script-info {
-  -webkit-box-flex: 1;
-  -ms-flex: 1;
-  flex: 1;
   min-width: 0;
+  position: relative;
 }
 
 .script-top {
@@ -771,9 +771,20 @@ body {
   -webkit-transition: min-width 0.18s ease;
   transition: min-width 0.18s ease;
 }
+.script-row .script-actions {
+  max-width: 0;
+}
 
-.script-row:hover .script-header-right {
-  min-width: 66px;
+.script-row:hover .script-header-right.count-1 {
+  min-width: 46px;
+}
+
+.script-row:hover .script-header-right.count-2 {
+  min-width: 68px;
+}
+
+.script-row:hover .script-header-right.count-3 {
+  min-width: 90px;
 }
 
 .script-name {
@@ -798,7 +809,7 @@ body {
   opacity: 0.8;
 }
 
-.script-category-badges {
+.script-status-badges {
   height: 20px;
   display: -webkit-box;
   display: -ms-flexbox;
@@ -811,7 +822,7 @@ body {
   overflow: hidden;
 }
 
-.script-row:hover .script-category-badges {
+.script-row:hover .script-status-badges {
   opacity: 0;
   max-width: 0;
 }
@@ -826,6 +837,62 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.script-description--clamped {
+  width: calc(100% - 13px);
+}
+
+.script-description-gap {
+  -webkit-box-flex: 1;
+  -ms-flex: 1;
+  flex: 1;
+}
+
+.script-description--expanded {
+  display: block;
+  line-clamp: unset;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.script-description-toggle {
+  width: 20px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  position: absolute;
+  bottom: 0;
+  right: -5px;
+  opacity: 0.6;
+  -webkit-transition: opacity 0.3s ease-in-out;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.script-description-toggle:hover {
+  opacity: 1;
+}
+
+.script-description-toggle.script-description-toggle--expanded {
+  background: var(--foreground-color-100);
+  border-radius: var(--radius-sm);
+}
+
+.script-description-toggle svg {
+  display: inline-block !important;
+  -webkit-transform: rotate(90deg);
+  -ms-transform: rotate(90deg);
+  transform: rotate(90deg);
+  -webkit-transition: -webkit-transform 0.2s ease;
+  transition: -webkit-transform 0.2s ease;
+}
+
+.script-description-toggle--expanded svg {
+  -webkit-transform: rotate(-90deg);
+  -ms-transform: rotate(-90deg);
+  transform: rotate(-90deg);
 }
 
 .script-meta {
@@ -872,7 +939,7 @@ body {
 
 .script-row:hover .script-actions {
   opacity: 1;
-  max-width: 70px;
+  max-width: 90px;
 }
 
 .script-action-btn {
@@ -912,6 +979,10 @@ body {
 .script-action-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.script-action-btn.report-issue-btn {
+  background: #f4433630;
 }
 
 .script-badge.update {

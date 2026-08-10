@@ -1118,6 +1118,7 @@ const svg_paths = {
   ],
   backIconPaths: ["M19 20l-8-8 8-8"],
   forwardIconPaths: ["M5 4l8 8-8 8"],
+  checkIconPaths: ["M20 6L9 17 4 12"],
   crossIconPaths: ["M6 6L18 18 M18 6L6 18"],
   minusIconPaths: ["M6 12L18 12"],
   plusIconPaths: ["M12 6L12 18 M6 12L18 12"],
@@ -1138,12 +1139,12 @@ const svg_paths = {
   storeIconPaths: ["M12 1a11 11 0 1 0 0 22a11 11 0 1 0 0-22", "M1 12h22", "M12 1c4.5 3 4.5 19 0 22", "M12 1c-4.5 3-4.5 19 0 22"],
   refreshIconPaths: ["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"],
   downloadIconPaths: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3"],
-  checkIconPaths: ["M20 6L9 17 4 12"],
   chevronRightIconPaths: ["M9 18l6-6-6-6"],
   emptyCircleIconPaths: ["M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z", "M12 8v4", "M12 16h.01"],
   spinnerIconPaths: ["M12 2v4", "M12 18v4", "M4.93 4.93l2.83 2.83", "M16.24 16.24l2.83 2.83", "M2 12h4", "M18 12h4", "M4.93 19.07l2.83-2.83", "M16.24 7.76l2.83-2.83"],
   listViewIconPaths: ["M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M2 12h20"],
   gridViewIconPaths: ["M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M12 3v18", "M2 12h20"],
+  issueIconPaths: ["M10 3h4l-.5 12h-3z", "M10 18h4v3h-4z"],
 };
 
 // Get Fresh Parser List

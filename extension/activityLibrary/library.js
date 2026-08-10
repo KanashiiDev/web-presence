@@ -128,10 +128,17 @@ const init = async () => {
   migrateToUserScriptSystem();
 
   injectHeaderIcons();
+  applyTsPlugins();
   await loadAll();
   await ensureMainRepo();
 
   bindEvents();
+
+  const { libraryListView = false } = await browser.storage.local.get("libraryListView");
+  state.listView = libraryListView;
+  const label = getElem("btnToggleViewLabel");
+  if (label) label.appendChild(createSVG(state.listView ? svg_paths.gridViewIconPaths : svg_paths.listViewIconPaths));
+
   renderAll();
   applyTranslations("extension");
   initApplyAttrs();
@@ -146,14 +153,6 @@ const init = async () => {
     chkAutoUpdate.checked = autoUpdateResult?.enabled ?? false;
     chkAutoUpdate.addEventListener("change", (e) => setAutoUpdate(e.target.checked).catch(() => {}));
   }
-
-  const { libraryListView = false } = await browser.storage.local.get("libraryListView");
-  state.listView = libraryListView;
-  const label = getElem("btnToggleViewLabel");
-  if (label) label.appendChild(createSVG(state.listView ? svg_paths.gridViewIconPaths : svg_paths.listViewIconPaths));
-  document.querySelectorAll(".script-list").forEach((el) => {
-    el.classList.toggle("list-view", state.listView);
-  });
 };
 
 const injectHeaderIcons = () => {
@@ -327,6 +326,8 @@ const bindEvents = () => {
       el.classList.toggle("list-view", state.listView);
     });
     browser.storage.local.set({ libraryListView: state.listView }).catch(() => {});
+
+    document.querySelectorAll(".script-row:not([style*='display: none'])").forEach(refreshDescriptionToggle);
   });
 
   const urlInput = getElem("repoUrlInput");
@@ -650,7 +651,6 @@ const renderUpdateBanner = () => {
 const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   const updateCount = precomputedUpdateCount ?? state.pendingUpdates.filter((u) => u.repoId === repo.id).length;
   const scripts = repo.scripts ?? [];
-
   block.replaceChildren();
 
   // Header
@@ -722,37 +722,90 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   searchInput.placeholder = i18n.t("parserlist.search_site");
   filterBar.appendChild(searchInput);
 
+  // Category Select Container
   const categorySelect = document.createElement("select");
   categorySelect.className = "script-category-select library-input";
   categorySelect.dataset.repoId = repo.id;
-
-  const defaultOpt = document.createElement("option");
-  defaultOpt.value = "all";
-  defaultOpt.textContent = i18n.t("common.all") || "All";
-  categorySelect.appendChild(defaultOpt);
-
-  const categories = new Set();
-  for (const meta of scripts) meta.category?.forEach((c) => categories.add(c));
-
-  for (const cat of [...categories].sort()) {
-    const opt = document.createElement("option");
-    opt.value = cat;
-    opt.textContent = i18n.t(`parserFilters.category.${cat}`);
-    categorySelect.appendChild(opt);
-  }
-
+  categorySelect.multiple = true;
   filterBar.appendChild(categorySelect);
 
   // Tom Select init
+  const categories = new Set();
+  const tags = new Set();
+  for (const meta of scripts) {
+    if (meta.category) (Array.isArray(meta.category) ? meta.category : [meta.category]).forEach((c) => categories.add(c));
+    if (meta.tags) meta.tags.forEach((t) => tags.add(t));
+  }
+
+  const tomOptions = [];
+  const optgroups = [];
+
+  if (categories.size > 0) {
+    optgroups.push({ value: "cat", label: i18n.t("parserFilters.categories") });
+    [...categories].sort().forEach((cat) => {
+      tomOptions.push({
+        value: `cat::${cat}`,
+        text: i18n.t(`parserFilters.category.${cat}`) || cat,
+        optgroup: "cat",
+      });
+    });
+  }
+
+  if (tags.size > 0) {
+    optgroups.push({ value: "tag", label: i18n.t("parserFilters.tags") });
+    [...tags].sort().forEach((tag) => {
+      tomOptions.push({
+        value: `tag::${tag}`,
+        text: tag,
+        optgroup: "tag",
+      });
+    });
+  }
+
   const tom = new TomSelect(categorySelect, {
+    multiple: true,
+
+    plugins: {
+      remove_button: {},
+      simplebar: {
+        isExtension: true,
+      },
+    },
+
     create: false,
     allowEmptyOption: true,
-    placeholder: i18n.t("common.all") || "All",
+    placeholder: i18n.t("common.all"),
     persist: false,
-    controlInput: null,
-    maxOptions: 5,
-    onChange: (value) => {
-      categorySelect.value = !value || value === "all" ? "all" : value;
+    closeAfterSelect: false,
+    maxOptions: null,
+    options: tomOptions,
+    optgroups: optgroups,
+
+    onFocus() {
+      this.settings.placeholder = "";
+      this.inputState();
+    },
+
+    onItemAdd() {
+      this.settings.placeholder = "";
+      this.inputState();
+    },
+
+    onItemRemove() {
+      if (this.items.length === 0) {
+        this.settings.placeholder = i18n.t("common.all");
+        this.inputState();
+      }
+    },
+
+    onBlur() {
+      if (this.items.length === 0) {
+        this.settings.placeholder = i18n.t("common.all");
+        this.inputState();
+      }
+    },
+
+    onChange: () => {
       applyFiltersInPlace(block, true);
     },
   });
@@ -776,7 +829,6 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   }
 
   filterBar.appendChild(chipRow);
-  inner.appendChild(filterBar);
 
   chipRow.addEventListener("click", (e) => {
     const chip = e.target.closest(".filter-chip");
@@ -785,6 +837,8 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
     chip.classList.add("active");
     applyFiltersInPlace(block, true);
   });
+
+  inner.appendChild(filterBar);
 
   const scriptListEl = document.createElement("div");
   scriptListEl.className = "script-list";
@@ -847,6 +901,22 @@ const renderPagination = (block, repoId, totalVisible, currentPage) => {
   inner?.appendChild(nav);
 };
 
+const refreshDescriptionToggle = (row) => {
+  const descEl = row.querySelector(".script-description");
+  const toggleBtn = row.querySelector(".script-description-toggle");
+  if (!descEl || !toggleBtn) return;
+
+  // Temporarily unclamped to get natural height
+  const wasExpanded = descEl.classList.contains("script-description--expanded");
+  descEl.classList.remove("script-description--clamped", "script-description--expanded");
+  const natural = descEl.scrollHeight;
+  if (wasExpanded) descEl.classList.add("script-description--expanded");
+
+  const overflows = natural > descEl.clientHeight || wasExpanded;
+  toggleBtn.hidden = !overflows;
+  descEl.classList.toggle("script-description--clamped", overflows);
+};
+
 const applyFiltersInPlace = (block, resetPage = false) => {
   const listEl = block.querySelector(".script-list");
   const searchEl = block.querySelector(".script-search");
@@ -856,7 +926,12 @@ const applyFiltersInPlace = (block, resetPage = false) => {
 
   const filter = activeChip?.dataset.filter ?? "all";
   const search = searchEl?.value.trim().toLowerCase() ?? "";
-  const selectedCategory = categorySelect?.value ?? "all";
+
+  const rawSelections = categorySelect?.tomselect?.getValue() ?? [];
+  const selections = Array.isArray(rawSelections) ? rawSelections : rawSelections ? [rawSelections] : [];
+
+  const selectedCats = new Set(selections.filter((v) => v.startsWith("cat::")).map((v) => v.replace("cat::", "")));
+  const selectedTags = new Set(selections.filter((v) => v.startsWith("tag::")).map((v) => v.replace("tag::", "")));
 
   const installedMap = buildInstalledMap();
   const repoId = listEl.dataset.repoId;
@@ -879,8 +954,21 @@ const applyFiltersInPlace = (block, resetPage = false) => {
       matchSearch = haystack.some((s) => s.includes(search));
     }
 
-    const matchCategory =
-      selectedCategory === "all" || (meta.category?.length ? meta.category.map((c) => c.toLowerCase()).includes(selectedCategory.toLowerCase()) : false);
+    const catMode = "any"; // "any" | "all"
+    const tagMode = "any"; // "any" | "all"
+
+    const matchCat =
+      selectedCats.size === 0 ||
+      (meta.category &&
+        (() => {
+          const cats = Array.isArray(meta.category) ? meta.category : [meta.category];
+          return catMode === "all" ? [...selectedCats].every((c) => cats.includes(c)) : cats.some((c) => selectedCats.has(c));
+        })());
+
+    const matchTag =
+      selectedTags.size === 0 || (meta.tags && (tagMode === "all" ? [...selectedTags].every((t) => meta.tags.includes(t)) : meta.tags.some((t) => selectedTags.has(t))));
+
+    const matchCategory = matchCat && matchTag;
 
     return matchFilter && matchSearch && matchCategory;
   });
@@ -894,7 +982,9 @@ const applyFiltersInPlace = (block, resetPage = false) => {
   // Display toggling
   if (repoCache) {
     for (const [sid, row] of repoCache) {
-      row.style.display = pageSet.has(sid) ? "" : "none";
+      const visible = pageSet.has(sid);
+      row.style.display = visible ? "" : "none";
+      if (visible) refreshDescriptionToggle(row);
     }
   }
 
@@ -924,8 +1014,40 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
   const localId = local?.id ?? sid;
   actionsEl.replaceChildren();
 
+  // Issue report button
+  const repo = state.repos.find((r) => r.id === repoId);
+  const repoUrl = repo?.url ?? `https://github.com/${repoId.replace(/__/g, "/").replace(/\/[^/]+$/, "")}`;
+  const issueTitle = encodeURIComponent(`[Bug Report] ${meta.title ?? sid} ${meta.version ?? ""}`);
+
+  const authors = Array.isArray(meta.authors) ? meta.authors : meta.authors ? [meta.authors] : [];
+  const authorMentions = authors.map((a) => `@${a}`).join(", ");
+  const manifest = browser.runtime.getManifest();
+  const issueBody = [
+    `**Script:** [${meta.title ?? sid}](${repoUrl}/blob/main/${meta.file ?? "activities"})`,
+    `**Script Version:** ${meta.version ?? "—"}`,
+    `**Extension Version:** ${manifest.version ?? "—"}`,
+    authorMentions ? `**Author:** ${authorMentions}` : null,
+    ``,
+    `---`,
+    `<!-- Describe the issue below -->`,
+    ``,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
+  const issueUrl = `${repoUrl}/issues/new?title=${issueTitle}&body=${encodeURIComponent(issueBody)}`;
+  const btnIssue = document.createElement("button");
+  btnIssue.className = "script-action-btn report-issue-btn";
+  btnIssue.title = i18n.t("library.action.reportIssue");
+  btnIssue.appendChild(iconSVG("issueIconPaths", 14));
+  btnIssue.addEventListener("click", (e) => {
+    e.stopPropagation();
+    browser.tabs.create({ url: issueUrl });
+  });
+  actionsEl.appendChild(btnIssue);
+
   if (!local) {
-    const btn = makeActionBtn("install", sid, repoId, i18n.t("library.action.install"), "install");
+    const btn = makeActionBtn("install", sid, repoId, meta, i18n.t("library.action.install"), "install-btn");
     btn.appendChild(iconSVG("downloadIconPaths", 14));
     actionsEl.appendChild(btn);
   } else if (hasUpdate) {
@@ -935,7 +1057,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     const updateBadge = document.createElement("span");
     updateBadge.className = "script-category-badge update-available";
     updateBadge.textContent = i18n.t("library.action.update");
-    row.querySelector(".script-category-badges").appendChild(updateBadge);
+    row.querySelector(".script-status-badges").appendChild(updateBadge);
     const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("library.action.remove"), "remove-btn");
     btnRem.appendChild(iconSVG("trashIconPaths", 14));
     actionsEl.append(btnUpd, btnRem);
@@ -950,7 +1072,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     const installedBadge = document.createElement("span");
     installedBadge.className = "script-category-badge installed";
     installedBadge.textContent = i18n.t("library.filter.installed");
-    row.querySelector(".script-category-badges").appendChild(installedBadge);
+    row.querySelector(".script-status-badges").appendChild(installedBadge);
     btnOk.appendChild(iconSVG("checkIconPaths", 14));
     actionsEl.append(btnRem, btnOk);
   }
@@ -974,7 +1096,16 @@ const updateScriptRowInPlace = (row, meta, repoId, installedMap) => {
   row.querySelector(".script-category-badge.update-available")?.remove();
 
   const actionsEl = row.querySelector(".script-actions");
-  if (actionsEl) buildScriptActionButtons(actionsEl, row, meta, sid, repoId, local, hasUpdate);
+  if (actionsEl) {
+    buildScriptActionButtons(actionsEl, row, meta, sid, repoId, local, hasUpdate);
+    const headerRight = actionsEl.closest(".script-header-right");
+    if (headerRight) {
+      headerRight.classList.forEach((c) => {
+        if (c.startsWith("count-")) headerRight.classList.remove(c);
+      });
+      headerRight.classList.add(`count-${actionsEl.children.length}`);
+    }
+  }
 };
 
 const updateRepoBadgeInPlace = (repoId) => {
@@ -1094,19 +1225,9 @@ const renderScriptRow = (meta, repoId, installedMap) => {
   topDiv.appendChild(headerDiv);
   row.appendChild(topDiv);
 
-  if (meta.category) {
+  {
     const catWrap = document.createElement("div");
-    catWrap.className = "script-category-badges";
-
-    const categories = Array.isArray(meta.category) ? meta.category : [meta.category];
-
-    for (const c of categories) {
-      const cat = document.createElement("span");
-      cat.className = "script-category-badge";
-      cat.textContent = i18n.t(`parserFilters.category.${c}`);
-      catWrap.appendChild(cat);
-    }
-
+    catWrap.className = "script-status-badges";
     headerRightDiv.appendChild(catWrap);
   }
   // Author
@@ -1145,14 +1266,37 @@ const renderScriptRow = (meta, repoId, installedMap) => {
     const descEl = document.createElement("div");
     descEl.className = "script-description";
     descEl.textContent = meta.description;
+
     info.appendChild(descEl);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "script-description-toggle";
+    toggleBtn.appendChild(iconSVG("chevronRightIconPaths"));
+    toggleBtn.hidden = true;
+    info.appendChild(toggleBtn);
+
+    toggleBtn.addEventListener("click", () => {
+      const expanded = descEl.classList.toggle("script-description--expanded");
+      toggleBtn.classList.toggle("script-description-toggle--expanded", expanded);
+    });
   }
 
   row.appendChild(info);
 
-  // Tags
+  // Description gap for accordion toggle
+  const descGapEl = document.createElement("div");
+  descGapEl.className = "script-description-gap";
+  row.appendChild(descGapEl);
+
+  // Tags (categories first, then tags)
   const tagsEl = document.createElement("div");
   tagsEl.className = "script-tags";
+  for (const c of Array.isArray(meta.category) ? meta.category : meta.category ? [meta.category] : []) {
+    const cat = document.createElement("span");
+    cat.className = "script-tag script-category-tag";
+    cat.textContent = i18n.t(`parserFilters.category.${c}`);
+    tagsEl.appendChild(cat);
+  }
   for (const t of meta.tags ?? []) {
     const tag = document.createElement("span");
     tag.className = "script-tag";
@@ -1167,6 +1311,10 @@ const renderScriptRow = (meta, repoId, installedMap) => {
   buildScriptActionButtons(actionsEl, row, meta, sid, repoId, local, hasUpdate);
 
   headerRightDiv.appendChild(actionsEl);
+  headerRightDiv.classList.forEach((c) => {
+    if (c.startsWith("count-")) headerRightDiv.classList.remove(c);
+  });
+  headerRightDiv.classList.add(`count-${actionsEl.children.length}`);
   return row;
 };
 

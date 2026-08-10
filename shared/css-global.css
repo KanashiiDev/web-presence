@@ -256,6 +256,36 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   outline: none !important;
 }
 
+.ts-control input {
+  color: var(--text-color-primary);
+}
+
+.script-category-select .ts-control {
+  position: relative;
+  padding-right: 36px !important;
+}
+
+.script-category-select .ts-dropdown-content {
+  max-height: 160px;
+}
+
+.script-category-select .ts-control::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+.script-category-select.ts-wrapper.focus:not(.input-hidden) .ts-control::after {
+  transform: translateY(-35%) rotate(225deg);
+}
+
 #editor-left .ts-control {
   background: var(--foreground-color-500);
 }
@@ -370,6 +400,11 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   background-color: var(--foreground-color-400) !important;
   background-image: none !important;
   border: 1px solid var(--border-color) !important;
+}
+
+.ts-dropdown .optgroup-header {
+  color: var(--text-color-primary);
+  background: var(--foreground-color-200);
 }
 
 /* MV3 Alert */

@@ -128,8 +128,8 @@ function renderParserTagFilterMenu() {
     });
   };
 
-  appendSection(i18n.t("parserFilters.cat"), allCategories, "cat", selectedCategories);
-  appendSection(i18n.t("parserFilters.tag"), allTags, "tag", selectedTags);
+  appendSection(i18n.t("parserFilters.categories"), allCategories, "cat", selectedCategories);
+  appendSection(i18n.t("parserFilters.tags"), allTags, "tag", selectedTags);
 
   if (!fragment.childNodes.length) {
     fragment.appendChild(Object.assign(document.createElement("i"), { textContent: i18n.t("parserFilters.empty") }));
