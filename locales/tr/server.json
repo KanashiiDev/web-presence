@@ -82,7 +82,7 @@
   "settings.log_media_update": "Medya Değişimini Logla",
   "settings.log_media_update.note": "Medya değişim olaylarını loglara kaydet.",
   "settings.max_log_size": "Maksimum Log Boyutu",
-  "settings.max_log_size.note": "Kayıt dosyasının maksimum boyutu (MB)",
+  "settings.max_log_size.note": "Silinmeden önce izin verilen maksimum günlük dosyası boyutu (mb)",
   "settings.export_activity_files": "Yerel Aktivite Paylaşımı",
   "settings.export_activity_files.note": "Geçerli etkinlik verilerini userData dizinindeki dosyalara yazar.",
   "settings.wnp_rainmeter_support": "WNP Rainmeter Desteği",

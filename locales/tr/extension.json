@@ -521,7 +521,7 @@
   "library.status.updated": "\"{0}\" güncellendi.",
   "library.repo.officialName": "Resmi Repo",
   "library.autoUpdate": "Otomatik Güncelleme",
-  "library.setup.header": "Discord Müzik RPC’ye hoş geldiniz!",
+  "library.setup.header": "Web Presence'e hoş geldiniz!",
   "library.setup.body": "Aktiviteler, aktivite kütüphanesi üzerinden sunulmaktadır. Lütfen kullanmak istediğiniz aktiviteleri bu sayfadan kurunuz.",
   "common.settings": "Ayarlar",
   "common.wait": "Lütfen bekleyin...",
