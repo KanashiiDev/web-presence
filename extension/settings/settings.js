@@ -14,7 +14,7 @@ function applySectionFromUrl() {
 
   // Title and description updates
   const sectionKey = activeSection.getAttribute("data-section");
-  const mainTitle = i18n.t("header.title");
+  const mainTitle = "Web Presence";
   const sectionTitle = i18n.t(`settings.${sectionKey}.title`);
   const fullTitle = `${mainTitle} - ${sectionTitle}`;
 

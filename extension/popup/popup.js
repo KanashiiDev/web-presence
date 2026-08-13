@@ -81,7 +81,7 @@ const sectionManager = {
     const historyStatsToggleBtn = document.getElementById("historyStatsToggle");
 
     const titles = {
-      main: i18n.t("header.title"),
+      main: "Web Presence",
       history: i18n.t("header.history"),
       stats: i18n.t("header.stats"),
       settings: i18n.t("common.settings"),

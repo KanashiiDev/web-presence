@@ -1,7 +1,5 @@
 {
   "app.title": "Tableau de bord Web Présence",
-  "dialog.confirmDelete": "Voulez-vous supprimer ?",
-  "dialog.warnDelete": "Cette action ne peut pas être annulée.",
   "actions.toggle_view": "Changer de vue",
   "actions.settings": "Paramètres",
   "actions.back": "Retour",

@@ -308,7 +308,7 @@ function createRootElement(theme, style = {}, bg = {}, blur = false) {
 function createTitleElements(root, editMode) {
   const heading = document.createElement("h3");
   heading.className = "userRpc-h3";
-  heading.textContent = t("header.title");
+  heading.textContent = "Web Presence";
   root.appendChild(heading);
 
   const editTitleWrapper = document.createElement("div");
