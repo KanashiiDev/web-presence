@@ -1,7 +1,7 @@
 function filterHistoryByRange(history, range, customStart = null, customEnd = null) {
   if (!Array.isArray(history)) return [];
   const { startTime, endTime } = getStartTime(range, customStart, customEnd);
-  return history.filter((e) => e?.p >= startTime && e?.p <= endTime);
+  return history.filter((e) => e?.p >= startTime && e?.p <= endTime && e?.m !== "watch");
 }
 
 async function getFilteredTopArtists(filteredHistory) {
