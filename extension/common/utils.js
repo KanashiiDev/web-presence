@@ -1556,7 +1556,23 @@ function createPlatformDropdown(label, options, manifestVersion) {
 }
 
 // Show initial setup dialog
+async function fetchLatestVersion() {
+  try {
+    const res = await fetch("https://api.github.com/repos/KanashiiDev/web-presence/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const version = data.tag_name?.replace(/^v/, "") ?? null;
+    if (version) return version;
+  } catch (e) {
+    logInfo("GitHub version could not be retrieved, fallback is being used:", e);
+  }
+
+  return browser.runtime.getManifest().version;
+}
+
 async function showInitialSetupDialog(appendBody) {
+  const version = await fetchLatestVersion();
+
   return new Promise((resolve) => {
     const wrapper = document.createElement("div");
     wrapper.id = "setupAlert";
@@ -1579,8 +1595,6 @@ async function showInitialSetupDialog(appendBody) {
     contentLinkContainer.classList.add("setup-link-container");
     content.appendChild(contentLinkContainer);
 
-    const manifestVersion = browser.runtime.getManifest().version;
-
     // Windows Dropdown
     const windowsOptions = [
       {
@@ -1592,7 +1606,7 @@ async function showInitialSetupDialog(appendBody) {
         url: `https://github.com/KanashiiDev/web-presence/releases/download/{version}/web-presence-{version}-x64.zip`,
       },
     ];
-    contentLinkContainer.appendChild(createPlatformDropdown("Windows", windowsOptions, manifestVersion));
+    contentLinkContainer.appendChild(createPlatformDropdown("Windows", windowsOptions, version));
 
     // Linux Dropdown
     const linuxOptions = [
@@ -1617,7 +1631,7 @@ async function showInitialSetupDialog(appendBody) {
         url: `https://github.com/KanashiiDev/web-presence#desktop-app`,
       },
     ];
-    contentLinkContainer.appendChild(createPlatformDropdown("Linux", linuxOptions, manifestVersion));
+    contentLinkContainer.appendChild(createPlatformDropdown("Linux", linuxOptions, version));
 
     // MacOS Dropdown
     const macOptions = [
@@ -1626,7 +1640,7 @@ async function showInitialSetupDialog(appendBody) {
         url: `https://github.com/KanashiiDev/web-presence/releases/download/{version}/web-presence-{version}-universal.dmg`,
       },
     ];
-    contentLinkContainer.appendChild(createPlatformDropdown("MacOS", macOptions, manifestVersion));
+    contentLinkContainer.appendChild(createPlatformDropdown("MacOS", macOptions, version));
 
     const contentNote = document.createElement("p");
     contentNote.textContent = i18n.t("setup.companion.provider");
