@@ -1,6 +1,6 @@
 {
   "name": "web-presence",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Web Presence Bridge for Discord",
   "homepage": "https://github.com/KanashiiDev/web-presence",
   "main": "app/main.js",
@@ -80,7 +80,7 @@
     "express": "^5.2.1",
     "semver": "^7.8.5",
     "simple-json-db": "^2.0.0",
-    "ws": "^8.21.2"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
@@ -88,11 +88,11 @@
     "archiver": "^8.0.0",
     "autoprefixer": "^10.5.4",
     "cross-env": "^10.1.0",
-    "electron": "^42.8.1",
+    "electron": "^42.9.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "fs-extra": "^11.4.0",
-    "postcss": "^8.5.25",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "rimraf": "^6.1.3"
   },
