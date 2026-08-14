@@ -287,12 +287,12 @@ class GitHubContributeService {
 
   /**
    * activities/<LETTER>/<scriptId>.js
-   * Letter = first char of script title uppercased (A-Z or 0-9), else "0".
+   * Letter = first char of script title uppercased (A-Z or 0-9), else "#".
    */
   getFilePath(script) {
     const title = (script.title || "").trim();
     const first = title[0]?.toUpperCase() || "0";
-    const letter = /[A-Z]/.test(first) ? first : /[0-9]/.test(first) ? first : "0";
+    const letter = /[A-Z]/.test(first) ? first : /[0-9]/.test(first) ? first : "#";
     // If all uppercase, lowercase everything; otherwise only lowercase the first character
     const isAllUpper = title === title.toUpperCase();
     const normalized = isAllUpper ? title.toLowerCase() : title[0].toLowerCase() + title.slice(1);
