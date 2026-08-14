@@ -1276,18 +1276,35 @@ function processPlaybackInfo(timePassed = "", durationElem = "") {
   return { currentPosition, totalDuration, currentProgress, timestamps };
 }
 
+function applyStrip(val, stripPattern) {
+  if (!stripPattern) return val;
+  const reMatch = stripPattern.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    try {
+      return val.replace(new RegExp(reMatch[1], reMatch[2] || ""), "").trim();
+    } catch (_) {}
+  }
+  return val.replaceAll(stripPattern, "").trim();
+}
+
 const parseIgnoreSelector = (selector) => {
   const ignoreMatches = [...selector.matchAll(/\[ignore=['"]([^'"]+)['"]\]/g)];
   const onlyMatch = selector.match(/\[only=['"]([^'"]+)['"]\]/);
+  const stripMatch = selector.match(/\[strip=['"]([^'"]+)['"]\]/);
+  const parentMatch = selector.match(/\[parent(?:=['"](\d+)['"])?\]/);
 
   let cleanSelector = selector;
   ignoreMatches.forEach((m) => (cleanSelector = cleanSelector.replace(m[0], "")));
-  if (onlyMatch) cleanSelector = cleanSelector.replace(onlyMatch[0], "").trim();
+  if (onlyMatch) cleanSelector = cleanSelector.replace(onlyMatch[0], "");
+  if (stripMatch) cleanSelector = cleanSelector.replace(stripMatch[0], "");
+  if (parentMatch) cleanSelector = cleanSelector.replace(parentMatch[0], "");
 
   return {
     cleanSelector: cleanSelector.trim(),
     ignoreSelector: ignoreMatches.length ? ignoreMatches.map((m) => m[1]).join(",") : null,
     onlySelector: onlyMatch?.[1] ?? null,
+    stripPattern: stripMatch?.[1] ?? null,
+    parentLevel: parentMatch ? parseInt(parentMatch[1] ?? "1", 10) : 0,
   };
 };
 
@@ -1311,7 +1328,7 @@ function cloneWithoutIgnored(elem, ignoreSelector) {
 function getText(selector, options = {}) {
   if (!selector) return "";
   const { attr = null, transform = null, root = document } = options;
-  const { cleanSelector, ignoreSelector, onlySelector } = parseIgnoreSelector(selector);
+  const { cleanSelector, ignoreSelector, onlySelector, stripPattern, parentLevel } = parseIgnoreSelector(selector);
 
   let elem = null;
   try {
@@ -1320,13 +1337,21 @@ function getText(selector, options = {}) {
   if (!elem) elem = queryWithPartialClass(cleanSelector, root)[0] ?? null;
   if (!elem) return "";
 
-  // only selector
+  // Parent selector
+  if (parentLevel) {
+    let p = elem;
+    for (let i = 0; i < parentLevel; i++) p = p?.parentElement;
+    if (!p) return "";
+    elem = p;
+  }
+
+  // Only selector
   if (onlySelector) {
     const onlyEl = elem.querySelector(onlySelector);
     if (onlyEl) elem = onlyEl;
   }
 
-  // ignore selector
+  // Ignore selector
   let target = elem;
   if (ignoreSelector && !attr) {
     target = cloneWithoutIgnored(elem, ignoreSelector);
@@ -1335,7 +1360,8 @@ function getText(selector, options = {}) {
   let val = attr ? elem.getAttribute(attr) : target.textContent;
   if (!val) return "";
 
-  val = val.trim();
+  val = applyStrip(val.trim(), stripPattern);
+  if (!val) return "";
 
   if (transform) {
     try {
@@ -1373,14 +1399,21 @@ function getTextAll(selector, options = {}) {
  */
 function getImage(selector, root = document) {
   if (!selector) return null;
-  const { cleanSelector, ignoreSelector, onlySelector } = parseIgnoreSelector(selector);
+  const { cleanSelector, ignoreSelector, onlySelector, parentLevel } = parseIgnoreSelector(selector);
 
   let elem = null;
   try {
     elem = querySelectorDeep(cleanSelector, root);
   } catch (_) {}
-
   if (!elem) return null;
+
+  // Parent selector
+  if (parentLevel) {
+    let p = elem;
+    for (let i = 0; i < parentLevel; i++) p = p?.parentElement;
+    if (!p) return null;
+    elem = p;
+  }
 
   // Only selector
   if (onlySelector) {
