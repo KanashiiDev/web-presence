@@ -84,6 +84,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "processPlaybackInfo",
     "getText",
     "getTextAll",
+    "isValidSelectorUrl",
     "getImage",
     "getImageAll",
     "querySelectorDeep",
@@ -134,6 +135,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     [
       "getText",
       "getTextAll",
+      "isValidSelectorUrl",
       "getImage",
       "getImageAll",
       "queryWithPartialClass",

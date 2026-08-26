@@ -1390,6 +1390,32 @@ function getTextAll(selector, options = {}) {
     .filter((val) => val !== "");
 }
 
+function isValidSelectorUrl(input) {
+  if (typeof input !== "string") return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const hasProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://");
+  const candidate = hasProtocol ? trimmed : "https://" + trimmed;
+
+  try {
+    const url = new URL(candidate);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+
+    const hostname = url.hostname;
+    if (!hostname.includes(".") || hostname.startsWith(".") || hostname.endsWith(".")) {
+      return null;
+    }
+
+    return url.href;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * Retrieves image URL from element matching selector.
  *
@@ -1399,6 +1425,11 @@ function getTextAll(selector, options = {}) {
  */
 function getImage(selector, root = document) {
   if (!selector) return null;
+
+  // If a plain URL is entered, return it directly
+  const directUrl = isValidSelectorUrl(selector);
+  if (directUrl) return directUrl;
+
   const { cleanSelector, ignoreSelector, onlySelector, parentLevel } = parseIgnoreSelector(selector);
 
   let elem = null;

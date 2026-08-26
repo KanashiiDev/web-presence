@@ -129,10 +129,22 @@ async function updatePreview(shadow, editMode) {
     }
   };
 
-  const isValidUrl = (url) => {
-    const pattern = /^(https?:\/\/)?(([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3})(:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(#[-a-z\d_]*)?$/i;
-    return pattern.test(url);
-  };
+  function isValidUrl(input) {
+    if (typeof input !== "string") return false;
+
+    const value = input.trim();
+    if (!value) return false;
+
+    const hasProtocol = value.startsWith("http://") || value.startsWith("https://");
+    const urlToParse = hasProtocol ? value : `https://${value}`;
+
+    try {
+      const url = new URL(urlToParse);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
 
   // Get selectors
   const selectors = {
