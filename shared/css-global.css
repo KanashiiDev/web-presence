@@ -810,7 +810,7 @@ html.setup-dialog-open #mainFooterButtons {
 }
 
 .dlg-btn.danger:hover {
-  background: var(--history-entry-delete-color);
+  background: var(--alert-color);
 }
 
 .dlg-error {

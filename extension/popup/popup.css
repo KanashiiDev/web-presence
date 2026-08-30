@@ -1206,7 +1206,7 @@ footer a {
   -ms-flex: 1;
   flex: 1;
   background: var(--accent-color);
-  color: var(--text-color-button);
+  color: var(--text-color-btn);
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -1569,7 +1569,7 @@ footer a:hover,
 }
 
 .history-entry.selected {
-  background: var(--history-entry-delete-color);
+  background: var(--alert-color);
 }
 
 .history-entry .history-image-container.spinner {

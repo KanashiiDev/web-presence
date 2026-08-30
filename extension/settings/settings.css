@@ -1357,7 +1357,7 @@ button.history-modal-close {
 }
 
 .history-entry.selected {
-  background: var(--history-entry-delete-color);
+  background: var(--alert-color);
 }
 
 .history-entry img {

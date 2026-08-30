@@ -1051,7 +1051,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     btn.appendChild(iconSVG("downloadIconPaths", 14));
     actionsEl.appendChild(btn);
   } else if (hasUpdate) {
-    const btnUpd = makeActionBtn("update", sid, repoId, i18n.t("library.action.update"), "update-btn");
+    const btnUpd = makeActionBtn("update", sid, repoId, meta, i18n.t("library.action.update"), "update-btn");
     btnUpd.appendChild(iconSVG("refreshIconPaths", 14));
     row.classList.add("update-available");
     const updateBadge = document.createElement("span");

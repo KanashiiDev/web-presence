@@ -1,6 +1,4 @@
 :root {
-  --text-connected: #3cff7b;
-  --text-disconnected: #ff4f4f;
   --chart-time: rgb(74, 106, 148);
   --chart-songs: rgb(68, 134, 78);
   --chart-time-btn: rgba(74, 106, 148, 0.5);
@@ -281,11 +279,11 @@ h2.open .arrow {
 }
 
 .connected {
-  color: var(--text-connected);
+  color: var(--green-color);
 }
 
 .disconnected {
-  color: var(--text-disconnected);
+  color: var(--red-color);
 }
 
 footer {
@@ -425,7 +423,7 @@ img:not(.summary-img)[src*="assets/icon-dark.png"] {
 .link-container a {
   display: inline-block;
   background: var(--accent-color);
-  color: var(--text-color-button);
+  color: var(--text-color-primary);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 13px;
@@ -479,7 +477,7 @@ img:not(.summary-img)[src*="assets/icon-dark.png"] {
 }
 
 .logEntry.error {
-  border: 1px solid var(--text-disconnected);
+  border: 1px solid var(--red-color);
 }
 .logEntry .header {
   display: flex;
@@ -669,10 +667,14 @@ input[type="number"] {
   outline: none;
   border: 0;
   padding: 6px;
-  color: var(--text-color-button);
+  color: var(--text-color-primary);
   width: 100%;
   cursor: pointer;
   transition: background var(--transition-normal) ease;
+}
+
+.save-settings-btn {
+  color: var(--text-color-btn);
 }
 
 .save-settings-btn:hover {
@@ -855,6 +857,8 @@ input[type="number"] {
   color: var(--text-color-primary);
 }
 
+.chart-mode-btn.active[data-mode="summary"],
+.chart-mode-btn.active:not(.summary-active),
 .chart-range-btn.active {
   background: var(--foreground-color-300);
   border-color: var(--border-color-bright);

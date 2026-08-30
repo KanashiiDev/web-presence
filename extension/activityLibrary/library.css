@@ -219,7 +219,7 @@ body {
   border: 1px solid var(--red-color-dark);
 }
 .library-btn.danger:hover {
-  background: var(--history-entry-delete-color);
+  background: var(--alert-color);
 }
 
 .library-btn.small {
@@ -1019,12 +1019,12 @@ body {
 
 .script-category-badge.installed {
   background: var(--green-color-dark);
-  color: var(--text-color-primary);
+  color: var(--text-color-btn);
 }
 
 .script-category-badge.update-available {
   background: var(--yellow-color-dark);
-  color: var(--text-color-primary);
+  color: var(--text-color-btn);
 }
 
 .script-row:hover .script-tag {
@@ -1063,7 +1063,7 @@ body {
   padding: 10px 14px;
   font-size: 11.5px;
   color: var(--red-color);
-  background: var(--history-entry-delete-color);
+  background: var(--alert-color);
   border-radius: var(--radius-sm, 4px);
   margin: 8px 10px;
 }

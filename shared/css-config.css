@@ -46,7 +46,6 @@
   --text-color-primary: #ddd;
   --text-color-secondary: #c5c5c5;
   --text-color-muted: #999;
-  --text-color-button: #ddd;
   /*Scrollbar*/
   --scrollbar-color: #474747;
   --scrollbar-color-hover: #666;
@@ -59,7 +58,6 @@
   --border-color: #464646;
   --border-color-bright: #666;
   /*Others*/
-  --history-entry-delete-color: #4e1b1b;
   --warning-color: #7a6508;
   --alert-color: #782020;
   --accent-color: #425c83;
@@ -94,7 +92,6 @@
   --text-color-primary: #1a1a1a;
   --text-color-secondary: #333333;
   --text-color-muted: #666666;
-  --text-color-button: #1a1a1a;
   /*Scrollbar*/
   --scrollbar-color: #d8d8d8;
   --scrollbar-color-hover: #c5c5c5;
@@ -107,7 +104,6 @@
   --border-color: #b5b5b5;
   --border-color-bright: #929292;
   /*Others*/
-  --history-entry-delete-color: #4e1b1b;
   --warning-color: #7a6508;
   --alert-color: #782020;
   --switch-toggle-color: #ddd;
