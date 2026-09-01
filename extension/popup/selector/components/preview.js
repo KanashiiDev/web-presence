@@ -191,8 +191,8 @@ async function updatePreview(shadow, editMode) {
 
   // Normalization
   const normalized = await normalizeTitleAndArtist(texts.title, texts.artist);
-  texts.title = truncate(normalized.title, 128, { fallback: "Unknown Song" });
-  texts.artist = normalized.artist !== "-1" ? truncate(normalized.artist, 128, { fallback: "Unknown Artist" }) : "-1";
+  texts.title = truncate(normalized.title, 128, { fallback: "_Unknown Title_" });
+  texts.artist = normalized.artist !== "-1" ? truncate(normalized.artist, 128, { fallback: "_Unknown Artist_" }) : "-1";
 
   // If "5:47 / 6:57" style string is found, split into both
   let [tp, dur] = extractTimeParts(texts.timePassed);

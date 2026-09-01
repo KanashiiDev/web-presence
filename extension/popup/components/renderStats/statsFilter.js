@@ -11,7 +11,7 @@ async function getFilteredTopArtists(filteredHistory) {
   const allArtists = [];
 
   for (const e of filteredHistory) {
-    if (!e?.a || e.a.includes("Unknown Artist")) continue;
+    if (!e?.a || e.a.includes("_Unknown Artist_")) continue;
     const norm = normalizeArtistName(e.a);
     if (norm && !seen.has(norm)) {
       seen.add(norm);

@@ -23,7 +23,7 @@ async function getTopSongs(filteredHistory, topN = 5) {
     artistNameFreq[norm][rawName] = (artistNameFreq[norm][rawName] ?? 0) + 1;
 
     // Song count
-    if (e.t && !e.t.includes("Unknown Song")) {
+    if (e.t && !e.t.includes("_Unknown Title_")) {
       const key = `${e.t} - ${norm}`;
       songCounts[key] = (songCounts[key] ?? 0) + 1;
     }

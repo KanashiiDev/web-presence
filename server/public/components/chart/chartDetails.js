@@ -52,7 +52,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
       dateP.dataset.timestamp = ts;
     }
 
-    const titleH = Object.assign(document.createElement("h2"), { className: "title", textContent: item.title || "Unknown title" });
+    const titleH = Object.assign(document.createElement("h2"), { className: "title", textContent: item.title || "_Unknown Title_" });
     const artistP = Object.assign(document.createElement("p"), { className: "artist", textContent: item.artist ?? "" });
     const sourceP = Object.assign(document.createElement("p"), { className: "source", textContent: item.source ?? "" });
 

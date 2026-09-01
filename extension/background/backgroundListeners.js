@@ -913,7 +913,7 @@ const handleUpdateRpc = async (req, sender) => {
   scheduleRpcUpdate(req.data, tabId)?.catch((err) => logError("[background:scheduleRpcUpdate]: RPC schedule failed", err));
 
   // 4️) Add History
-  if (req.data.title !== "Unknown Song" && req.data.artist !== "Unknown Artist" && req.data.artist !== "-1") {
+  if (req.data.title !== "_Unknown Title_" && req.data.artist !== "_Unknown Artist_" && req.data.artist !== "-1") {
     scheduleHistoryAdd(tabId, {
       title: req.data.title,
       artist: req.data.artist,

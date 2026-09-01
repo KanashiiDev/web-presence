@@ -100,8 +100,8 @@ export function buildSummaryData(range, chartState, historyMode = "listen") {
     artistMeta[norm].image ??= item.image || null;
     artistMeta[norm].songs.add(songKey);
 
-    // Songs - skip "Unknown Song" entries
-    if (rawTitle === "Unknown" || rawTitle.includes("Unknown Song")) continue;
+    // Songs - skip "_Unknown Title_" entries
+    if (rawTitle === "Unknown" || rawTitle.includes("_Unknown Title_")) continue;
 
     const song = songMap.get(songKey);
     if (song) {

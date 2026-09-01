@@ -449,8 +449,10 @@ window.registerParser = async function ({
         // NORMALIZATION
         const normalized = await normalizeTitleAndArtist(rest.title ?? "", rest.artist ?? "");
 
-        const cleanTitle = truncate(normalized.title, 128, { fallback: "Unknown Song" });
-        const cleanArtist = truncate(normalized.artist, 128, { fallback: "Unknown Artist" });
+        const cleanTitle = truncate(normalized.title, 128, { fallback: "_Unknown Title_" });
+        const cleanArtist = truncate(normalized.artist, 128, { fallback: "-1" });
+
+        if (cleanTitle === "_Unknown Title_") return null;
 
         // TRACK CHANGE
         const lastAct = rpcState.lastActivity;
@@ -687,9 +689,11 @@ window.getSongInfo = async function () {
               dataTitle = normalized?.title || dataTitle;
               dataArtist = normalized?.artist || dataArtist;
 
-              dataTitle = truncate(dataTitle, 128, { fallback: "Unknown Song" });
-              dataArtist = truncate(dataArtist, 128, { fallback: "Unknown Artist" });
-              dataSource = truncate(dataSource, 32, { fallback: "Unknown Source" });
+              dataTitle = truncate(dataTitle, 128, { fallback: "_Unknown Title_" });
+              dataArtist = truncate(dataArtist, 128, { fallback: "-1" });
+              dataSource = truncate(dataSource, 32, { fallback: "_Unknown Source_" });
+
+              if (dataTitle === "_Unknown Title_") return null;
 
               const currentData = { title: dataTitle, artist: dataArtist, source: dataSource };
               const isChanged =
