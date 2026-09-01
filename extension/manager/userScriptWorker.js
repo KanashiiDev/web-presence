@@ -190,6 +190,14 @@ class UserScriptManager {
             setTimeout(() => reject(new Error("useSetting timeout")), 5000);
           });
         }
+        function clearActivity() {
+          __clearCalled = true;
+          window.postMessage({
+            type: "USER_SCRIPT_CLEAR_ACTIVITY",
+            id: "${script.id}",
+            domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+          }, "*");
+        }
         function getIframeData() {
           return new Promise((resolve) => {
             const requestId = \`iframeData_\${Date.now()}_\${Math.random()}\`;
@@ -216,9 +224,11 @@ class UserScriptManager {
         }
         // update trackData
         async function updateTrackData() {
+          var __clearCalled = false;
           try {
             // UserScript
             ${script.code || ""}
+            if (typeof __clearCalled !== "undefined" && __clearCalled) return;
             // update trackState
             trackState.title = typeof title === "string" ? title : (title == null ? null : String(title));
             trackState.artist = typeof artist === "string" ? artist : (artist == null ? null : String(artist));

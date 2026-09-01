@@ -409,12 +409,17 @@ window.registerParser = async function ({
 
         if (initOnly) return null;
 
+        const CLEAR_SENTINEL = Object.freeze({ __clear: true });
+
         const rawData = await fn({
           useSetting: boundUseSetting,
           accessWindow,
           iframeData: window.iframeDataCache[primaryDomain] ?? null,
+          clearActivity: () => CLEAR_SENTINEL,
         });
+
         if (!rawData) return null;
+        if (rawData?.__clear) return -1;
 
         // RAW EXTRACTION
         let { timePassed = "", duration: durationElem = "" } = rawData;
@@ -959,6 +964,13 @@ window.addEventListener("message", async (event) => {
       );
     }
   }
+  if (msg?.type === "USER_SCRIPT_CLEAR_ACTIVITY") {
+    const domain = msg.domain || location.host;
+    window.latestUserScriptData[domain] = { __clear: true };
+    try {
+      browser.runtime.sendMessage({ type: "RESTART_LOOP" });
+    } catch (e) {}
+  }
   if (msg?.type === "USER_SCRIPT_IFRAME_DATA_REQUEST") {
     const { requestId, id, iframeSelectors } = msg;
     const key = id;
@@ -1025,6 +1037,7 @@ window.addEventListener("message", async (event) => {
           try {
             const song = window.latestUserScriptData[msg.data.domain];
             if (!song) return null;
+            if (song.__clear) return -1;
 
             const latestMeta = window.latestUserScriptMeta?.[msg.data.domain];
             const currentAutoDetect = latestMeta

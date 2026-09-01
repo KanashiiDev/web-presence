@@ -203,6 +203,7 @@ class UserScriptUI {
         "getImageAll",
         "querySelectorDeep",
         "getIframeData",
+        "clearActivity",
         "AbortController",
         "fetch",
         "URL",
