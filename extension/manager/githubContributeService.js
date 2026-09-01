@@ -293,10 +293,28 @@ class GitHubContributeService {
     const title = (script.title || "").trim();
     const first = title[0]?.toUpperCase() || "0";
     const letter = /[A-Z]/.test(first) ? first : /[0-9]/.test(first) ? first : "#";
-    // If all uppercase, lowercase everything; otherwise only lowercase the first character
-    const isAllUpper = title === title.toUpperCase();
-    const normalized = isAllUpper ? title.toLowerCase() : title[0].toLowerCase() + title.slice(1);
-    const fileName = normalized.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+
+    const hasSpace = /\s/.test(title);
+    const cleaned = title.replace(/\s/g, "");
+    const isAllUpper = cleaned === cleaned.toUpperCase();
+    const isTitleCase = !hasSpace && title[0] === title[0].toUpperCase() && title.slice(1) === title.slice(1).toLowerCase();
+
+    let fileName;
+
+    if (!hasSpace) {
+      fileName = isAllUpper || isTitleCase ? title.toLowerCase() : title;
+    } else {
+      fileName = title
+        .split(/\s+/)
+        .map((word, i) => {
+          const wordIsAllUpper = word === word.toUpperCase();
+          const normalized = wordIsAllUpper ? word.toLowerCase() : word;
+          return i === 0 ? normalized.charAt(0).toLowerCase() + normalized.slice(1) : normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        })
+        .join("");
+    }
+
+    fileName = fileName.replace(/[^a-zA-Z0-9]/g, "");
     return `${GITHUB_CONTRIBUTE.ACTIVITIES_DIR}/${letter}/${fileName}.js`;
   }
 
