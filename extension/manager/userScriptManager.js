@@ -1596,6 +1596,8 @@ ${codeIndented}
       }
 
       if (isUpdate) {
+        const filePath = githubContributeService.getFilePath(script);
+        const targetUrl = `https://github.com/${GITHUB_CONTRIBUTE.UPSTREAM_OWNER}/${GITHUB_CONTRIBUTE.UPSTREAM_REPO}/blob/main/${filePath}`;
         const compareContainer = document.createElement("div");
         compareContainer.className = "contribute-compare";
 
@@ -1637,6 +1639,27 @@ ${codeIndented}
           row.append(labelCell, repoCell, yoursCell);
           compareContainer.appendChild(row);
         });
+
+        const targetRow = document.createElement("div");
+        targetRow.className = "contribute-compare-row";
+
+        const targetLabel = document.createElement("span");
+        targetLabel.className = "contribute-compare-cell contribute-compare-label";
+        targetLabel.textContent = i18n.t("userscript.contribute.confirm.filePath");
+
+        const targetLink = document.createElement("a");
+        targetLink.href = targetUrl;
+        targetLink.textContent = filePath;
+        targetLink.target = "_blank";
+        targetLink.rel = "noopener noreferrer";
+        targetLink.className = "contribute-file-link link";
+
+        const targetCell = document.createElement("span");
+        targetCell.className = "contribute-compare-cell contribute-compare-cell--colspan";
+        targetCell.appendChild(targetLink);
+
+        targetRow.append(targetLabel, targetCell);
+        compareContainer.appendChild(targetRow);
 
         content.append(title, desc, compareContainer);
       } else {
