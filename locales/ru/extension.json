@@ -363,6 +363,7 @@
   "userscript.contribute.status.successUpdate": "Запрос на слияние обновлён!",
   "userscript.contribute.status.authFailed": "Ошибка аутентификации. Переподключитесь.",
   "userscript.contribute.status.alreadyUpToDate": "Этот скрипт уже обновлён в репозитории. Нет изменений для отправки.",
+  "userscript.contribute.status.codeUnchanged": "Функциональных изменений не обнаружено. Убедитесь, что ваш вклад содержит фактические изменения в коде.",
   "userscript.contribute.error.forkTimeout": "Время ожидания инициализации форка истекло. Возможно, GitHub перегружен. Попробуйте ещё раз.",
   "userscript.contribute.error.rateLimited": "Достигнут лимит запросов к API GitHub. Подождите несколько минут и попробуйте ещё раз.",
   "userscript.contribute.error.unknown": "Произошла непредвиденная ошибка. Попробуйте ещё раз.",

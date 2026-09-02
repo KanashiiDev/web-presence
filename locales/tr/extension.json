@@ -363,6 +363,7 @@
   "userscript.contribute.status.successUpdate": "Çekme isteği güncellendi!",
   "userscript.contribute.status.authFailed": "Kimlik doğrulama başarısız oldu. Lütfen yeniden bağlanın.",
   "userscript.contribute.status.alreadyUpToDate": "Bu komut dosyası depoda zaten güncel. Gönderilecek değişiklik yok.",
+  "userscript.contribute.status.codeUnchanged": "İşlevsel değişiklik tespit edilmedi. Lütfen katkınızın gerçek kod değişiklikleri içerdiğinden emin olun.",
   "userscript.contribute.error.forkTimeout": "Çatallanma başlatma zaman aşımına uğradı. GitHub meşgul olabilir. Lütfen tekrar deneyin.",
   "userscript.contribute.error.rateLimited": "GitHub API hız sınırına ulaşıldı. Lütfen birkaç dakika bekleyip tekrar deneyin.",
   "userscript.contribute.error.unknown": "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.",

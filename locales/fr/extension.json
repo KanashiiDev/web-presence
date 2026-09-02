@@ -363,6 +363,7 @@
   "userscript.contribute.status.successUpdate": "Pull request mise à jour !",
   "userscript.contribute.status.authFailed": "Échec de l'authentification. Veuillez vous reconnecter.",
   "userscript.contribute.status.alreadyUpToDate": "Ce script est déjà à jour dans le dépôt. Aucune modification à soumettre.",
+  "userscript.contribute.status.codeUnchanged": "Aucune modification fonctionnelle détectée. Veuillez vous assurer que votre contribution contient de véritables modifications du code.",
   "userscript.contribute.error.forkTimeout": "Le délai d'initialisation du fork a été dépassé. GitHub est peut-être très sollicité. Veuillez réessayer.",
   "userscript.contribute.error.rateLimited": "La limite de requêtes de l'API GitHub a été atteinte. Veuillez patienter quelques minutes, puis réessayer.",
   "userscript.contribute.error.unknown": "Une erreur inattendue s'est produite. Veuillez réessayer.",

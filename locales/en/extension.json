@@ -363,6 +363,7 @@
   "userscript.contribute.status.successUpdate": "Pull request updated!",
   "userscript.contribute.status.authFailed": "Authentication failed. Please reconnect.",
   "userscript.contribute.status.alreadyUpToDate": "This script is already up to date in the repository. No changes to submit.",
+  "userscript.contribute.status.codeUnchanged": "No functional changes detected. Please make sure your contribution includes actual code changes.",
   "userscript.contribute.error.forkTimeout": "Fork initialization timed out. GitHub may be busy. Please try again.",
   "userscript.contribute.error.rateLimited": "GitHub API rate limit reached. Please wait a few minutes and try again.",
   "userscript.contribute.error.unknown": "An unexpected error occurred. Please try again.",

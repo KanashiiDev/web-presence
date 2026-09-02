@@ -998,7 +998,8 @@ class UserScriptUI {
       .map((script) => {
         const codeIndented = script.code
           .split("\n")
-          .map((line) => "    " + line)
+          .map((line) => line.trimStart())
+          .map((line) => (line ? "    " + line : ""))
           .join("\n");
         const domains = [script.domain].flat().filter(Boolean);
         const domainStr = domains.length === 1 ? `"${domains[0]}"` : `["${domains.join('", "')}"]`;
@@ -1008,6 +1009,7 @@ class UserScriptUI {
         const iframeSelectorsStr = script.iframeSelectors ? `\n  iframeSelectors: ${JSON.stringify(script.iframeSelectors, null, 2).split("\n").join("\n  ")},` : "";
         const tagsStr = Array.isArray(script.tags) && script.tags.length ? `\n  tags: ["${script.tags.join('", "')}"],` : "";
         const categoryStr = script.category ? `\n  category: "${script.category}",` : "";
+        const homepageStr = script.homepage ? `\n  homepage: "${script.homepage}",` : "";
 
         return `registerParser({
   id: "${script.id}",
@@ -1019,8 +1021,7 @@ class UserScriptUI {
   description: "${script.description || ""}",
   lastUpdated: "${script.lastUpdated || ""}",
   mode: "${script.mode || "listen"}",
-  watchAutoDetect: "${script.watchAutoDetect || "disable"}",
-  homepage: "${script.homepage || ""}",${categoryStr}${tagsStr}
+  watchAutoDetect: "${script.watchAutoDetect || "disable"}",${homepageStr}${categoryStr}${tagsStr}
   urlPatterns: [${urlPatterns}],${iframeSelectorsStr}
   fn: async function () {
 ${codeIndented}
@@ -1774,7 +1775,7 @@ ${codeIndented}
       opening_pr: i18n.t("userscript.contribute.status.opening_pr"),
     };
 
-    const run = async (t) => {
+    const run = async (token) => {
       statusEl.className = "contribute-status loading";
       statusEl.textContent = STATUS_LABELS.validating;
       prLinkEl.hidden = true;
@@ -1782,11 +1783,9 @@ ${codeIndented}
       reAuthBtn.hidden = true;
 
       try {
-        const fileContent = this.exportToRegisterParser([script]);
         const { prUrl, isUpdate, skipped } = await githubContributeService.contribute(
           script,
-          fileContent,
-          t,
+          token,
           (step) => {
             statusEl.textContent = STATUS_LABELS[step] || step;
           },
@@ -1870,6 +1869,15 @@ ${codeIndented}
         if (err.message === "ALREADY_UP_TO_DATE") {
           statusEl.className = "contribute-status warning";
           statusEl.textContent = i18n.t("userscript.contribute.status.alreadyUpToDate");
+          retryBtn.hidden = true;
+          reAuthBtn.hidden = true;
+          return;
+        }
+
+        // Unchanged Code
+        if (err.message === "CODE_UNCHANGED") {
+          statusEl.className = "contribute-status warning";
+          statusEl.textContent = i18n.t("userscript.contribute.status.codeUnchanged");
           retryBtn.hidden = true;
           reAuthBtn.hidden = true;
           return;

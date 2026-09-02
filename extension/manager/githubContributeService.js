@@ -332,6 +332,27 @@ class GitHubContributeService {
     return [];
   }
 
+  _extractCode(fileContent) {
+    try {
+      const fnMatch = fileContent.search(/fn:\s*(?:async\s+)?function[^{]*\{/);
+      if (fnMatch === -1) return "";
+
+      const fnStart = fileContent.indexOf("{", fnMatch);
+      let depth = 0;
+      let i = fnStart;
+
+      for (; i < fileContent.length; i++) {
+        if (fileContent[i] === "{") depth++;
+        else if (fileContent[i] === "}") depth--;
+        if (depth === 0) break;
+      }
+
+      return fileContent.slice(fnStart + 1, i).trim();
+    } catch {
+      return "";
+    }
+  }
+
   /**
    * Fetch and parse root index.json.gz to check duplicate/version info.
    * Returns { filePath, title, version, authors, authorsLinks } or null if not found.
@@ -379,16 +400,14 @@ class GitHubContributeService {
 
   /**
    * @param {object} script       - Fully-hydrated script object from storage
-   * @param {string} fileContent  - registerParser() formatted .js content
    * @param {string} token        - GitHub OAuth token
    * @param {function} onStatus   - Progress callback (string) for UI updates
    * @returns {{ prUrl: string, isUpdate: boolean }}
    */
-  async contribute(script, fileContent, token, onStatus = () => {}, customCommitMessage = null) {
+  async contribute(script, token, onStatus = () => {}, customCommitMessage = null) {
     const { UPSTREAM_OWNER, UPSTREAM_REPO } = GITHUB_CONTRIBUTE;
 
     if (!script?.id) throw new Error("contribute: script.id is required");
-    if (!fileContent) throw new Error("contribute: fileContent is required");
     if (!token) throw new Error("contribute: token is required");
 
     // 1. Verify the token & Get the logged-in user
@@ -405,10 +424,7 @@ class GitHubContributeService {
     const { authors, authorsLinks } = this.processAuthorsAndLinks(contributeScript, upstreamInfo, forkOwner);
     contributeScript.authors = authors;
     contributeScript.authorsLinks = authorsLinks;
-
-    if (typeof window.exportToRegisterParser === "function") {
-      fileContent = window.exportToRegisterParser([contributeScript]);
-    }
+    const fileContent = userScriptUI.exportToRegisterParser([contributeScript]);
 
     const filePath = this.getFilePath(contributeScript);
     const fileBaseName = filePath.split("/").pop().replace(".js", "");
@@ -453,20 +469,28 @@ class GitHubContributeService {
     }
 
     // 2: Upstream index control (repo scripts)
-    if (upstreamInfo && upstreamInfo.version === script.version) {
+    if (upstreamInfo) {
       try {
         const remoteFile = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/contents/${filePath}?ref=main`, {}, token).catch(() => null);
 
         if (remoteFile?.content) {
           const remoteContent = atob(remoteFile.content);
-          if (remoteContent.trim() === fileContent.trim()) {
-            // The same content already exists in upstream main and there is no open PR
-            // In this case, there is no need to open a PR
+
+          // The same content already exists in upstream main
+          if (upstreamInfo.version === script.version && remoteContent.trim() === fileContent.trim()) {
             throw new Error("ALREADY_UP_TO_DATE");
+          }
+
+          // The code has not changed
+          const remoteCode = this._extractCode(remoteContent).replace(/\s+/g, " ").trim();
+          const localCode = script.code.replace(/\s+/g, " ").trim();
+
+          if (remoteCode && localCode && remoteCode === localCode) {
+            throw new Error("CODE_UNCHANGED");
           }
         }
       } catch (e) {
-        if (e.message === "ALREADY_UP_TO_DATE") throw e;
+        if (e.message === "ALREADY_UP_TO_DATE" || e.message === "CODE_UNCHANGED") throw e;
       }
     }
 
