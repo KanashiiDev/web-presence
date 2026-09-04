@@ -584,6 +584,11 @@ class GitHubContributeService {
       if (e.message.includes("already exists") || e.message.includes("A pull request already exists")) {
         const existing = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?head=${forkOwner}:${branchName}&state=open`, {}, token);
         if (existing.length) return { prUrl: existing[0].html_url, isUpdate };
+
+        const closed = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?head=${forkOwner}:${branchName}&state=closed`, {}, token);
+        if (closed.length) return { prUrl: closed[0].html_url, isUpdate };
+
+        throw new Error("PR created but could not be retrieved. Check the pull requests page.");
       }
       throw e;
     }
