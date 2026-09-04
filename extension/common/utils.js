@@ -867,7 +867,7 @@ function normalizeArtistName(name) {
 }
 
 // Normalize title and artist
-async function normalizeTitleAndArtist(inputTitle, inputArtist, replaceArtist = true, stripDashPrefix = false) {
+async function normalizeTitleAndArtist(inputTitle, inputArtist) {
   let title = typeof inputTitle === "string" ? inputTitle : "";
   let artist = typeof inputArtist === "string" ? inputArtist : "";
 
@@ -875,13 +875,17 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist, replaceArtist = 
   if (!window._NORMALIZATION_STATUS_) window._NORMALIZATION_STATUS_ = await browser.storage.local.get("normalization");
 
   const { normalization } = window._NORMALIZATION_STATUS_ || (await browser.storage.local.get("normalization"));
+  const defaultValue = [true, false];
   const map = {
-    enable: [true, false],
-    cleanTitle: [false, true],
-    disable: [false, false],
+    enable: defaultValue,
+    cleanTitle: [false, false],
+    stripDashPrefix: [false, true],
+    disable: null,
   };
 
-  [replaceArtist, stripDashPrefix] = map[normalization] ?? [true, false];
+  const flags = normalization in map ? map[normalization] : defaultValue;
+  if (!flags) return { title, artist };
+  const [replaceArtist, stripDashPrefix] = flags;
 
   // Core Helpers
   const canonical = (s) =>
@@ -895,19 +899,6 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist, replaceArtist = 
       .split(/\s*(?:,|&|\+|x|×|feat\.?|featuring|ft\.?|with)\s*/i)
       .map((s) => s.trim())
       .filter(Boolean);
-
-  const mergeArtists = (a, b) => {
-    const map = new Map();
-
-    for (const x of [...splitArtists(a), ...splitArtists(b)]) {
-      const key = canonical(x);
-      if (key && !map.has(key)) {
-        map.set(key, x);
-      }
-    }
-
-    return [...map.values()].join(" & ");
-  };
 
   const isRemix = (t) => /\b(remix|edit|vip|flip)\b/i.test(t);
 
@@ -923,21 +914,16 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist, replaceArtist = 
     const left = dashMatch[1].trim();
     const right = dashMatch[2].trim() + (parenPart ? " " + parenPart : "");
 
-    // stripDashPrefix: delete the dash on the left
+    // stripDashPrefix: remove the left part of the dash
     if (stripDashPrefix) {
       title = right;
       return { title, artist };
     }
 
+    const leftSet = new Set(splitArtists(left).map(canonical).filter(Boolean));
+    const inputSet = new Set(splitArtists(artist).map(canonical).filter(Boolean));
+
     if (replaceArtist) {
-      const leftCanon = canonical(left);
-      const inputCanon = canonical(artist);
-
-      const leftArtists = splitArtists(left);
-      const inputArtists = splitArtists(artist);
-
-      const overlap = leftCanon === inputCanon || leftArtists.some((a) => inputArtists.some((b) => canonical(a) === canonical(b)));
-
       if (isRemix(title)) {
         const remixer = artist;
         artist = left;
@@ -945,29 +931,28 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist, replaceArtist = 
         return { title, artist, remixer };
       }
 
-      if (overlap) {
-        artist = mergeArtists(left, artist);
-      } else {
-        artist = left;
-      }
-
+      // if left is not a subset of artist, left is richer, replace it
+      const leftIsSubset = [...leftSet].every((p) => inputSet.has(p));
+      if (!leftIsSubset) artist = left;
       title = right;
+    } else {
+      // cleanTitle — don't touch the artist, just clean the title
+      const parenSet = new Set(
+        splitArtists(parenPart.replace(/[\[\](）】（【\(\)]/g, ""))
+          .map(canonical)
+          .filter(Boolean),
+      );
+
+      // at least one artist track must match on the left
+      const hasOverlap = [...inputSet].some((p) => leftSet.has(p));
+      // the unmatched part should be in parenSet
+      const remaining = [...inputSet].filter((p) => !leftSet.has(p));
+      const remainingInParen = remaining.every((p) => parenSet.has(p));
+
+      if (hasOverlap && remainingInParen) title = right;
     }
   }
 
-  // Clean Prefix Artifacts
-  const cleanTitle = (t, artistStr) => {
-    if (!t || !artistStr) return t;
-
-    const escaped = artistStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`^\\s*${escaped}\\s*[-–—:]\\s*`, "i");
-
-    return t.replace(pattern, "").trim();
-  };
-
-  title = cleanTitle(title, artist);
-
-  // Output
   return { title, artist };
 }
 

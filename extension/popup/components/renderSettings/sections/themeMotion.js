@@ -55,6 +55,7 @@ async function buildThemeMotion(container) {
   const normalizationOptions = [
     { value: "enable", text: i18n.t("common.enable") },
     { value: "cleanTitle", text: i18n.t("settings.normalization.cleanTitle") },
+    { value: "stripDashPrefix", text: i18n.t("settings.normalization.stripDashPrefix") },
     { value: "disable", text: i18n.t("common.disable") },
   ];
 
@@ -76,8 +77,9 @@ async function buildThemeMotion(container) {
   normalizationTip.addEventListener("click", async () => {
     const t1 = `<b>${i18n.t("common.enable")}</b>\n${i18n.t("settings.normalization.tip.enable")}`;
     const t2 = `<b>${i18n.t("settings.normalization.cleanTitle")}</b>\n${i18n.t("settings.normalization.tip.cleanTitle")}`;
-    const t3 = `<b>${i18n.t("common.disable")}</b>\n${i18n.t("settings.normalization.tip.disable")}`;
-    await showAlert(i18n.t("settings.normalization"), `${t1}\n\n${t2}\n\n${t3}`, "tip");
+    const t3 = `<b>${i18n.t("settings.normalization.stripDashPrefix")}</b>\n${i18n.t("settings.normalization.tip.stripDashPrefix")}`;
+    const t4 = `<b>${i18n.t("common.disable")}</b>\n${i18n.t("settings.normalization.tip.disable")}`;
+    await showAlert(i18n.t("settings.normalization"), `${t1}\n\n${t2}\n\n${t3}\n\n${t4}`, "tip");
   });
 
   normalizationWrap.querySelector("label").appendChild(normalizationTip);
