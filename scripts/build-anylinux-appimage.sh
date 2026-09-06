@@ -36,13 +36,26 @@ chmod +x ./quick-sharun
 # electron-builder --dir produces dist/linux-unpacked/ with the real Electron
 # binary at its root. We pass that binary to quick-sharun so it can detect
 # and bundle every shared library the process actually loads (via strace).
-ELECTRON_BINARY="$(find ./dist/linux-unpacked -maxdepth 1 -type f -executable -not -name "*.so*" | head -n1)"
-
-if [ -z "$ELECTRON_BINARY" ]; then
-    echo "ERROR: Could not find Electron binary in dist/linux-unpacked/" >&2
-    exit 1
+UNPACKED_DIR=""
+if [ -d "./dist/linux/linux-unpacked" ]; then
+  UNPACKED_DIR="./dist/linux/linux-unpacked"
+elif [ -d "./dist/linux-unpacked" ]; then
+  UNPACKED_DIR="./dist/linux-unpacked"
+else
+  echo "ERROR: Could not find linux-unpacked directory" >&2
+  find dist -type d 2>/dev/null | head -30 || true
+  exit 1
 fi
 
+ELECTRON_BINARY="$(find "$UNPACKED_DIR" -maxdepth 1 -type f -executable -not -name "*.so*" | head -n1)"
+
+if [ -z "$ELECTRON_BINARY" ]; then
+  echo "ERROR: Could not find Electron binary in $UNPACKED_DIR/" >&2
+  ls -la "$UNPACKED_DIR" || true
+  exit 1
+fi
+
+echo "==> Using unpacked directory: $UNPACKED_DIR"
 echo "==> Found Electron binary: $ELECTRON_BINARY"
 echo "==> Bundling with quick-sharun..."
 ./quick-sharun "$ELECTRON_BINARY"
