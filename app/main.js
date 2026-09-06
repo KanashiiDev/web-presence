@@ -35,7 +35,6 @@ if (process.platform === "linux") {
 }
 
 // IMPORTS
-const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 
@@ -70,15 +69,6 @@ app.whenReady().then(async () => {
 
   try {
     await initializeApp();
-
-    if (app.isPackaged && ConfigManager.config.AUTO_UPDATE_CHECK) {
-      setInterval(() => {
-        autoUpdater.checkForUpdates().catch((err) => {
-          const msg = typeof err?.message === "string" ? err.message.split("\n")[0].trim() : String(err);
-          log.error("Background update check failed: " + msg);
-        });
-      }, ConfigManager.config.UPDATE_CHECK_INTERVAL);
-    }
   } catch (err) {
     Utils.handleCriticalError("App initialization failed", err);
   }

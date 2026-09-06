@@ -76,6 +76,64 @@ jobs:
           path: dist/**
           retention-days: 5
 
+  build-linux-anylinux:
+    name: Build Linux (anylinux AppImage)
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux-only'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --cap-add SYS_PTRACE
+    steps:
+      - name: Install system dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm \
+            git base-devel wget strace \
+            nodejs npm \
+            electron \
+            xorg-server-xvfb \
+            fuse2 libxcb libx11 nss nspr atk cups gtk3 \
+            alsa-lib libxcomposite libxdamage libxext \
+            libxfixes libxrandr libgbm pango cairo \
+            glib gdk-pixbuf dbus libnotify libappindicator-gtk3
+
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: get_version
+        run: |
+          if echo "$GITHUB_REF" | grep -q "^refs/tags/"; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build unpacked Electron app
+        env:
+          HOME: /root
+        run: npx electron-builder --dir --linux --x64
+
+      - name: Build anylinux AppImage
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          DISPLAY: ":99"
+        run: |
+          Xvfb :99 -screen 0 1024x768x24 -ac &
+          XVFB_PID=$!
+          sh scripts/build-anylinux-appimage.sh
+          kill $XVFB_PID 2>/dev/null || true
+
+      - name: Upload anylinux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-anylinux-build
+          path: dist/anylinux/*.AppImage*
+          retention-days: 5
+
   build-mac:
     name: Build macOS
     if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos-only'
@@ -107,8 +165,8 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-win, build-linux, build-mac]
-    if: always() && (needs.build-win.result == 'success' || needs.build-win.result == 'skipped') && (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') && (needs.build-mac.result == 'success' || needs.build-mac.result == 'skipped')
+    needs: [build-win, build-linux, build-linux-anylinux, build-mac]
+    if: always() && (needs.build-win.result == 'success' || needs.build-win.result == 'skipped') && (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') && (needs.build-linux-anylinux.result == 'success' || needs.build-linux-anylinux.result == 'skipped' || needs.build-linux-anylinux.result == 'failure') && (needs.build-mac.result == 'success' || needs.build-mac.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
@@ -140,6 +198,13 @@ jobs:
           name: linux-build
           path: ./dist
 
+      - name: Download Linux anylinux Artifacts
+        if: needs.build-linux-anylinux.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-anylinux-build
+          path: ./dist/anylinux
+
       - name: Download Mac Artifacts
         if: needs.build-mac.result == 'success'
         uses: actions/download-artifact@v4
@@ -158,6 +223,12 @@ jobs:
 
       - name: Prepare Release
         run: npm run prepare-release
+
+      - name: Copy anylinux AppImage to release dir
+        run: |
+          if [ -d ./dist/anylinux ]; then
+            cp ./dist/anylinux/*.AppImage* ./release/ 2>/dev/null || true
+          fi
 
       - name: Rename pacman artifact
         run: |

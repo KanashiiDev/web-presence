@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Web Presence Bridge
+Comment=Show your web presence on Discord!
+Exec=web-presence-bridge
+Icon=web-presence-bridge
+Type=Application
+Categories=Audio;Music;
+Keywords=discord;web;presence;
+StartupWMClass=web-presence-bridge

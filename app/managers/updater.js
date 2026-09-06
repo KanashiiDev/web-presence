@@ -7,6 +7,7 @@ const fs = require("fs");
 const { execSync } = require("child_process");
 
 const { state } = require("../state");
+const ConfigManager = require("../scripts/configManagement");
 const { setUpdateMenuState } = require("./tray");
 const { log } = require("../scripts/electron-log");
 const { icons } = require("../utils");
@@ -18,22 +19,29 @@ const INSTALL_ARCH_CMD = `curl -fsSL ${INSTALL_ARCH_SCRIPT_URL} | bash`;
 
 // Install method detection
 /**
- * Returns: "appimage" | "pacman" | "nixos" | "deb" | "rpm" | "win32" | "darwin"
+ * Returns: "appimage" | "appimage-anylinux" | "pacman" | "nixos" | "deb" | "rpm" | "win32" | "darwin"
  *
  * Detection order:
  * 1. Platform (win32, darwin)
- * 2. AppImage env var
- * 3. NixOS wrapper env var (reliable, set by makeWrapper in package.nix)
- * 4. /etc/os-release fallback for NixOS (in case wrapper env is missing)
- * 5. Package manager presence checks (pacman, dpkg, rpm)
- * 6. AppImage fallback for unknown Linux
+ * 2. anylinux AppImage (WEB_PRESENCE_ANYLINUX env — set at build time)
+ * 3. AppImage env var (standard electron-builder AppImage)
+ * 4. NixOS wrapper env var (reliable, set by makeWrapper in package.nix)
+ * 5. /etc/os-release fallback for NixOS (in case wrapper env is missing)
+ * 6. Package manager presence checks (pacman, dpkg, rpm)
+ * 7. AppImage fallback for unknown Linux
  */
 function detectInstallMethod() {
   const platform = process.platform;
   if (platform === "win32") return "win32";
   if (platform === "darwin") return "darwin";
 
-  if (process.env.APPIMAGE) return "appimage";
+  if (process.env.APPIMAGE) {
+    // anylinux AppImages carry WEB_PRESENCE_ANYLINUX=1 baked in at build time.
+    // electron-updater cannot update these (no latest-linux.yml), so we fall
+    // back to the GitHub Releases page instead of attempting an auto-update.
+    if (process.env.WEB_PRESENCE_ANYLINUX === "1") return "appimage-anylinux";
+    return "appimage";
+  }
 
   // NixOS: check wrapper env first (most reliable), then /etc/os-release as fallback
   if (process.env.WEB_PRESENCE_NIX === "true") return "nixos";
@@ -61,18 +69,43 @@ function detectInstallMethod() {
 // electron-updater can handle the full cycle for these methods
 function canAutoUpdate(method) {
   return method === "win32" || method === "darwin" || method === "appimage";
+  // "appimage-anylinux" intentionally excluded — no latest-linux.yml produced
+  // by the anylinux build, so electron-updater would fail. GitHub Releases
+  // page is used instead via _checkGitHubRelease().
 }
 
-// Maps Node's process.arch to the arch suffix used in release asset filenames
-function currentPkgArch() {
+// Maps Node's process.arch to the arch suffix used in release asset filenames.
+// Each package format uses a different naming convention:
+//   pacman  → x64 / arm64
+//   rpm     → x86_64 / aarch64
+//   deb     → amd64 / arm64
+//   AppImage→ x86_64 / aarch64
+function getArch(format) {
   const arch = process.arch;
-  if (arch === "x64") return "x86_64";
-  if (arch === "arm64") return "aarch64";
-  return arch;
+  switch (format) {
+    case "pacman":
+      if (arch === "x64") return "x64";
+      if (arch === "arm64") return "arm64";
+      return arch;
+    case "rpm":
+    case "appimage":
+    case "appimage-anylinux":
+      if (arch === "x64") return "x86_64";
+      if (arch === "arm64") return "aarch64";
+      return arch;
+    case "deb":
+      if (arch === "x64") return "amd64";
+      if (arch === "arm64") return "arm64";
+      return arch;
+    default:
+      if (arch === "x64") return "x86_64";
+      if (arch === "arm64") return "aarch64";
+      return arch;
+  }
 }
 
 // GitHub Releases version check
-// Used by Arch/NixOS/deb/rpm where electron-updater can't do the install.
+// Used by Arch/NixOS/deb/rpm/appimage-anylinux where electron-updater can't do the install.
 // For AppImage/Win/Mac electron-updater handles it natively.
 async function fetchLatestVersion() {
   const res = await fetch(GITHUB_RELEASES_API, {
@@ -95,9 +128,7 @@ async function fetchLatestVersion() {
 function getUpdateInstructions(method, version, assets = []) {
   switch (method) {
     case "pacman": {
-      // Asset naming: web-presence-{version}-{arch}.pkg.tar.zst
-      // currentPkgArch() returns "x86_64" or "aarch64" - matches build-release.yml rename step
-      const pkgArch = currentPkgArch();
+      const pkgArch = getArch("pacman");
       const asset = assets.find((a) => a.name.endsWith(`${pkgArch}.pkg.tar.zst`));
 
       const detailLines = [`Version ${version} is available.`, "", "Option 1 - Run the one-shot installer (recommended):", "", `  ${INSTALL_ARCH_CMD}`];
@@ -144,7 +175,7 @@ function getUpdateInstructions(method, version, assets = []) {
       };
 
     case "deb": {
-      const pkgArch = currentPkgArch();
+      const pkgArch = getArch("deb");
       const asset = assets.find((a) => a.name.endsWith(`${pkgArch}.deb`));
       return {
         title: "Update Available - Debian/Ubuntu",
@@ -161,7 +192,7 @@ function getUpdateInstructions(method, version, assets = []) {
     }
 
     case "rpm": {
-      const pkgArch = currentPkgArch();
+      const pkgArch = getArch("rpm");
       const asset = assets.find((a) => a.name.endsWith(`${pkgArch}.rpm`));
       return {
         title: "Update Available - RPM",
@@ -174,6 +205,29 @@ function getUpdateInstructions(method, version, assets = []) {
         ].join("\n"),
         primaryBtn: "Download .rpm",
         primaryFn: () => shell.openExternal(GITHUB_RELEASES_URL),
+      };
+    }
+
+    case "appimage-anylinux": {
+      const pkgArch = getArch("appimage-anylinux");
+      const asset = assets.find((a) => a.name.includes("anylinux") && a.name.includes(pkgArch) && a.name.endsWith(".AppImage"));
+      return {
+        title: "Update Available",
+        detail: [
+          `Version ${version} is available.`,
+          "",
+          asset
+            ? `Download the new AppImage:\n\n  curl -LO ${asset.url}\n  chmod +x ${asset.name}\n  ./${asset.name}`
+            : "Download the new anylinux AppImage from GitHub Releases.",
+          "",
+          "The new AppImage is self-contained and works on any Linux distro.",
+        ].join("\n"),
+        primaryBtn: "Open Releases",
+        primaryFn: () => shell.openExternal(GITHUB_RELEASES_URL),
+        ...(asset && {
+          secondaryBtn: "Copy download command",
+          secondaryFn: () => require("electron").clipboard.writeText(`curl -LO ${asset.url} && chmod +x ${asset.name}`),
+        }),
       };
     }
 
@@ -194,6 +248,7 @@ function trayLabel(method, version) {
     nixos: `Update ${version} - NixOS (nix flake)`,
     deb: `Update ${version} - Download .deb`,
     rpm: `Update ${version} - Download .rpm`,
+    "appimage-anylinux": `Update ${version} - Download AppImage`,
   };
   return labels[method] ?? `Download Update ${version}`;
 }
@@ -226,6 +281,7 @@ function showManualUpdateNotification(version, method, instructions) {
     nixos: `${version} available - nix flake update web-presence-bridge`,
     deb: `${version} available - download new .deb`,
     rpm: `${version} available - download new .rpm`,
+    "appimage-anylinux": `${version} available - download new AppImage`,
   };
 
   let icon = icons.notification;
@@ -300,8 +356,19 @@ function setupAutoUpdater() {
     autoUpdater.checkForUpdates().catch((err) => {
       log.error(`[Updater] Initial check failed: ${err.message?.split("\n")[0] ?? err}`);
     });
+
+    // Background interval check - only for auto-capable methods (AppImage / Win / Mac)
+    if (ConfigManager.config.AUTO_UPDATE_CHECK) {
+      setInterval(() => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          const msg = typeof err?.message === "string" ? err.message.split("\n")[0].trim() : String(err);
+          log.error(`[Updater] Background check failed: ${msg}`);
+        });
+      }, ConfigManager.config.UPDATE_CHECK_INTERVAL);
+    }
   } else {
-    // Arch / NixOS / deb / rpm - check GitHub Releases API directly
+    // Arch / NixOS / deb / rpm / appimage-anylinux
+    // Check GitHub Releases API directly
     _checkGitHubRelease(method);
   }
 }
