@@ -859,7 +859,7 @@ footer {
 }
 
 .parser-options .parser-tag {
-  background: var(--foreground-color-100);
+  background: var(--foreground-color-300);
   padding: 5px;
   border-radius: 6px;
 }
@@ -946,6 +946,10 @@ footer {
 #debugSection:not(.active) {
   opacity: 0.5;
   pointer-events: none;
+}
+
+#debugSection {
+  color: var(--text-color-primary) !important;
 }
 
 input[type="range"] {
@@ -1249,6 +1253,7 @@ footer a {
   -ms-flex: 0;
   flex: 0;
   background: var(--foreground-color-400);
+  color: var(--text-color-secondary);
 }
 
 .date-range-picker .picker-clear:hover {
@@ -1633,7 +1638,7 @@ body.cleaning-mode .song-link,
 
 body.cleaning-mode .history-trash {
   display: inline-block;
-  background: var(--background-color);
+  background: var(--foreground-color-400);
   cursor: pointer;
   margin-right: 10px;
   padding-bottom: 5px;
@@ -1644,7 +1649,7 @@ body.cleaning-mode .history-trash {
 }
 
 body.cleaning-mode .history-trash:hover {
-  background: var(--foreground-color-400);
+  background: var(--foreground-color-500);
   -webkit-transform: scale(1.1);
   -ms-transform: scale(1.1);
   transform: scale(1.1);

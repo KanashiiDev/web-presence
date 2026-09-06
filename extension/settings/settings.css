@@ -1484,7 +1484,7 @@ button.history-modal-close {
 .debug-level-btn.active {
   background: var(--accent-color);
   border-color: var(--accent-color-border);
-  color: var(--text-color-primary);
+  color: var(--text-color-btn);
 }
 
 .debug-activity-level-btn[data-level="info"].active,
@@ -1521,6 +1521,7 @@ button.history-modal-close {
 .btn-danger {
   background: var(--red-color-dark);
   border: 1px solid var(--red-color-dark);
+  color: var(--text-color-btn);
 }
 
 .btn-danger:hover {
@@ -1623,6 +1624,13 @@ button.history-modal-close {
 
 .debug-log-row.level-error:hover {
   background: var(--red-color-dark);
+}
+
+.debug-log-row.level-error .debug-log-msg,
+.debug-log-row.level-error .debug-log-line,
+.debug-log-row.level-error .debug-log-time,
+.debug-log-row.level-error .debug-log-source {
+  color: var(--text-color-btn);
 }
 
 .debug-log-time {

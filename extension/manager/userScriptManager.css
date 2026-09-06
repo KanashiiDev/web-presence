@@ -622,14 +622,14 @@ small > code {
 }
 
 .modal-content .close-button {
-  background: var(--foreground-color-200);
+  background: var(--foreground-color-400);
   -webkit-box-flex: 1;
   -ms-flex: 1;
   flex: 1;
 }
 
 .modal-content .close-button:hover {
-  background: var(--foreground-color-400);
+  background: var(--foreground-color-500);
 }
 
 #importModalClose {
@@ -698,8 +698,10 @@ small > code {
   background: var(--foreground-color-500);
 }
 
+.modal .button-group .confirm-button,
 .modal .button-group .active {
   background: var(--accent-color-bright);
+  color: var(--text-color-btn);
 }
 
 .modal .button-group .active:hover {

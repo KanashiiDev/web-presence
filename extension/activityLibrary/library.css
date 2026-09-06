@@ -199,18 +199,18 @@ body {
 
 .library-btn.primary {
   background: var(--accent-color);
-  color: var(--text-color-btn, #ddd);
+  color: var(--text-color-btn);
 }
 .library-btn.primary:hover {
   background: var(--accent-color-bright);
 }
 
 .library-btn.secondary {
-  background: var(--foreground-color-200);
+  background: var(--foreground-color-400);
   color: var(--text-color-primary);
 }
 .library-btn.secondary:hover {
-  background: var(--foreground-color-300);
+  background: var(--foreground-color-500);
 }
 
 .library-btn.danger {

@@ -78,17 +78,16 @@
 /* Light Theme */
 [data-theme="light"] {
   /*Background*/
-  --background-color: #fafafa;
-
-  /* Foreground */
-  --foreground-color-100: #f5f5f5;
-  --foreground-color-200: #eeeeee;
-  --foreground-color-300: #e0e0e0;
-  --foreground-color-400: #cecece;
-  --foreground-color-500: #c5c5c5;
-  --foreground-color-600: #b3b3b3;
+  --background-color: #ffffff;
+  /*Foreground*/
+  --foreground-color-100: #f9f9f9;
+  --foreground-color-200: #f5f5f5;
+  --foreground-color-300: #eeeeee;
+  --foreground-color-400: #e7e7e7;
+  --foreground-color-500: #e0e0e0;
+  --foreground-color-600: #d9d9d9;
   /*Texts*/
-  --text-color-btn: #ddd;
+  --text-color-btn: #ffffff;
   --text-color-primary: #1a1a1a;
   --text-color-secondary: #333333;
   --text-color-muted: #666666;
@@ -99,24 +98,24 @@
   --link-color: #0891b2;
   --link-color-bright: #0e7490;
   /*Shadow*/
-  --shadow-color: rgba(0, 0, 0, 0.5);
+  --shadow-color: rgba(0, 0, 0, 0.3);
   /*Border*/
-  --border-color: #b5b5b5;
-  --border-color-bright: #929292;
+  --border-color: #d0d0d0;
+  --border-color-bright: #c0c0c0;
   /*Others*/
-  --warning-color: #7a6508;
-  --alert-color: #782020;
-  --switch-toggle-color: #ddd;
-  --icon-color: #1a1a1a;
-  --blue-color: #2e6386;
-  --blue-color-dark: #3a6292;
-  --red-color: #c90000;
-  --red-color-dark: #8d1e1e;
-  --yellow-color: #c99000;
-  --yellow-color-dark: #997720;
-  --green-color: #28c900;
-  --green-color-dark: #2f8f18;
+  --warning-color: #b38600;
+  --alert-color: #c53030;
   --accent-color: #425c83;
   --accent-color-border: #425c83;
   --accent-color-bright: #4e6f97;
+  --switch-toggle-color: #f4f4f4;
+  --icon-color: #3c3c3c;
+  --red-color: #e53e3e;
+  --red-color-dark: #c53030;
+  --blue-color: #3182ce;
+  --blue-color-dark: #2b6cb0;
+  --yellow-color: #d69e2e;
+  --yellow-color-dark: #b7791f;
+  --green-color: #38a169;
+  --green-color-dark: #2f855a;
 }

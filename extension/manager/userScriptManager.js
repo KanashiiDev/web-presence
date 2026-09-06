@@ -45,9 +45,12 @@ class UserScriptUI {
     this.refreshList();
     this.bindCodeEditor();
 
+    const dataTheme = await browser.storage.local.get("theme");
+    const currentTheme = dataTheme.theme === "light" ? "material-lighter" : "material-darker";
+
     this.iframeSelectorsEditor = CodeMirror.fromTextArea(document.getElementById("inIframeSelectors"), {
       mode: "application/json",
-      theme: "material-darker",
+      theme: currentTheme,
       lineNumbers: true,
       indentUnit: 2,
       tabSize: 2,
@@ -187,7 +190,7 @@ class UserScriptUI {
     }
   }
 
-  bindCodeEditor() {
+  async bindCodeEditor() {
     const lintOptions = {
       esversion: 11, // ES2020
       asi: false, // automatic semicolon insertion
@@ -214,10 +217,13 @@ class UserScriptUI {
       ], // recognizes the helper functions
     };
 
+    const dataTheme = await browser.storage.local.get("theme");
+    const currentTheme = dataTheme.theme === "light" ? "material-lighter" : "material-darker";
+
     // Init CodeMirror 5
     this.codeEditor = CodeMirror.fromTextArea(document.getElementById("inCode"), {
       mode: "javascript",
-      theme: "material-darker",
+      theme: currentTheme,
       lineNumbers: true,
       indentUnit: 2,
       tabSize: 2,
