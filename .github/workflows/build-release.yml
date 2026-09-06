@@ -103,7 +103,8 @@ jobs:
             mesa \
             dbus systemd-libs \
             libnotify libappindicator-gtk3 \
-            fuse2
+            fuse2 \
+            patchelf
 
       - uses: actions/checkout@v4
 
