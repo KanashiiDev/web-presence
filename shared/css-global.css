@@ -442,6 +442,8 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 #setupAlert p,
 #mv3Alert p {
   color: var(--text-color-secondary);
+  margin-block-end: 1em;
+  margin-block-start: 1em;
 }
 
 .setup-dialog {
@@ -492,6 +494,12 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 .setup-dialog button:hover,
 .tutorial-dialog button:hover {
   background: var(--accent-color-bright);
+}
+
+.setup-mode-container {
+  gap: 10px;
+  display: flex;
+  justify-content: center;
 }
 
 .setup-dialog .setup-link-container {

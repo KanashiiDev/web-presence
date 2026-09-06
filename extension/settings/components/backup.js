@@ -1,4 +1,4 @@
-function initBackupButtons() {
+async function initBackupButtons() {
   // Export Button
   document.getElementById("exportBtn").onclick = async () => {
     try {
@@ -67,28 +67,34 @@ function initBackupButtons() {
   };
 
   // Sync History Button
-  document.getElementById("syncBtn").addEventListener("click", async () => {
-    const btn = document.getElementById("syncBtn");
-    const originalText = btn.textContent;
+  const syncBtn = document.getElementById("syncBtn");
+  const { webOnlyMode: storedWebMode } = await browser.storage.local.get("webOnlyMode");
+  const currentConnectionMode = storedWebMode === true ? "web-only" : "default";
 
-    try {
-      btn.textContent = i18n.t("backup.sync");
-      btn.disabled = true;
+  if (currentConnectionMode !== "web-only") {
+    syncBtn.style.display = "";
+    syncBtn.addEventListener("click", async () => {
+      const originalText = syncBtn.textContent;
 
-      const result = await sendAction("syncHistory");
+      try {
+        syncBtn.textContent = i18n.t("backup.sync");
+        syncBtn.disabled = true;
 
-      if (result.ok) {
-        btn.textContent = i18n.t("backup.synced", { count: result.count });
-      } else {
-        btn.textContent = `Failed: ${result.error}`;
+        const result = await sendAction("syncHistory");
+
+        if (result.ok) {
+          syncBtn.textContent = i18n.t("backup.synced", { count: result.count });
+        } else {
+          syncBtn.textContent = `Failed: ${result.error}`;
+        }
+      } catch (error) {
+        syncBtn.textContent = `Error: ${error.message}`;
+      } finally {
+        setTimeout(() => {
+          syncBtn.textContent = originalText;
+          syncBtn.disabled = false;
+        }, 3000);
       }
-    } catch (error) {
-      btn.textContent = `Error: ${error.message}`;
-    } finally {
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.disabled = false;
-      }, 3000);
-    }
-  });
+    });
+  }
 }

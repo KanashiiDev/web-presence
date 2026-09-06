@@ -4,6 +4,7 @@ import "./libs/pako.js";
 const state = {
   serverPort: CONFIG.serverPort,
   discordWebPort: CONFIG.discordWebPort,
+  webOnlyMode: false,
   isLoopRunning: false,
   activeTabMap: new Map(),
   tabUrlMap: new Map(),
@@ -287,19 +288,24 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
           console.groupEnd();
         }
         logInfo(`[background:clearRpcForTab]: Clearing RPC for tab ${tabId} - reason: ${reason}`);
-        try {
-          await fetchWithTimeout(
-            `http://localhost:${state.serverPort}/clear-rpc`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ clientId: `tab_${tabId}` }),
-            },
-            CONFIG.requestTimeout,
-          );
-          logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId}`);
-        } catch (err) {
-          logError(`[background:clearRpcForTab]: RPC clear failed for tab ${tabId}:`, err.message);
+        if (state.webOnlyMode) {
+          await sendToWebOnlyBridge({ activity: null });
+          logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId} via web-only`);
+        } else {
+          try {
+            await fetchWithTimeout(
+              `http://localhost:${state.serverPort}/clear-rpc`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clientId: `tab_${tabId}` }),
+              },
+              CONFIG.requestTimeout,
+            );
+            logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId}`);
+          } catch (err) {
+            logError(`[background:clearRpcForTab]: RPC clear failed for tab ${tabId}:`, err.message);
+          }
         }
       }
     } catch (e) {
@@ -309,7 +315,6 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
       state.pendingClear.delete(tabId);
       state.cleanupQueue.delete(tabId);
       state.historyCounters.delete(tabId);
-
       if (state.activeTabMap.size === 0) {
         if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
         setTimeout(mainLoop, 0);
@@ -470,16 +475,22 @@ const updateRpc = async (data, tabId) => {
       timestamp: Date.now(),
     };
 
-    await fetchWithTimeout(
-      `http://localhost:${state.serverPort}/update-rpc`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      },
-      CONFIG.requestTimeout,
-    );
+    if (state.webOnlyMode) {
+      const rawActivity = buildActivityLocally(payload.data);
+      const webOnlyActivity = formatForWebConnection(rawActivity);
+      await sendToWebOnlyBridge({ activity: webOnlyActivity });
+    } else {
+      await fetchWithTimeout(
+        `http://localhost:${state.serverPort}/update-rpc`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        },
+        CONFIG.requestTimeout,
+      );
+    }
   } catch (err) {
     if (err.name !== "AbortError") {
       logError(`[background:updateRpc]: Update RPC failed for tab ${tabId}:`, err);
@@ -654,6 +665,224 @@ const keepAlive = () => {
   }, 20000);
 };
 
+function buildActivityLocally(data) {
+  const dataTitle = String(data.title ?? "").trim();
+  const rawArtist = String(data.artist ?? "").trim();
+  const artistIsIntentionallyEmpty = !rawArtist || rawArtist === "-1";
+  let dataArtist = artistIsIntentionallyEmpty ? "" : rawArtist;
+  const dataImage = String(data.image ?? "").trim();
+  const dataSource = String(data.source ?? "").trim();
+  const dataLink = String(data.link ?? "").trim();
+
+  if (!dataArtist && dataSource) dataArtist = dataSource;
+
+  const mergeSettings = (defaults, overrides) => {
+    const result = {};
+    for (const key in defaults) {
+      const defVal = defaults[key];
+      const overVal = overrides?.[key];
+      const finalVal =
+        overVal && typeof overVal === "object" && "value" in overVal
+          ? overVal.value
+          : overVal !== undefined
+            ? overVal
+            : defVal && typeof defVal === "object" && "value" in defVal
+              ? defVal.value
+              : defVal;
+      result[key] = finalVal;
+    }
+    return result;
+  };
+
+  const activitySettings = mergeSettings(DEFAULT_PARSER_OPTIONS, {
+    ...data.settingsDefault,
+    ...data.settings,
+  });
+
+  // FavIcon
+  let favIcon = null;
+  if (activitySettings.showFavIcon && dataLink) {
+    try {
+      const { hostname } = new URL(dataLink);
+      favIcon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
+    } catch {
+      // invalid URL - favIcon stays null
+    }
+  }
+
+  const shouldShowArtist = activitySettings.showArtist;
+  const isWatch = data.mode === "watch";
+
+  const activity = {
+    application_id: "1366752683628957767",
+    details: dataTitle,
+    state: shouldShowArtist ? dataArtist : dataSource,
+    type: isWatch ? 3 : 2,
+    instance: false,
+  };
+
+  // Large image
+  if (activitySettings.customCover && activitySettings.customCoverUrl) {
+    activity.largeImageKey = String(activitySettings.customCoverUrl);
+  } else if (activitySettings.showCover && dataImage) {
+    activity.largeImageKey = dataImage;
+  } else if (activitySettings.customPlaceholder && activitySettings.customPlaceholderUrl) {
+    activity.largeImageKey = String(activitySettings.customPlaceholderUrl);
+  } else {
+    activity.largeImageKey = "key-default";
+  }
+
+  // Ensure largeImageKey does not exceed Discord's 300-character limit.
+  if (activity.largeImageKey.length > 300) {
+    activity.largeImageKey = "key-default";
+  }
+
+  // Large image text
+  if (!artistIsIntentionallyEmpty && activitySettings.showSource && activitySettings.showArtist) {
+    activity.largeImageText = dataSource;
+  }
+
+  // Small image
+  const showSmallIcon = Boolean(activitySettings.showFavIcon);
+  if (!artistIsIntentionallyEmpty && showSmallIcon) {
+    activity.smallImageKey = favIcon ?? (isWatch ? "watch" : "listen");
+    activity.smallImageText = dataSource;
+  } else if (!artistIsIntentionallyEmpty) {
+    activity.smallImageText = isWatch ? "Watching" : "Listening";
+  } else {
+    activity.smallImageText = "";
+  }
+
+  // Buttons
+  const existingButtons = Array.isArray(data.buttons) ? data.buttons.filter((btn) => btn?.text && String(btn.text).trim() && isValidUrl(btn.link)) : [];
+
+  const customButtons = [
+    activitySettings.customButton1 && activitySettings.customButton1Text?.trim() && isValidUrl(activitySettings.customButton1Link)
+      ? { text: activitySettings.customButton1Text, link: activitySettings.customButton1Link }
+      : null,
+    activitySettings.customButton2 && activitySettings.customButton2Text?.trim() && isValidUrl(activitySettings.customButton2Link)
+      ? { text: activitySettings.customButton2Text, link: activitySettings.customButton2Link }
+      : null,
+  ];
+
+  let mergedButtons;
+  if (existingButtons.length === 0) {
+    mergedButtons = customButtons.filter(Boolean);
+  } else if (existingButtons.length === 1) {
+    const firstCustom = customButtons.find(Boolean);
+    mergedButtons = firstCustom ? [existingButtons[0], firstCustom] : existingButtons;
+  } else {
+    mergedButtons = [customButtons[0] ?? existingButtons[0], customButtons[1] ?? existingButtons[1]];
+  }
+
+  if (activitySettings.showButtons) {
+    const validButtons = mergedButtons
+      .filter((btn) => btn?.text && String(btn.text).trim() && isValidUrl(btn.link))
+      .slice(0, 2)
+      .map((btn) => ({ label: truncate(btn.text, 32), url: String(btn.link) }));
+
+    const sourceButton = isValidUrl(dataLink) ? { label: truncate(`Open on ${dataSource || "Source"}`, 32), url: dataLink } : null;
+
+    if (validButtons.length === 2) {
+      activity.buttons = validButtons;
+    } else if (validButtons.length === 1 && sourceButton) {
+      activity.buttons = [validButtons[0], sourceButton];
+    } else if (validButtons.length === 1) {
+      activity.buttons = validButtons;
+    } else if (sourceButton) {
+      activity.buttons = [sourceButton];
+    }
+
+    if (isValidUrl(dataLink)) {
+      activity.detailsUrl = dataLink;
+      activity.largeImageUrl = dataLink;
+    }
+  }
+
+  // Timestamps
+  const position = Number(data.position) || 0;
+  const duration = Number(data.duration) || 0;
+  if (duration > 0) {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    activity.startTimestamp = nowSeconds - position;
+    if (activitySettings.showTimeLeft) {
+      activity.endTimestamp = nowSeconds + (duration - position);
+    }
+  }
+
+  return activity;
+}
+
+function formatForWebConnection(activity) {
+  const assets = {};
+
+  if (activity.largeImageKey) {
+    assets.large_image = activity.largeImageKey;
+    assets.large_url = activity.largeImageUrl;
+  }
+  if (activity.largeImageText) {
+    assets.large_text = activity.largeImageText;
+  }
+  if (activity.smallImageKey) {
+    assets.small_image = activity.smallImageKey;
+  }
+  if (activity.smallImageText) {
+    assets.small_text = activity.smallImageText;
+  }
+
+  const webActivity = {
+    application_id: activity.application_id,
+    name: activity.state,
+    details: activity.details,
+    details_url: activity.detailsUrl,
+    state: activity.state,
+    type: activity.type,
+    status_display_type: 1,
+    instance: activity.instance ?? false,
+  };
+
+  if (Object.keys(assets).length) {
+    webActivity.assets = assets;
+  }
+
+  if (activity.startTimestamp) {
+    webActivity.timestamps = { start: activity.startTimestamp * 1000 };
+    if (activity.endTimestamp) {
+      webActivity.timestamps.end = activity.endTimestamp * 1000;
+    }
+  }
+
+  if (activity.buttons?.length) {
+    webActivity.buttons = activity.buttons.map((b) => b.label ?? b);
+    const urls = activity.buttons.map((b) => b.url ?? "");
+    if (urls.some((u) => u)) {
+      webActivity.metadata = { button_urls: urls };
+    }
+  }
+
+  return webActivity;
+}
+
+async function sendToWebOnlyBridge(payload) {
+  const discordTabs = await browser.tabs.query({
+    url: ["https://discord.com/*"],
+  });
+
+  if (!discordTabs.length) {
+    logInfo("[background:sendToWebOnlyBridge] No Discord tabs found");
+    return;
+  }
+
+  for (const tab of discordTabs) {
+    browser.tabs
+      .sendMessage(tab.id, {
+        type: "FORWARD_TO_MAIN",
+        payload,
+      })
+      .catch((err) => logError(`[background:sendToWebOnlyBridge] Tab ${tab.id}:`, err.message));
+  }
+}
+
 // Start
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
@@ -662,6 +891,13 @@ const init = async () => {
     if (result.serverPort !== undefined) {
       state.serverPort = result.serverPort;
       logInfo("[background:init]: Server port loaded:", state.serverPort);
+    }
+  });
+
+  await browser.storage.local.get("webOnlyMode").then((result) => {
+    if (result.webOnlyMode !== undefined) {
+      state.webOnlyMode = result.webOnlyMode;
+      logInfo("[background:init]: Extension Only Bridge Mode:", state.webOnlyMode);
     }
   });
 

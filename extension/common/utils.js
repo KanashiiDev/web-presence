@@ -1619,8 +1619,9 @@ async function fetchLatestVersion() {
   return browser.runtime.getManifest().version;
 }
 
-async function showInitialSetupDialog(appendBody) {
+async function showInitialSetupDialog(appendBody, isSetupAlreadyDone, loadingOverlay) {
   const version = await fetchLatestVersion();
+  if (loadingOverlay) loadingOverlay.remove();
 
   return new Promise((resolve) => {
     const wrapper = document.createElement("div");
@@ -1632,17 +1633,50 @@ async function showInitialSetupDialog(appendBody) {
     const content = document.createElement("div");
     content.className = "setup-dialog-content";
 
+    // Step 1: Mode Selection Wrapper
+    const stepOneContainer = document.createElement("div");
+
+    const modeHeader = document.createElement("h2");
+    modeHeader.textContent = i18n.t("setup.connectionMode.header");
+    stepOneContainer.appendChild(modeHeader);
+
+    const modeText = document.createElement("p");
+    modeText.textContent = i18n.t("setup.connectionMode.message");
+    stepOneContainer.appendChild(modeText);
+
+    const modeContainer = document.createElement("div");
+    modeContainer.className = "setup-mode-container";
+
+    const btnWebOnly = document.createElement("button");
+    btnWebOnly.type = "button";
+    btnWebOnly.textContent = i18n.t("setup.connectionMode.webOnly");
+    btnWebOnly.className = "setup-mode-btn";
+
+    const btnWebAndApp = document.createElement("button");
+    btnWebAndApp.type = "button";
+    btnWebAndApp.textContent = i18n.t("setup.connectionMode.webAndApp");
+    btnWebAndApp.className = "setup-mode-btn";
+
+    modeContainer.appendChild(btnWebOnly);
+    modeContainer.appendChild(btnWebAndApp);
+    stepOneContainer.appendChild(modeContainer);
+    content.appendChild(stepOneContainer);
+
+    // Step 2: Application Download Section
+    const downloadSection = document.createElement("div");
+    downloadSection.style.display = "none";
+
     const contentHeader = document.createElement("h2");
     contentHeader.textContent = i18n.t("setup.companion.header");
-    content.appendChild(contentHeader);
+    downloadSection.appendChild(contentHeader);
 
     const contentText = document.createElement("p");
     contentText.textContent = i18n.t("setup.companion.message");
-    content.appendChild(contentText);
+    downloadSection.appendChild(contentText);
 
     const contentLinkContainer = document.createElement("div");
     contentLinkContainer.classList.add("setup-link-container");
-    content.appendChild(contentLinkContainer);
+    downloadSection.appendChild(contentLinkContainer);
 
     // Windows Dropdown
     const windowsOptions = [
@@ -1694,7 +1728,7 @@ async function showInitialSetupDialog(appendBody) {
     const contentNote = document.createElement("p");
     contentNote.textContent = i18n.t("setup.companion.provider");
     contentNote.classList.add("setup-note");
-    content.appendChild(contentNote);
+    downloadSection.appendChild(contentNote);
 
     const contentNote2 = document.createElement("p");
     const noteText = document.createTextNode(i18n.t("setup.companion.provider.link"));
@@ -1708,12 +1742,13 @@ async function showInitialSetupDialog(appendBody) {
 
     contentNote2.appendChild(noteText);
     contentNote2.appendChild(noteLink);
-    content.appendChild(contentNote2);
+    downloadSection.appendChild(contentNote2);
 
     const confirmButton = document.createElement("button");
     confirmButton.id = "confirmSetup";
     confirmButton.textContent = i18n.t("setup.companion.installed");
-    content.appendChild(confirmButton);
+    downloadSection.appendChild(confirmButton);
+    content.appendChild(downloadSection);
     dialog.appendChild(content);
 
     if (appendBody) wrapper.appendChild(dialog);
@@ -1727,8 +1762,56 @@ async function showInitialSetupDialog(appendBody) {
       document.documentElement.classList.remove("setup-dialog-open");
     };
 
-    document.getElementById("confirmSetup").addEventListener("click", async () => {
-      await browser.storage.local.set({ initialSetupDone: true });
+    // Event Listeners
+    btnWebOnly.addEventListener("click", async (e) => {
+      e.preventDefault();
+
+      stepOneContainer.remove();
+      const webOnlySection = document.createElement("div");
+      webOnlySection.className = "setup-webonly-section";
+
+      const infoText = document.createElement("p");
+      infoText.textContent = i18n.t("setup.connectionMode.webOnlyNotice");
+      webOnlySection.appendChild(infoText);
+
+      const btnOk = document.createElement("button");
+      btnOk.type = "button";
+      btnOk.textContent = i18n.t("common.ok");
+      btnOk.className = "setup-mode-btn";
+      webOnlySection.appendChild(btnOk);
+
+      content.appendChild(webOnlySection);
+
+      btnOk.addEventListener("click", async () => {
+        await browser.storage.local.set({
+          webOnlyMode: true,
+          initialSetupDone: true,
+        });
+        cleanup();
+        resolve();
+      });
+    });
+
+    btnWebAndApp.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (isSetupAlreadyDone) {
+        await browser.storage.local.set({
+          webOnlyMode: false,
+        });
+        cleanup();
+        resolve();
+      } else {
+        stepOneContainer.remove();
+        downloadSection.style.display = "block";
+      }
+    });
+
+    confirmButton.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await browser.storage.local.set({
+        webOnlyMode: false,
+        initialSetupDone: true,
+      });
       cleanup();
       resolve();
     });

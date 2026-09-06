@@ -14,7 +14,9 @@
 
 ## Download
 
-_You must install both the **browser extension** and the **desktop application** for the app to work._
+_You must install both the **browser extension** and the **desktop app** for the **discord desktop app** to work._
+
+> If you’re only going to use Discord in your browser, there’s no need to install the desktop app.
 
 **Browser Extension**
 
@@ -27,7 +29,7 @@ Required to detect music and video on supported websites and send playback data 
 
 **Desktop App**
 
-Required to communicate with Discord and display your music and video status.
+Required to communicate with Discord and display your media status in Discord Rich Presence.
 
 <p>
   <a href="https://github.com/KanashiiDev/web-presence/releases/latest/download/web-presence-3.1.0-x64-installer.exe">
@@ -128,10 +130,12 @@ These are the integrations available in the activity library. Additional sites c
 2. **Install the Desktop App**  
    Install and run the app - it will appear in your system tray.
 
+   _If you’re only going to use Discord in your browser, there’s no need to install the desktop app._
+
    **Important:** If Discord runs as administrator, Web Presence must also run as administrator.
 
-3. **Play Music or Video**  
-   Go to a supported music or video site (YouTube, YouTube Music, Twitch, Deezer, SoundCloud, etc.) and start playing.
+3. **Install the Activities**  
+   Install the activities from the "Activity Library", go to the website and start playing.
 
 4. **Check Your Discord Status**  
    Open Discord and look at your status - it should now show what you're listening to!
@@ -161,23 +165,6 @@ Chrome, Firefox, and Chromium-based browsers (Opera, Brave, Edge, etc.)
 <details>
 <summary><strong>Linux Installation Notes</strong></summary>
 
-**GNOME Users:**  
-Enable the _AppIndicator / KStatusNotifierItem_ extension.
-
-**Required packages on some distributions:**
-
-```bash
-sudo apt install libayatana-appindicator3-1  # Debian/Ubuntu
-```
-
-**If tray icon doesn't appear:**
-
-- Install [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) or run from terminal once
-- On GNOME + Wayland: Switch to X11 session or enable AppIndicator support
-
-**Auto-start note:**  
-Moving the AppImage after first launch requires re-enabling "Run at Startup" in tray menu.
-
 **Arch Linux:**  
 Install via the one-shot installer script:
 
@@ -203,6 +190,23 @@ Or add as a flake input for NixOS module / home-manager support:
 ```nix
 inputs.web-presence.url = "github:KanashiiDev/web-presence";
 ```
+
+**GNOME Users:**  
+Enable the _AppIndicator / KStatusNotifierItem_ extension.
+
+**Required packages on some distributions:**
+
+```bash
+sudo apt install libayatana-appindicator3-1  # Debian/Ubuntu
+```
+
+**If tray icon doesn't appear:**
+
+- Install [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) or run from terminal once
+- On GNOME + Wayland: Switch to X11 session or enable AppIndicator support
+
+**Auto-start note:**  
+Moving the AppImage after first launch requires re-enabling "Run at Startup" in tray menu.
 
 </details>
 

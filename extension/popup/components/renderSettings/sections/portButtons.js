@@ -110,6 +110,71 @@ async function buildPortButtons(container) {
 
   container.appendChild(webBridgeWrapper);
 
+  // Extension Mode Select
+  const { webOnlyMode: storedWebMode } = await browser.storage.local.get("webOnlyMode");
+  const currentMode = storedWebMode === true ? "web-only" : "default";
+
+  const modeWrapper = document.createElement("div");
+  modeWrapper.className = "settings-option mode-wrapper";
+
+  const modeLabel = document.createElement("label");
+  modeLabel.textContent = "Connection Mode";
+  modeLabel.dataset.i18n = "settings.connectionMode";
+  modeLabel.setAttribute("for", "connectionModeSelect");
+
+  const modeSelect = document.createElement("select");
+  modeSelect.id = "connectionModeSelect";
+  modeSelect.className = "settings-select";
+
+  const modeOptions = [
+    { value: "default", i18n: "setup.connectionMode.webAndApp" },
+    { value: "web-only", i18n: "setup.connectionMode.webOnly" },
+  ];
+
+  for (const opt of modeOptions) {
+    const el = document.createElement("option");
+    el.value = opt.value;
+    el.textContent = i18n.t(opt.i18n);
+    el.dataset.i18n = opt.i18n;
+    el.selected = opt.value === currentMode;
+    modeSelect.appendChild(el);
+  }
+
+  modeWrapper.append(modeLabel, modeSelect);
+  portWrapper.insertAdjacentElement("beforebegin", modeWrapper);
+
+  requestAnimationFrame(() => {
+    new TomSelect(modeSelect, {
+      controlInput: null,
+      sortField: false,
+      plugins: {
+        auto_width: { isExtension: true, maxWidth: 125 },
+        simplebar: { isExtension: true },
+      },
+      async onChange(value) {
+        const isWeb = value === "web-only";
+        await browser.storage.local.set({ webOnlyMode: isWeb });
+
+        // Enable/disable the port input according to the mode
+        portInput.disabled = isWeb;
+        webBridgeInput.disabled = isWeb;
+        btnApply.classList.toggle("disabled", isWeb);
+        btnWebBridgeApply.classList.toggle("disabled", isWeb);
+
+        const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+        restartExtension(activeTab);
+      },
+    });
+
+    // If web-only is selected on the first load, disable the port input
+    if (currentMode === "web-only") {
+      portInput.disabled = true;
+      webBridgeInput.disabled = true;
+      btnApply.classList.add("disabled");
+      btnWebBridgeApply.classList.add("disabled");
+    }
+  });
+
   // Port Note
   const portInfo = document.createElement("small");
   portInfo.className = "settings-option-info";

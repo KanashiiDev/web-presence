@@ -47,6 +47,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "fetchWithTimeout",
     "getSenderTab",
     "isAllowedDomain",
+    "isValidUrl",
     "isDomainMatch",
     "sendAction",
     "restartExtension",
@@ -151,7 +152,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions("iframeParser.js", ["common/utils.js"], ["querySelectorDeep", "queryWithPartialClass"], "start");
 
   // Background Listeners
-  inlineUtilsFunctions("background.js", ["background/historyBackground.js", "background/backgroundListeners.js"], [], "start", true);
+  inlineUtilsFunctions("background.js", [], [], "start", true, { dir: "background" });
 
   // Setting Components
   inlineUtilsFunctions("settings/settings.js", [], [], "start", true, { dir: "settings/components" });

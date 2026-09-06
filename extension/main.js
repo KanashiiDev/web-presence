@@ -12,10 +12,6 @@ const state = {
   pendingUpdateReason: null,
   lastBlockedLog: null,
   isFirstUpdate: true,
-  debugStats: {
-    failedUpdates: 0,
-    connectionLost: 0,
-  },
 };
 
 const CONSTANTS = {
@@ -85,6 +81,7 @@ function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, log) {
 
 // Main loop to check for song changes and update RPC
 async function mainLoop() {
+  if (state.isUpdating) return;
   const hostMatch = await waitForHostname();
   if (!hostMatch) {
     scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, true);
@@ -102,7 +99,6 @@ async function mainLoop() {
       return;
     }
 
-    if (state.isUpdating) return;
     state.isUpdating = true;
 
     if (!state.lastUpdateTime) state.lastUpdateTime = Date.now();
@@ -312,13 +308,6 @@ async function mainLoop() {
           [`Last Seek: ${lastSeekSeconds}s`, colors.neutral, colors.neutral],
         ],
       },
-      {
-        title: "Statistics",
-        lines: [
-          [`Failed Updates: ${state.debugStats.failedUpdates}`, colors.info, colors.neutral],
-          [`Connection Lost: ${state.debugStats.connectionLost}`, colors.error, colors.neutral],
-        ],
-      },
     ];
 
     // Activity Debug Log
@@ -350,9 +339,6 @@ async function mainLoop() {
         updateStatus: state.lastUpdateStatus ?? null,
         // RPC
         connected: !!state.isConnected,
-        // Stats
-        failedUpdates: state.debugStats.failedUpdates,
-        connectionLost: state.debugStats.connectionLost,
       });
     }
 
@@ -407,9 +393,10 @@ async function mainLoop() {
 // Process the RPC update and handle connection
 async function processRPCUpdate(song, progress) {
   const rpcHealth = await isRpcConnected();
-  if (!rpcHealth?.ok) {
+
+  // Skip health check dependency if running in web-only mode
+  if (rpcHealth?.mode !== "web-only" && !rpcHealth?.ok) {
     if (state.isConnected) {
-      state.debugStats.connectionLost++;
       logInfo(rpcHealth?.reason ? `[main]: RPC health check failed: ${rpcHealth.reason}` : "[main]: 🔌 RPC CONNECTION LOST!");
     } else if (state.isConnected === null) {
       logInfo(rpcHealth?.reason ? `[main]: RPC health check failed: ${rpcHealth.reason}` : "[main]: RPC not connected");
@@ -417,11 +404,6 @@ async function processRPCUpdate(song, progress) {
     state.isConnected = false;
     return false;
   }
-
-  if (!state.isConnected) {
-    logInfo("[main]: RPC CONNECTION ESTABLISHED!");
-  }
-  state.isConnected = true;
 
   try {
     const res = await browser.runtime.sendMessage({
@@ -433,11 +415,16 @@ async function processRPCUpdate(song, progress) {
     });
 
     if (res?.ok) {
+      if (!state.isConnected) {
+        logInfo("[main]: RPC CONNECTION ESTABLISHED!");
+      }
+      state.isConnected = true;
+
       if (!keepAliveManager.initialized) {
         keepAliveManager.init();
       }
       rpcState.updateLastActivity(song, progress);
-      logInfo("[main]: RPC Updated Successfully!");
+      logInfo("[main]: Rich Presence Updated Successfully!");
       return true;
     } else if (res?.waiting) {
       logInfo("[main]: RPC waiting (tab not audible yet)");
@@ -451,7 +438,6 @@ async function processRPCUpdate(song, progress) {
   } catch (e) {
     logError("[main]: RPC update failed:", e);
     logError("[main]: Stack trace:", e.stack);
-    state.debugStats.failedUpdates++;
     return false;
   }
 }
@@ -489,20 +475,16 @@ async function handleNoSong() {
 }
 
 // Safely get song info with error handling and caching
-async function safeGetSongInfo(maxRetries = 10, retryDelay = 500) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      if (typeof window.getSongInfo === "function") {
-        return await window.getSongInfo();
-      }
-    } catch (e) {
-      logError(`[main:safeGetSongInfo]: attempt ${i + 1} failed:`, e);
+async function safeGetSongInfo() {
+  try {
+    if (typeof window.getSongInfo === "function") {
+      return await window.getSongInfo();
     }
-    await delay(retryDelay);
+    return null;
+  } catch (e) {
+    logError("[main:safeGetSongInfo]:", e);
+    return null;
   }
-
-  logInfo("[main:safeGetSongInfo]: all retries exhausted, returning null");
-  return null;
 }
 
 function logOnce(msg) {
@@ -566,26 +548,20 @@ function init() {
   logInfo("%c║            WEB PRESENCE INITIALIZING            ║", "color:#2196f3; font-weight:bold;");
   logInfo("%c╚═════════════════════════════════════════════════╝", "color:#2196f3; font-weight:bold;");
 
+  async function waitForParserSystem() {
+    if (window.__parserSystemReady) return;
+    await new Promise((resolve) => {
+      window.addEventListener("parser-ready", resolve, { once: true });
+      setTimeout(resolve, 10000);
+    });
+  }
+
   const start = async () => {
-    let tries = 0;
-    const maxTries = 30;
-    while (typeof window.getSongInfo !== "function" && tries < maxTries) {
-      logInfo(`[main:init]: getSongInfo not available (attempt ${tries + 1}/${maxTries})`);
-      await delay(2000);
-      tries++;
-    }
+    await waitForParserSystem();
 
     if (typeof window.getSongInfo !== "function") {
-      logError("[main:init]: getSongInfo not available after retries, aborting");
+      logError("[main:init]: getSongInfo not available, aborting");
       return;
-    } else {
-      let warmupTries = 0;
-      while (warmupTries < 5) {
-        const testSong = await window.getSongInfo().catch(() => null);
-        if (testSong && testSong !== "blocked" && testSong.title && testSong.artist) break;
-        await delay(1000);
-        warmupTries++;
-      }
     }
 
     registerRuntimeMessageListener();
@@ -622,6 +598,11 @@ function messageHandler(message, sender, sendResponse) {
   }
 
   if (message.action === "reloadPage") location.reload();
+
+  if (location.origin === "https://discord.com" && message.type === "FORWARD_TO_MAIN") {
+    window.postMessage({ type: "WEB_PRESENCE_UPDATE", detail: message.payload }, location.origin);
+    return true;
+  }
 }
 
 function registerRuntimeMessageListener() {

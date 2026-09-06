@@ -909,10 +909,7 @@ const handleUpdateRpc = async (req, sender) => {
     return { ok: true, waiting: true };
   }
 
-  // 3) RPC update
-  scheduleRpcUpdate(req.data, tabId)?.catch((err) => logError("[background:scheduleRpcUpdate]: RPC schedule failed", err));
-
-  // 4️) Add History
+  // 3) Add History
   if (req.data.title !== "_Unknown Title_" && req.data.artist !== "_Unknown Artist_" && req.data.artist !== "-1") {
     scheduleHistoryAdd(tabId, {
       title: req.data.title,
@@ -924,7 +921,21 @@ const handleUpdateRpc = async (req, sender) => {
     });
   }
 
-  return { ok: true };
+  // 4) RPC update
+  if (state.webOnlyMode) {
+    try {
+      const rawActivity = buildActivityLocally(req.data);
+      const webOnlyActivity = formatForWebConnection(rawActivity);
+      await sendToWebOnlyBridge({ activity: webOnlyActivity });
+      return { ok: true, mode: "web-only" };
+    } catch (err) {
+      logError("[background:handleUpdateRpc] web-only error:", err);
+      return { ok: false, error: err.message, mode: "web-only" };
+    }
+  }
+
+  scheduleRpcUpdate(req.data, tabId)?.catch((err) => logError("[background:scheduleRpcUpdate]: RPC schedule failed", err));
+  return { ok: true, mode: "default" };
 };
 
 const handleGetRpcPort = async () => {
@@ -985,26 +996,38 @@ const handleClearRpc = async (sender) => {
     return { ok: false, error: "No tab info" };
   }
 
+  if (state.webOnlyMode) {
+    try {
+      await sendToWebOnlyBridge({ activity: null });
+      state.activeTabMap.delete(tab.id);
+      return { ok: true, mode: "web-only" };
+    } catch (err) {
+      logError("[background:handleClearRpc] web-only error:", err);
+      return { ok: false, error: err.message };
+    }
+  }
+
   await clearRpcForTab(tab.id, "CLEAR_RPC triggered");
   return { ok: true };
 };
 
 const handleIsRpcConnected = async () => {
+  const mode = state.webOnlyMode ? "web-only" : "default";
   try {
     const res = await fetchWithTimeout(`http://localhost:${state.serverPort}/health`, {}, CONFIG.requestTimeout);
 
     if (!res) {
-      return { ok: false, reason: "No response from RPC server" };
+      return { ok: false, reason: "No response from RPC server", mode };
     }
 
     if (!res.ok) {
-      return { ok: false, reason: `HTTP ${res.status}` };
+      return { ok: false, reason: `HTTP ${res.status}`, mode };
     }
 
     const data = await res.json();
-    return { ok: !!data.rpcConnected };
+    return { ok: !!data.rpcConnected, mode };
   } catch (err) {
-    return { ok: false, reason: err.message || "Unknown error" };
+    return { ok: false, reason: err.message || "Unknown error", mode };
   }
 };
 
@@ -1192,7 +1215,7 @@ const setupListeners = () => {
       if (req.type === "INJECT_BRIDGE") {
         browser.scripting.executeScript({
           target: { tabId: sender.tab.id },
-          func: (webPort) => {
+          func: (webPort, isExtensionOnlyMode) => {
             if (window._RPC_BRIDGE_LOADED_) return;
             window._RPC_BRIDGE_LOADED_ = true;
 
@@ -1258,9 +1281,9 @@ const setupListeners = () => {
               }
             };
 
-            // Finding Dispatcher
+            // Dispatcher Finder
             function findDispatcher(wpRequire) {
-              // Method 1: Known module ID (228366)
+              // Method 1: Hardcoded module ID
               try {
                 const mod = wpRequire(228366);
                 if (mod && typeof mod === "object") {
@@ -1274,11 +1297,10 @@ const setupListeners = () => {
                 }
               } catch {}
 
-              // Method 2: Search for Flux dispatcher pattern in Cache
+              // Method 2: Cache scan
               for (const id in wpRequire.c) {
                 const mod = wpRequire.c[id]?.exports;
                 if (!mod || typeof mod !== "object") continue;
-
                 if (mod._subscriptions && mod._actionHandlers && typeof mod.dispatch === "function" && typeof mod.subscribe === "function") {
                   console.log(`[Web Presence - RPC Bridge] Found Dispatcher at cache[${id}]`);
                   return mod;
@@ -1286,81 +1308,46 @@ const setupListeners = () => {
               }
 
               // Method 3: Find the module using LOCAL_ACTIVITY_UPDATE and analyze its source code
-              let activityModuleId = null;
-              let activitySource = null;
-
               for (const id in wpRequire.m) {
                 try {
                   const source = wpRequire.m[id]?.toString?.();
-                  if (source && source.includes("LOCAL_ACTIVITY_UPDATE")) {
-                    activityModuleId = id;
-                    activitySource = source;
-                    console.log(`[Web Presence - RPC Bridge] Found LOCAL_ACTIVITY_UPDATE in module[${id}]`);
-                    break;
+                  if (!source?.includes("LOCAL_ACTIVITY_UPDATE")) continue;
+
+                  const dispatchMatches = [...source.matchAll(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.([a-zA-Z_$][a-zA-Z0-9_$]*)\.dispatch\(/g)];
+                  for (const match of dispatchMatches) {
+                    const [, varName, propName] = match;
+                    const importPatterns = [new RegExp(`${varName}=n\\((\\d+)\\)`, "g"), new RegExp(`\\{[^}]*${varName}[^}]*\\}=n\\((\\d+)\\)`, "g")];
+                    for (const pattern of importPatterns) {
+                      let m;
+                      while ((m = pattern.exec(source)) !== null) {
+                        try {
+                          const mod = wpRequire(parseInt(m[1]));
+                          const candidate = mod?.[propName];
+                          if (candidate && typeof candidate.dispatch === "function" && (candidate._subscriptions || candidate._actionHandlers)) {
+                            console.log(`[Web Presence - RPC Bridge] Dispatcher found via code analysis at module[${m[1]}].${propName}`);
+                            return candidate;
+                          }
+                        } catch {}
+                      }
+                    }
                   }
+                  break;
                 } catch {}
               }
 
-              if (activityModuleId && activitySource) {
-                // Search for the "dispatch(" pattern and find the variable before it
-                const dispatchMatches = [...activitySource.matchAll(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.([a-zA-Z_$][a-zA-Z0-9_$]*)\.dispatch\(/g)];
-
-                for (const match of dispatchMatches) {
-                  const varName = match[1];
-                  const propName = match[2];
-
-                  console.log(`[Web Presence - RPC Bridge] Analyzing: ${varName}.${propName}.dispatch()`);
-
-                  // Find which module this variable was imported from
-                  // Pattern: varName=n(moduleId) or {varName}=n(moduleId)
-                  const importPatterns = [
-                    new RegExp(`${varName}=n\\((\\d+)\\)`, "g"),
-                    new RegExp(`\\{[^}]*${varName}[^}]*\\}=n\\((\\d+)\\)`, "g"),
-                    new RegExp(`,[^,]*${varName}=n\\((\\d+)\\)`, "g"),
-                  ];
-
-                  for (const pattern of importPatterns) {
-                    let importMatch;
-                    while ((importMatch = pattern.exec(activitySource)) !== null) {
-                      const moduleId = parseInt(importMatch[1]);
-                      console.log(`[Web Presence - RPC Bridge] Testing module[${moduleId}] for property '${propName}'`);
-
-                      try {
-                        const mod = wpRequire(moduleId);
-                        if (mod && mod[propName]) {
-                          const candidate = mod[propName];
-
-                          if (
-                            candidate &&
-                            typeof candidate === "object" &&
-                            typeof candidate.dispatch === "function" &&
-                            (candidate._subscriptions || candidate._actionHandlers)
-                          ) {
-                            console.log(`[Web Presence - RPC Bridge] Found Dispatcher via code analysis at module[${moduleId}].${propName}`);
-                            return candidate;
-                          }
-                        }
-                      } catch {}
-                    }
-                  }
-                }
-              }
-
-              // Method 4: Find by executing within Modules
+              // Method 4: Full module scan
               for (const id in wpRequire.m) {
                 try {
                   const exports = wpRequire(id);
                   if (!exports || typeof exports !== "object") continue;
-
                   if (exports._subscriptions && exports._actionHandlers && typeof exports.dispatch === "function") {
-                    console.log(`[Web Presence - RPC Bridge] Found Dispatcher at module[${id}]`);
+                    console.log(`[Web Presence - RPC Bridge] Dispatcher found at module[${id}]`);
                     return exports;
                   }
-
                   for (const key in exports) {
                     const val = exports[key];
                     if (val && typeof val === "object" && val._subscriptions && val._actionHandlers && typeof val.dispatch === "function") {
-                      console.log(`[Web Presence - RPC Bridge] Found Dispatcher at module[${id}].${key}`);
+                      console.log(`[Web Presence - RPC Bridge] Dispatcher found at module[${id}].${key}`);
                       return val;
                     }
                   }
@@ -1390,18 +1377,15 @@ const setupListeners = () => {
                 const assetMod = findModule(wpRequire, "getAssetImage: size must === [");
                 if (assetMod) {
                   eachCandidate(assetMod, (candidate) => {
-                    if (!lookupAsset && typeof candidate === "function") {
-                      const str = candidate.toString();
-                      if (str.includes("APPLICATION_ASSETS_FETCH_SUCCESS")) {
-                        lookupAsset = async (appId, name) => {
-                          try {
-                            const result = await candidate(appId, [name]);
-                            return Array.isArray(result) ? result[0] : result;
-                          } catch {
-                            return null;
-                          }
-                        };
-                      }
+                    if (!lookupAsset && typeof candidate === "function" && candidate.toString().includes("APPLICATION_ASSETS_FETCH_SUCCESS")) {
+                      lookupAsset = async (appId, name) => {
+                        try {
+                          const result = await candidate(appId, [name]);
+                          return Array.isArray(result) ? result[0] : result;
+                        } catch {
+                          return null;
+                        }
+                      };
                     }
                   });
                 }
@@ -1432,14 +1416,12 @@ const setupListeners = () => {
 
               if (!Dispatcher || !lookupAsset || !lookupApp) {
                 console.warn(
-                  `[Web Presence - RPC Bridge] Internals not ready yet: ${[!Dispatcher && "Dispatcher", !lookupAsset && "lookupAsset", !lookupApp && "lookupApp"]
-                    .filter(Boolean)
-                    .join(", ")}`,
+                  `[Web Presence - RPC Bridge] Internals not ready: ${[!Dispatcher && "Dispatcher", !lookupAsset && "lookupAsset", !lookupApp && "lookupApp"].filter(Boolean).join(", ")}`,
                 );
                 return false;
               }
 
-              console.log("[Web Presence - RPC Bridge] All internals initialized successfully");
+              console.log("[Web Presence - RPC Bridge] All internals initialized.");
               return true;
             }
 
@@ -1476,7 +1458,6 @@ const setupListeners = () => {
                     apps[appId] = await lookupApp(appId);
                   }
                   const app = apps[appId];
-
                   if (!msg.activity.name && app?.name) {
                     msg.activity.name = app.name;
                   }
@@ -1486,17 +1467,17 @@ const setupListeners = () => {
                   type: "LOCAL_ACTIVITY_UPDATE",
                   activity: msg.activity,
                 });
+
+                console.log("[Web Presence - RPC Bridge] Dispatch OK.");
               } catch (err) {
                 console.error("[Web Presence - RPC Bridge] Failed to handle message:", err);
-                Dispatcher = null;
               }
             }
 
             function clearActivity() {
+              if (!Dispatcher) return;
               try {
-                if (Dispatcher) {
-                  Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null });
-                }
+                Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: "arrpc" });
               } catch (err) {
                 console.error("[Web Presence - RPC Bridge] Failed to clear activity:", err);
               }
@@ -1504,17 +1485,14 @@ const setupListeners = () => {
 
             // WebSocket
             function getRetryDelay() {
-              const delay = RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)];
-              return Math.min(delay, MAX_RETRY_DELAY);
+              return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)];
             }
 
             function scheduleRetry() {
-              const delay = getRetryDelay();
-
               retryTimer = setTimeout(() => {
                 retryTimer = null;
                 connect();
-              }, delay);
+              }, getRetryDelay());
             }
 
             function connect() {
@@ -1525,14 +1503,14 @@ const setupListeners = () => {
               ws.onopen = () => {
                 ws.send(JSON.stringify({ type: "INIT_BRIDGE", origin: location.origin }));
                 retryCount = 0;
+                initDiscordInternals();
               };
 
               ws.onmessage = async (x) => {
                 try {
-                  const msg = JSON.parse(x.data);
-                  await handleMessage(msg);
+                  await handleMessage(JSON.parse(x.data));
                 } catch (err) {
-                  console.error("[Web Presence - RPC Bridge] Failed to handle message:", err);
+                  console.error("[Web Presence - RPC Bridge] Failed to parse/handle message:", err);
                 }
               };
 
@@ -1545,10 +1523,20 @@ const setupListeners = () => {
               };
             }
 
-            connect();
+            if (isExtensionOnlyMode) {
+              window.addEventListener("message", async (event) => {
+                if (event.origin !== location.origin) return;
+                if (event.data?.type !== "WEB_PRESENCE_UPDATE") return;
+                await handleMessage(event.data.detail);
+              });
+              initDiscordInternals();
+            } else {
+              connect();
+            }
+
             document.addEventListener("beforeunload", clearActivity);
           },
-          args: [state.discordWebPort],
+          args: [state.discordWebPort, state.webOnlyMode],
           world: "MAIN",
         });
       }

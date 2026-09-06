@@ -338,6 +338,14 @@ const popupModule = {
 let domLoadedListener = null;
 
 domLoadedListener = async () => {
+  // Create loading overlay
+  const loadingOverlay = document.createElement("div");
+  loadingOverlay.className = "popup-loading-overlay";
+
+  const spinner = Object.assign(document.createElement("div"), { className: "spinner" });
+  loadingOverlay.appendChild(spinner);
+  document.body.appendChild(loadingOverlay);
+
   try {
     await i18n.load("extension");
 
@@ -346,13 +354,18 @@ domLoadedListener = async () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("wideMode")) document.body.classList.add("wideMode");
 
+    // Get Connection Mode
+    const { webOnlyMode: storedWebMode } = await browser.storage.local.get("webOnlyMode");
+    const currentConnectionMode = storedWebMode === true ? "web-only" : "default";
+    document.body.dataset.connectionMode = currentConnectionMode;
+
     // Set Theme
     await applyThemeSettings();
 
     // Initial Setup
     const setup = await browser.storage.local.get("initialSetupDone");
-    if (!setup.initialSetupDone) {
-      await showInitialSetupDialog();
+    if (!setup.initialSetupDone || storedWebMode == null) {
+      await showInitialSetupDialog(0, setup.initialSetupDone, loadingOverlay);
     }
 
     // Host Permission Check
@@ -447,6 +460,8 @@ domLoadedListener = async () => {
     applyTranslations();
   } catch (error) {
     logError("[popup]: Error loading settings:", error);
+  } finally {
+    loadingOverlay.remove();
   }
 
   // Apply Custom Colors
