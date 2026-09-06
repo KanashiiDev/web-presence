@@ -86,16 +86,24 @@ jobs:
     steps:
       - name: Install system dependencies
         run: |
+          pacman-key --init
+          pacman-key --populate archlinux
           pacman -Syu --noconfirm
           pacman -S --noconfirm \
             git base-devel wget strace \
             nodejs npm \
             electron \
             xorg-server-xvfb \
-            fuse2 libxcb libx11 nss nspr atk cups gtk3 \
-            alsa-lib libxcomposite libxdamage libxext \
-            libxfixes libxrandr libgbm pango cairo \
-            glib gdk-pixbuf dbus libnotify libappindicator-gtk3
+            libxcb libx11 libxcomposite libxdamage libxext libxfixes libxrandr \
+            nss nspr \
+            at-spi2-core at-spi2-atk \
+            libcups libdrm libxkbcommon \
+            gtk3 glib2 gdk-pixbuf2 pango cairo \
+            alsa-lib libpulse \
+            mesa \
+            dbus systemd-libs \
+            libnotify libappindicator-gtk3 \
+            fuse2
 
       - uses: actions/checkout@v4
 
