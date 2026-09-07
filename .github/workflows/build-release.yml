@@ -236,12 +236,6 @@ jobs:
       - name: Prepare Release
         run: npm run prepare-release
 
-      - name: Copy anylinux AppImage to release dir
-        run: |
-          if [ -d ./dist/anylinux ]; then
-            cp ./dist/anylinux/*.AppImage* ./release/ 2>/dev/null || true
-          fi
-
       - name: Rename pacman artifact
         run: |
           cd release
