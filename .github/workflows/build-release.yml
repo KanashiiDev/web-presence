@@ -14,6 +14,7 @@ on:
         options:
           - all
           - linux-only
+          - linux-anylinux-only
           - windows-only
           - macos-only
 
@@ -78,7 +79,7 @@ jobs:
 
   build-linux-anylinux:
     name: Build Linux (anylinux AppImage)
-    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux-only'
+    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux-only' || github.event.inputs.platform == 'linux-anylinux-only'
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -119,6 +120,8 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Install Node dependencies
+        env:
+          HOME: /root
         run: npm ci
 
       - name: Build unpacked Electron app
@@ -133,7 +136,7 @@ jobs:
         run: |
           Xvfb :99 -screen 0 1024x768x24 -ac &
           XVFB_PID=$!
-          sh scripts/build-anylinux-appimage.sh
+          bash scripts/build-anylinux-appimage.sh
           kill $XVFB_PID 2>/dev/null || true
 
       - name: Upload anylinux Artifacts
@@ -276,7 +279,7 @@ jobs:
     name: Update Nix Hashes
     needs: create-release
     runs-on: ubuntu-latest
-    if: always() && needs.create-release.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+    if: always() && needs.create-release.result == 'success' && github.event.inputs.platform != 'linux-anylinux-only' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
     steps:
