@@ -445,7 +445,7 @@ domLoadedListener = async () => {
     if (renderStatus) {
       const tutorial = await browser.storage.local.get("initialTutorialDone");
       if (!tutorial.initialTutorialDone) {
-        showInitialTutorial();
+        showInitialTutorial(currentConnectionMode);
       }
     }
 

@@ -1902,7 +1902,7 @@ async function showHostPermissionDialog(appendBody) {
 }
 
 // Show initial tutorial dialog
-async function showInitialTutorial() {
+async function showInitialTutorial(currentConnectionMode) {
   // Steps in the tutorial
   const steps = [
     {
@@ -1925,10 +1925,14 @@ async function showInitialTutorial() {
       text: i18n.t("tutorial.step5"),
       selector: "#openFiltersBtn",
     },
-    {
-      text: i18n.t("tutorial.step6"),
-      selector: "#openDashboardBtn",
-    },
+    ...(currentConnectionMode !== "web-only"
+      ? [
+          {
+            text: i18n.t("tutorial.step6"),
+            selector: "#openDashboardBtn",
+          },
+        ]
+      : []),
     {
       text: i18n.t("tutorial.step7"),
       selector: "#openLibraryBtn",
