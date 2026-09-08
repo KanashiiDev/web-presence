@@ -1,129 +1,134 @@
 #!/bin/bash
-# Build a truly portable AppImage for Web Presence Bridge
-# Works on any Linux distro including musl-based ones (Alpine, Void, LFS)
-# Uses sharun + uruntime — no FUSE, no glibc dependency on host
-# Reference: https://github.com/pkgforge-dev/Anylinux-AppImages
-
 set -eu
 
-ARCH="$(uname -m)"
-QUICK_SHARUN_URL="https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/quick-sharun.sh"
+ARCH=$(uname -m)
+APP_NAME="web-presence-bridge"
+PRODUCT_NAME="Web Presence Bridge"
 
-# Output config 
+case "$ARCH" in
+  x86_64) deb_arch=amd64;;
+  aarch64|arm64) deb_arch=arm64;;
+  *) deb_arch=amd64;;
+esac
+
+echo "Installing package dependencies..."
+echo "---------------------------------------------------------------"
+pacman -Syu --noconfirm \
+  git-lfs \
+  gnome-keyring \
+  libcurl-gnutls \
+  pre-commit || true
+
+echo "Installing debloated packages..."
+echo "---------------------------------------------------------------"
+get-debloated-pkgs --add-common --prefer-nano || true
+
+if [ -z "${VERSION:-}" ]; then
+  VERSION=$(sed -n 's/.*"version": *"\(.*\)".*/\1/p' package.json)
+fi
+
+DEB_FILE=$(find "${LOCAL_DEB_DIR:-./dist}" -name "web-presence-*-${deb_arch}.deb" | head -1)
+
+if [ -z "$DEB_FILE" ]; then
+  echo "==> ERROR: No .deb found in LOCAL_DEB_DIR=${LOCAL_DEB_DIR:-./dist}"
+  exit 1
+fi
+
+echo "==> Using .deb artifact: $DEB_FILE"
+cp "$DEB_FILE" /tmp/app.deb
+
+export ARCH
+export VERSION
 export OUTPATH="./dist/anylinux"
-export OUTNAME="web-presence-bridge-${VERSION:-dev}-${ARCH}-anylinux.AppImage"
-
-# AppImage metadata 
-export ICON="./app/assets/icon/512x512.png"
-export DESKTOP="./scripts/web-presence-bridge.desktop"
-
-# Update info for zsync 
+export OUTNAME="${APP_NAME}-${VERSION}-${ARCH}-anylinux.AppImage"
 export UPINFO="gh-releases-zsync|KanashiiDev|web-presence|latest|*${ARCH}*anylinux*.AppImage.zsync"
+export ICON="https://raw.githubusercontent.com/KanashiiDev/web-presence/refs/heads/main/app/assets/icon/512x512.png"
+export STARTUPWMCLASS="Web Presence Bridge"
 
-# Build 
 mkdir -p "$OUTPATH"
+rm -rf ./AppDir
+mkdir -p ./AppDir/bin
 
-echo "==> Downloading quick-sharun..."
-wget "$QUICK_SHARUN_URL" -O ./quick-sharun
-chmod +x ./quick-sharun
+WORK_DIR=$(mktemp -d)
+cd "$WORK_DIR"
+ar xvf /tmp/app.deb
 
-# Find unpacked Electron directory 
-# electron-builder --dir output path varies slightly by version/config.
-# Check both known locations before failing.
-UNPACKED_DIR=""
-if [ -d "./dist/linux/linux-unpacked" ]; then
-  UNPACKED_DIR="./dist/linux/linux-unpacked"
-elif [ -d "./dist/linux-unpacked" ]; then
-  UNPACKED_DIR="./dist/linux-unpacked"
+if [ -f "data.tar.xz" ]; then
+  tar -xvf data.tar.xz
+elif [ -f "data.tar.zst" ]; then
+  bsdtar -xvf data.tar.zst
 else
-  echo "ERROR: Could not find linux-unpacked directory" >&2
-  find dist -type d 2>/dev/null | head -30 || true
-  exit 1
+  tar -xvf data.tar.*
 fi
+cd - > /dev/null
 
-ELECTRON_BINARY="$(find "$UNPACKED_DIR" -maxdepth 1 -type f -executable -not -name "*.so*" | head -n1)"
-
-if [ -z "$ELECTRON_BINARY" ]; then
-  echo "ERROR: Could not find Electron binary in $UNPACKED_DIR/" >&2
-  ls -la "$UNPACKED_DIR" || true
-  exit 1
-fi
-
-echo "==> Using unpacked directory: $UNPACKED_DIR"
-echo "==> Found Electron binary: $ELECTRON_BINARY"
-
-# Bundle with quick-sharun 
-# quick-sharun strace's the binary to detect all .so dependencies and bundles
-# them. It also auto-detects Electron via binary strings and enables
-# DEPLOY_ELECTRON, DEPLOY_OPENGL, DEPLOY_VULKAN, DEPLOY_PIPEWIRE automatically.
-echo "==> Bundling with quick-sharun..."
-./quick-sharun "$ELECTRON_BINARY"
-
-# Bake WEB_PRESENCE_ANYLINUX=1 into the AppImage environment 
-# quick-sharun sources AppDir/.env at runtime via sharun.
-# updater.js reads this to detect the anylinux install method and skip
-# electron-updater (no latest-linux.yml). Falls back to GitHub Releases page.
-echo "WEB_PRESENCE_ANYLINUX=1" >> AppDir/.env
-
-# Copy critical Electron resource files 
-# quick-sharun bundles .so libraries and executables via strace, but misses
-# data files that Electron needs at startup.
-echo "==> Copying critical Electron resource files..."
-
-# Locate where quick-sharun placed the Electron binary inside AppDir.
-# The path varies by quick-sharun version so we find it dynamically.
-ELECTRON_BASENAME="$(basename "$ELECTRON_BINARY")"
-APPDIR_BIN="$(find AppDir -name "$ELECTRON_BASENAME" -type f 2>/dev/null | head -n1 | xargs dirname || true)"
-
-if [ -z "$APPDIR_BIN" ]; then
-  echo "ERROR: Could not locate Electron binary inside AppDir" >&2
-  find AppDir -type f 2>/dev/null | head -30 || true
-  exit 1
-fi
-
-echo "==> Electron binary located at: $APPDIR_BIN"
-
-# Copy data files that must sit alongside the Electron binary
-CRITICAL_FILES="
-  icudtl.dat
-  chrome_100_percent.pak
-  chrome_200_percent.pak
-  resources.pak
-  snapshot_blob.bin
-  v8_context_snapshot.bin
-  LICENSE.electron.txt
-"
-
-for file in $CRITICAL_FILES; do
-  [ -z "$file" ] && continue
-  SRC="$UNPACKED_DIR/$file"
-  DEST="$APPDIR_BIN/$file"
-  if [ -f "$SRC" ]; then
-    cp "$SRC" "$DEST"
-    echo "  • Copied $file"
-  else
-    echo "  • WARNING: $file not found in $UNPACKED_DIR (may be optional)"
+# electron-builder places the unpacked app in /opt/<productName>/ for .deb
+if [ -d "$WORK_DIR/opt/$PRODUCT_NAME" ]; then
+  echo "==> Moving '$PRODUCT_NAME' contents to AppDir/bin/..."
+  
+  # Copy only files and specific subdirectories (locales, resources) to AppDir/bin/
+  # Skip the nested usr/ directory to avoid polluting AppDir/bin/ with icon paths
+  for item in "$WORK_DIR/opt/$PRODUCT_NAME"/*; do
+    base=$(basename "$item")
+    if [ "$base" = "usr" ]; then
+      continue
+    fi
+    cp -av "$item" ./AppDir/bin/
+  done
+  
+  # Move icon files from opt/<productName>/usr/share/icons/ to AppDir/usr/share/icons/
+  if [ -d "$WORK_DIR/opt/$PRODUCT_NAME/usr/share/icons" ]; then
+    mkdir -p ./AppDir/usr/share/icons
+    cp -av "$WORK_DIR/opt/$PRODUCT_NAME/usr/share/icons/." ./AppDir/usr/share/icons/
   fi
-done
-
-# Copy locales/ — required for Chromium i18n
-if [ -d "$UNPACKED_DIR/locales" ]; then
-  cp -r "$UNPACKED_DIR/locales" "$APPDIR_BIN/locales"
-  echo "  • Copied locales/"
 else
-  echo "  • WARNING: locales/ not found — Chromium i18n may fail"
+  echo "==> ERROR: Could not find $WORK_DIR/opt/$PRODUCT_NAME"
+  ls -la "$WORK_DIR/opt/" || true
+  exit 1
 fi
 
-# Copy resources/ — contains app.asar and native modules
-if [ -d "$UNPACKED_DIR/resources" ]; then
-  cp -r "$UNPACKED_DIR/resources" "$APPDIR_BIN/resources"
-  echo "  • Copied resources/"
-else
-  echo "  • WARNING: resources/ not found — app will not start"
+# Copy and modify the desktop file
+if ls "$WORK_DIR"/usr/share/applications/*.desktop 1>/dev/null 2>&1; then
+  for desktop_file in "$WORK_DIR"/usr/share/applications/*.desktop; do
+    cp -av "$desktop_file" ./AppDir/
+    dest="./AppDir/$(basename "$desktop_file")"
+    sed -i "s|^Exec=.*|Exec=${APP_NAME} %U|" "$dest"
+    sed -i "s|^Icon=.*|Icon=${APP_NAME}|" "$dest"
+    echo "==> Fixed desktop file: $dest"
+    cat "$dest" | head -10
+  done
 fi
 
-# Create AppImage 
-echo "==> Creating AppImage..."
-./quick-sharun --make-appimage
+rm -rf "$WORK_DIR"
+rm -f /tmp/app.deb
 
-echo "==> Done: $OUTPATH/$OUTNAME"
+# Ensure all binaries are executable
+chmod +x ./AppDir/bin/* 2>/dev/null || true
+
+# Setup .env for the AppImage runtime
+cat << 'EOF' > ./AppDir/.env
+WEB_PRESENCE_ANYLINUX=1
+EOF
+
+echo "==> Running quick-sharun collection..."
+quick-sharun "./AppDir/bin/${APP_NAME}" \
+  /usr/bin/git-lfs \
+  /usr/bin/gnome* \
+  /usr/bin/pre-commit \
+  /usr/bin/secret-tool \
+  /usr/lib/gnome-keyring/devel/gkm*.so* \
+  /usr/lib/pkcs11/gnome*.so* \
+  /usr/lib/security/pam*.so* \
+  /usr/lib/libsecret*.so* \
+  /usr/lib/libcurl*.so*
+
+echo "==> Making AppImage..."
+quick-sharun --make-appimage
+
+mv ./dist/*.AppImage "$OUTPATH/" 2>/dev/null || true
+
+echo "==> Running quick-sharun simple test..."
+quick-sharun --simple-test "$OUTPATH/$OUTNAME" || true
+
+echo "==> Successfully built package in: $OUTPATH/"
+ls -la "$OUTPATH/"

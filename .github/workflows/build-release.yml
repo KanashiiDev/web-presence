@@ -77,65 +77,80 @@ jobs:
           path: dist/**
           retention-days: 5
 
-  build-linux-anylinux:
-    name: Build Linux (anylinux AppImage)
-    if: github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux-only' || github.event.inputs.platform == 'linux-anylinux-only'
+  build-linux-deb:
+    name: Build Linux (deb only)
+    if: github.event.inputs.platform == 'linux-anylinux-only'
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-      options: --cap-add SYS_PTRACE
     steps:
-      - name: Install system dependencies
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinux
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm \
-            git base-devel wget strace \
-            nodejs npm \
-            electron \
-            xorg-server-xvfb \
-            libxcb libx11 libxcomposite libxdamage libxext libxfixes libxrandr \
-            nss nspr \
-            at-spi2-core at-spi2-atk \
-            libcups libdrm libxkbcommon \
-            gtk3 glib2 gdk-pixbuf2 pango cairo \
-            alsa-lib libpulse \
-            mesa \
-            dbus systemd-libs \
-            libnotify libappindicator-gtk3 \
-            fuse2 \
-            patchelf
-
       - uses: actions/checkout@v4
 
-      - name: Get version
-        id: get_version
-        run: |
-          if echo "$GITHUB_REF" | grep -q "^refs/tags/"; then
-            VERSION="$GITHUB_REF_NAME"
-          else
-            VERSION=$(node -p "require('./package.json').version")
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
 
-      - name: Install Node dependencies
-        env:
-          HOME: /root
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: "npm"
+
+      - name: Install dependencies
         run: npm ci
 
-      - name: Build unpacked Electron app
-        env:
-          HOME: /root
-        run: npx electron-builder --dir --linux --x64
+      - name: Build deb
+        run: npm run build:deb
 
-      - name: Build anylinux AppImage
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-build
+          path: dist/**/*.deb
+          retention-days: 5
+
+  build-linux-anylinux:
+    name: Build Linux (anylinux AppImage)
+    needs: [build-linux, build-linux-deb]
+    if: |
+      always() &&
+      (github.event_name == 'push' ||
+      github.event.inputs.platform == 'all' ||
+      github.event.inputs.platform == 'linux-only' ||
+      github.event.inputs.platform == 'linux-anylinux-only') &&
+      (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') &&
+      (needs.build-linux-deb.result == 'success' || needs.build-linux-deb.result == 'skipped') &&
+      (needs.build-linux.result == 'success' || needs.build-linux-deb.result == 'success')
+    runs-on: ubuntu-latest
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparing Container
+        uses: pkgforge-dev/anylinux-setup-action@v2
+
+      - name: Download Linux build artifact
+        if: needs.build-linux.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: ./dist
+
+      - name: Download deb artifact
+        if: needs.build-linux-deb.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-deb-build
+          path: ./dist
+
+      - name: Build Anylinux AppImage
         env:
-          VERSION: ${{ steps.get_version.outputs.version }}
           DISPLAY: ":99"
+          HOME: /root
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          LOCAL_DEB_DIR: "./dist"
         run: |
           Xvfb :99 -screen 0 1024x768x24 -ac &
           XVFB_PID=$!
+          chmod +x scripts/build-anylinux-appimage.sh
           bash scripts/build-anylinux-appimage.sh
           kill $XVFB_PID 2>/dev/null || true
 
@@ -177,8 +192,14 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-win, build-linux, build-linux-anylinux, build-mac]
-    if: always() && (needs.build-win.result == 'success' || needs.build-win.result == 'skipped') && (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') && (needs.build-linux-anylinux.result == 'success' || needs.build-linux-anylinux.result == 'skipped' || needs.build-linux-anylinux.result == 'failure') && (needs.build-mac.result == 'success' || needs.build-mac.result == 'skipped')
+    needs: [build-win, build-linux, build-linux-deb, build-linux-anylinux, build-mac]
+    if: |
+      always() &&
+      (needs.build-win.result == 'success' || needs.build-win.result == 'skipped') &&
+      (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') &&
+      (needs.build-linux-deb.result == 'success' || needs.build-linux-deb.result == 'skipped') &&
+      (needs.build-linux-anylinux.result == 'success' || needs.build-linux-anylinux.result == 'skipped' || needs.build-linux-anylinux.result == 'failure') &&
+      (needs.build-mac.result == 'success' || needs.build-mac.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
