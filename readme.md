@@ -29,7 +29,11 @@ Required to detect music and video on supported websites and send playback data 
 
 **Desktop App**
 
-Required to communicate with Discord and display your media status in Discord Rich Presence.
+Acts as a bridge between the browser extension and Discord, allowing your media status to appear in Discord Rich Presence.
+
+The Desktop App runs in the background as a tray-only application with no visible interface.
+
+All available configuration options can be managed through the dashboard at `http://localhost:3000`
 
 <p>
   <a href="https://github.com/KanashiiDev/web-presence/releases/latest/download/web-presence-3.2.0-x64-installer.exe">
