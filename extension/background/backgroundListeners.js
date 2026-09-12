@@ -1718,6 +1718,14 @@ const setupListeners = () => {
           case "IS_TAB_AUDIBLE":
             result = await handleIsTabAudible(sender);
             break;
+          case "RESTART_LOOP": {
+            const tab = await getSenderTab(sender);
+            if (tab?.id) {
+              browser.tabs.sendMessage(tab.id, { type: "RESTART_LOOP" }, { frameId: 0 }).catch(() => {});
+            }
+            result = { ok: true };
+            break;
+          }
           default:
             result = { ok: false, error: "Unknown message type" };
         }
@@ -1756,7 +1764,7 @@ const setupListeners = () => {
 
         state.parserReloadDebounce = setTimeout(() => {
           parserListMutex(async () => {
-            logInfo("[background:storageChanged]: Parser list change detected, reloaded parser list.");
+            logInfo("[background:storageChanged]: Parser list change detected, reloaded parser list. Triggered by change in key:", key);
             state.parserListLoaded = false;
             await loadParserList();
           }).catch((err) => logError("[background:parserListMutex]:", err));
@@ -1924,19 +1932,6 @@ const setupListeners = () => {
   browser.runtime.onSuspend.addListener(() => {
     logInfo("[background:onSuspend]: Suspending...");
 
-    // Abort pending fetches
-    for (const [, controller] of state.pendingFetches) {
-      try {
-        controller.abort();
-      } catch (_) {}
-    }
-
-    //  Clear the timers
-    for (const [, timerId] of state.audibleTimers) {
-      clearTimeout(timerId);
-    }
-    if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
-
     //  RPC cleanup
     for (const [tabId] of state.activeTabMap) {
       if (state.webOnlyMode) {
@@ -1949,6 +1944,19 @@ const setupListeners = () => {
         }).catch(() => {});
       }
     }
+
+    // Abort pending fetches
+    for (const [, controller] of state.pendingFetches) {
+      try {
+        controller.abort();
+      } catch (_) {}
+    }
+
+    //  Clear the timers
+    for (const [, timerId] of state.audibleTimers) {
+      clearTimeout(timerId);
+    }
+    if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
 
     // Close IndexedDB
     if (_dbPromise) {

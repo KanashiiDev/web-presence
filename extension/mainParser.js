@@ -328,6 +328,7 @@ window.initParsers = async function () {
   await initializeAllParserSettings();
   await scheduleParserListSave();
   await cleanupOrphanSettingsAndEnables();
+  logInfo("[mainParser:initParsers]: Parsers initialized.");
 };
 
 // registerParser - Used to process all built-in parsers.
@@ -350,6 +351,7 @@ window.registerParser = async function ({
   userAdd = false,
   userScript = false,
   initOnly = false,
+  skipSave = false,
   ...rest
 }) {
   const domains = (Array.isArray(domain) ? domain : [domain]).filter(Boolean);
@@ -596,7 +598,9 @@ window.registerParser = async function ({
     });
   }
 
-  scheduleParserListSaveOnce();
+  if (!skipSave) {
+    scheduleParserListSaveOnce();
+  }
 };
 
 // Save parser metadata to storage
@@ -943,6 +947,10 @@ window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
   const msg = event.data;
 
+  if (msg?.type === "IS_PARSER_READY" && window.__parserSystemReady) {
+    window.postMessage({ type: "PARSER_READY" }, "*");
+  }
+
   if (msg?.type === "USER_SCRIPT_USE_SETTING_REQUEST") {
     const { id, key, label, inputType, defaultValue, requestId } = msg;
 
@@ -1034,6 +1042,7 @@ window.addEventListener("message", async (event) => {
         watchAutoDetect: msg.data.watchAutoDetect,
         userAdd: false,
         userScript: true,
+        skipSave: true,
         ...(msg.data.isLibraryActivity && {
           isLibraryActivity: msg.data.isLibraryActivity,
         }),
@@ -1352,4 +1361,5 @@ window.addEventListener("error", (event) => {
 
   window.__parserSystemReady = true;
   window.dispatchEvent(new Event("parser-ready"));
+  window.postMessage({ type: "PARSER_READY" }, "*");
 })();

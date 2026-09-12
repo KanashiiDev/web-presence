@@ -161,9 +161,34 @@ class UserScriptManager {
     // MAIN
     (async function() {
       const trackState = {};
-
-      setTimeout(async () => {
         const __userScriptUsedSettings = [];
+        function waitForParserReady() {
+          return new Promise((resolve) => {
+            let resolved = false;
+            let handler;
+
+            const finish = (reason) => {
+              if (resolved) return;
+              resolved = true;
+              clearTimeout(timeoutId);
+              window.removeEventListener("message", handler);
+              resolve();
+            };
+
+            const timeoutId = setTimeout(() => {
+              finish("timeout fallback (10s)");
+            }, 10000);
+
+            handler = function(event) {
+              if (event.source !== window) return;
+              if (event.data?.type !== "PARSER_READY") return;
+              finish("PARSER_READY received");
+            };
+
+            window.addEventListener("message", handler);
+            window.postMessage({ type: "IS_PARSER_READY" }, "*");
+          });
+        }
         function useSetting(key, label, type, defaultValue) {
           __userScriptUsedSettings.push({ key, label, type, defaultValue });
           return new Promise((resolve, reject) => {
@@ -305,9 +330,9 @@ class UserScriptManager {
             console.groupEnd();
           }
         }
+        await waitForParserReady();
         await updateTrackData();
         setInterval(updateTrackData, 4000);
-      }, 100);
     })();
     `;
   }
@@ -368,6 +393,7 @@ class UserScriptManager {
         this.registeredScripts.set(script.id, registeredUserScript);
       }
 
+      logInfo("[userScriptWorker]: Registered user script:", script.id);
       return { ok: true, registrationId: script.id, raw: registeredUserScript };
     } catch (error) {
       logError("[userScriptWorker]: Failed to register user script:", error);
@@ -406,6 +432,7 @@ class UserScriptManager {
         }
       }
 
+      logInfo("[userScriptWorker]: Unregistered user script:", script.id);
       await this.delay(50);
       return { ok: true };
     } catch (error) {

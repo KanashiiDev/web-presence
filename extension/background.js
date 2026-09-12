@@ -81,14 +81,17 @@ async function scheduleHistoryAdd(tabId, songData) {
             date: tracker.startTime || now,
           });
         } else {
-          logInfo("[background:scheduleHistoryAdd]: Skipped - sameAsLast:", sameAsLast, "saveHistory:", saveHistory);
+          if (!saveHistory) {
+            logInfo("[background:scheduleHistoryAdd]: Skipped - saveHistory disabled for parser:", activeTab?.parserId);
+          } else if (!tracker.skipLogged) {
+            logInfo("[background:scheduleHistoryAdd]: Skipped - song already processed: title:", songData.title, "artist:", songData.artist, "source:", songData.source);
+            state.historyCounters.set(tabId, { ...tracker, skipLogged: true });
+          }
         }
       } catch (error) {
         logError("[background:scheduleHistoryAdd]: History add error:", error);
       }
     });
-    // Clear tracker
-    state.historyCounters.delete(tabId);
   }
 }
 
@@ -578,7 +581,6 @@ const processTab = async (tabId, tabData) => {
   // Radio / stream check (duration = 0)
   if (res.duration <= 0) {
     if (now - tabData.lastUpdated >= CONFIG.activeInterval) {
-      logInfo(`[background:processTab]: Tab ${tabId} is a stream/radio, duration=0, updating state`);
       state.activeTabMap.set(tabId, {
         ...res,
         lastUpdated: now,

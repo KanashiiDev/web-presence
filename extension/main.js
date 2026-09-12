@@ -57,14 +57,14 @@ function stopWatching() {
 }
 
 // Schedule the next update based on activity
-function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, log) {
+function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, log, reason = "") {
   if (!state.activeTab) {
     logInfo("[main:scheduleNextUpdate]: tab not active, skipping");
     return;
   }
 
   if (state.updateTimer) {
-    logInfo("[main:scheduleNextUpdate]: clearing existing timer");
+    logInfo(`[main:scheduleNextUpdate]: update timer rescheduling - reason: ${reason || "reschedule"}`);
     clearTimeout(state.updateTimer);
     state.updateTimer = null;
   }
@@ -82,13 +82,15 @@ function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, log) {
 // Main loop to check for song changes and update RPC
 async function mainLoop() {
   if (state.isUpdating) return;
-  const hostMatch = await waitForHostname();
-  if (!hostMatch) {
-    scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, true);
-    return;
-  }
+  state.isUpdating = true;
 
+  let hostMatch;
   try {
+    hostMatch = await waitForHostname();
+    if (!hostMatch) {
+      scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, true, "HOST_NOT_MATCH");
+      return;
+    }
     const song = await safeGetSongInfo();
     window._lastParsedSong = song && song !== "blocked" ? song : null;
 
@@ -98,8 +100,6 @@ async function mainLoop() {
       state.lastRawPosition = null;
       return;
     }
-
-    state.isUpdating = true;
 
     if (!state.lastUpdateTime) state.lastUpdateTime = Date.now();
     if (!state.lastSeekDetected) state.lastSeekDetected = Date.now();
@@ -386,7 +386,7 @@ async function mainLoop() {
     logError("[main]: Stack trace:", e.stack);
   } finally {
     state.isUpdating = false;
-    scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, hostMatch);
+    scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, hostMatch, "MAIN_LOOP");
   }
 }
 
@@ -594,7 +594,7 @@ function messageHandler(message, sender, sendResponse) {
 
   if (message.type === "RESTART_LOOP") {
     state.lastUpdateTime = 0;
-    scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, true);
+    scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, true, "RESTART_LOOP");
   }
 
   if (message.action === "reloadPage") location.reload();

@@ -2334,17 +2334,7 @@ const getSafeHref = (getFn, key, fallback) => {
 // Get Sender Tab
 async function getSenderTab(sender) {
   if (sender?.tab?.id) return sender.tab;
-
-  try {
-    const [activeTab] = await browser.tabs.query({
-      active: true,
-      lastFocusedWindow: true,
-    });
-    if (activeTab) return activeTab;
-  } catch (err) {
-    logWarn("[background]: getSenderTab fallback error:", err);
-  }
-
+  logWarn("[background]: getSenderTab - sender.tab missing");
   return null;
 }
 
