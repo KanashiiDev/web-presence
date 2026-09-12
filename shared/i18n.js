@@ -35,7 +35,7 @@
     return str;
   }
 
-  const LOG_PREFIX = "[WEB PRESENCE - i18n]";
+  const LOG_PREFIX = "[WEB PRESENCE - i18n]:";
 
   // Class
 
@@ -184,23 +184,21 @@
         fetchWithFallback(base, `${ns}.json`),
       ]);
 
+      this.lang = lang;
       let main = fetchedMain;
 
       if (main == null) {
-        if (lang !== this.fallbackLang) {
-          console.log(`${LOG_PREFIX} "${lang}" not found, falling back to "${this.fallbackLang}".`);
+        if (this.lang !== this.fallbackLang) {
+          console.log(`${LOG_PREFIX} "${this.lang}" not found, falling back to "${this.fallbackLang}".`);
           main = (await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? {};
           this.lang = this.fallbackLang;
         } else {
           console.warn(`${LOG_PREFIX} Fallback language "${this.fallbackLang}" also missing for base "${base}".`);
           main = {};
-          this.lang = lang;
         }
-      } else if (!this.lang) {
-        this.lang = lang;
       }
 
-      const fallback = this.lang !== this.fallbackLang ? ((await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? main) : main;
+      const fallback = this.lang !== this.fallbackLang ? ((await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? {}) : main;
 
       this._translations[ns] = { ...(sharedMain ?? {}), ...main };
       this._fallback[ns] = { ...(sharedFallback ?? {}), ...fallback };
@@ -253,13 +251,20 @@
       const tr = this._translations[ns] ?? {};
       const fb = this._fallback[ns] ?? {};
 
-      let str = resolve(tr, key) ?? resolve(fb, key);
+      let str = resolve(tr, key);
 
       if (str == null) {
-        console.log(`${LOG_PREFIX} Missing key: "${key}" (ns: "${ns}")`);
-        str = key;
+        const fallbackStr = resolve(fb, key);
+
+        if (fallbackStr != null) {
+          console.log(`${LOG_PREFIX} Key "${key}" missing in "${this.lang}" (ns: "${ns}"). Using fallback value.`);
+          str = fallbackStr;
+        } else {
+          console.log(`${LOG_PREFIX} Key "${key}" not found in "${this.lang}" or fallback (ns: "${ns}").`);
+          str = key;
+        }
       } else if (typeof str !== "string") {
-        console.warn(`${LOG_PREFIX} Key "${key}" resolved to a non-string value.`);
+        console.log(`${LOG_PREFIX} Key "${key}" resolved to a non-string value.`);
         str = String(str);
       }
 
