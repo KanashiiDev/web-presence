@@ -57,7 +57,7 @@ async function initBackupButtons() {
         if (data.indexedDB?.HistoryDB) {
           await importIndexedDB("HistoryDB", data.indexedDB.HistoryDB);
         }
-        browser.runtime.reload();
+        await restartExtension();
       } catch (err) {
         showAlert("Import failed: " + (err.message || err));
       }

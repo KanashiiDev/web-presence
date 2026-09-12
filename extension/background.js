@@ -659,10 +659,22 @@ const mainLoop = async () => {
   }
 };
 
-const keepAlive = () => {
-  setInterval(() => {
-    chrome.runtime.getPlatformInfo(() => {});
-  }, 20000);
+const keepAliveBackground = () => {
+  if (typeof browser !== "undefined" && browser.alarms) {
+    browser.alarms.create("keepAlive", {
+      periodInMinutes: 0.4,
+    });
+    browser.alarms.onAlarm.addListener((alarm) => {
+      if (alarm.name === "keepAlive") {
+        // keep the service worker awake
+      }
+    });
+  }
+  if (typeof chrome !== "undefined" && chrome.runtime?.getPlatformInfo) {
+    setInterval(() => {
+      chrome.runtime.getPlatformInfo(() => {});
+    }, 20000);
+  }
 };
 
 function buildActivityLocally(data) {
@@ -887,37 +899,24 @@ async function sendToWebOnlyBridge(payload) {
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
 
-  await browser.storage.local.get("serverPort").then((result) => {
-    if (result.serverPort !== undefined) {
-      state.serverPort = result.serverPort;
-      logInfo("[background:init]: Server port loaded:", state.serverPort);
-    }
-  });
+  const storageData = await browser.storage.local.get(["serverPort", "webOnlyMode", "discordWebPort"]);
+  if (storageData.serverPort !== undefined) state.serverPort = storageData.serverPort;
+  if (storageData.webOnlyMode !== undefined) state.webOnlyMode = storageData.webOnlyMode;
+  if (storageData.discordWebPort !== undefined) state.discordWebPort = storageData.discordWebPort;
 
-  await browser.storage.local.get("webOnlyMode").then((result) => {
-    if (result.webOnlyMode !== undefined) {
-      state.webOnlyMode = result.webOnlyMode;
-      logInfo("[background:init]: Extension Only Bridge Mode:", state.webOnlyMode);
-    }
-  });
-
-  await browser.storage.local.get("discordWebPort").then((result) => {
-    if (result.discordWebPort !== undefined) {
-      state.discordWebPort = result.discordWebPort;
-      logInfo("[background:init]: Discord web port loaded:", state.discordWebPort);
-    }
-  });
-
-  debugLogCleanup();
+  await debugLogCleanup();
   setupListeners();
   await parserReady();
   await scriptManager.registerAllScripts();
+
   logInfo("[background:init]: Scripts registered, setting up store");
   await storeService.setupUpdateAlarm();
   await storeService.checkRepoUpdates();
+  await handlePendingTabReload();
+
   logInfo("[background:init]: Init complete, starting main loop");
   await mainLoop();
-  keepAlive();
+  keepAliveBackground();
 };
 
 init();

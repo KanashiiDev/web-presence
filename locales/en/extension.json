@@ -163,6 +163,7 @@
   "setup.connectionMode.webOnly": "Browser Only",
   "setup.connectionMode.webAndApp": "Browser & Desktop App",
   "setup.connectionMode.webOnlyNotice": "In Browser Only mode, a desktop application is not required.",
+  "setup.reload.notice": "To apply this setting, media tabs where the extension is active need to be reloaded. Would you like to reload them now?",
   "setup.companion.header": "Installation Required",
   "setup.companion.message": "This extension requires a companion application to function properly. Please install the required application to continue.",
   "setup.companion.provider": "The application is provided via the latest GitHub release.",

@@ -160,6 +160,7 @@
   "setup.connectionMode.webOnly": "Yalnızca Tarayıcı",
   "setup.connectionMode.webAndApp": "Tarayıcı ve Masaüstü Uygulaması",
   "setup.connectionMode.webOnlyNotice": "Yalnızca Tarayıcı modunda masaüstü uygulamasına ihtiyaç yoktur.",
+  "setup.reload.notice": "Bu ayarın uygulanması için eklentinin etkin olduğu medya sekmelerinin yenilenmesi gerekiyor. Yenilemek istiyor musunuz?",
   "setup.message": "İlk kurulum: Ayarların yüklenmesi için bu popup'ı kapatıp yeniden açın.",
   "setup.list.title": "Aktivite Kütüphanesi",
   "setup.list.message": "Lütfen en az bir aktivite ekleyin.",

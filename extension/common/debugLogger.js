@@ -57,6 +57,7 @@ function syncMemoryLogsWithBackground() {
   if (_IS_BACKGROUND_CTX || isSyncing || _memoryLogs.length === 0) return;
 
   isSyncing = true;
+  let syncFailed = false;
   const countToSend = _memoryLogs.length;
   // Snapshot the slice so later pushes don't affect the in-flight payload
   const logsToSend = _memoryLogs.slice(0, countToSend);
@@ -67,11 +68,13 @@ function syncMemoryLogsWithBackground() {
       if (response?.ok) _memoryLogs.splice(0, countToSend);
     })
     .catch((err) => {
+      syncFailed = true;
+      if (err?.message?.includes("Could not establish connection") || err?.message?.includes("Receiving end does not exist")) return;
       console.error("[debugLogger] Sync failed:", err);
     })
     .finally(() => {
       isSyncing = false;
-      if (_memoryLogs.length > 0) setTimeout(syncMemoryLogsWithBackground, 500);
+      if (!syncFailed && _memoryLogs.length > 0) setTimeout(syncMemoryLogsWithBackground, 500);
     });
 }
 

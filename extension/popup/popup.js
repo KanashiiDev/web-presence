@@ -352,7 +352,7 @@ domLoadedListener = async () => {
     applyTsPlugins();
     // Check for wide mode parameter
     const params = new URLSearchParams(window.location.search);
-    if (params.get("wideMode")) document.body.classList.add("wideMode");
+    if (params.get("fullpage")) document.documentElement.classList.add("fullPage");
 
     // Get Connection Mode
     const { webOnlyMode: storedWebMode } = await browser.storage.local.get("webOnlyMode");
@@ -372,7 +372,7 @@ domLoadedListener = async () => {
     const hasPermission = await browser.permissions.contains({
       origins: ["*://*/*"],
     });
-    if (!hasPermission) await showHostPermissionDialog();
+    if (!hasPermission) await showHostPermissionDialog(null, loadingOverlay);
 
     // Motion Preference Check
     await initMotionPreference();

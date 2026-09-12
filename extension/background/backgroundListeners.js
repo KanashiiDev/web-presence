@@ -40,7 +40,7 @@ const handleSaveUserScript = async (req) => {
     const rawDomains = scriptData.domain.split(",");
     scriptData.domain = rawDomains.length > 1 ? rawDomains.map(cleanDomain).filter(Boolean) : cleanDomain(scriptData.domain);
   }
-  scriptData.urlPatterns = scriptData.urlPatterns ? PatternValidator.normalizePatterns(scriptData.urlPatterns) : ["/.*/"];
+
   if (previousId) {
     const prevIndex = scriptsList.findIndex((s) => s.id === previousId);
     if (prevIndex >= 0) {
@@ -1921,63 +1921,121 @@ const setupListeners = () => {
   });
 
   // onSuspend
-  browser.runtime.onSuspend.addListener(async () => {
-    logInfo("[background:onSuspend]: Service worker suspending, cleaning up", state.activeTabMap.size, "tabs");
-    const allTabs = Array.from(state.activeTabMap.keys());
-    for (const tabId of allTabs) {
-      const controller = state.pendingFetches.get(tabId);
-      if (controller) controller.abort();
-      await cleanupRpcForTab(tabId);
+  browser.runtime.onSuspend.addListener(() => {
+    logInfo("[background:onSuspend]: Suspending...");
+
+    // Abort pending fetches
+    for (const [, controller] of state.pendingFetches) {
+      try {
+        controller.abort();
+      } catch (_) {}
     }
-    state.activeTabMap.clear();
-    state.pendingFetches.clear();
+
+    //  Clear the timers
+    for (const [, timerId] of state.audibleTimers) {
+      clearTimeout(timerId);
+    }
+    if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
+
+    //  RPC cleanup
+    for (const [tabId] of state.activeTabMap) {
+      if (state.webOnlyMode) {
+        sendToWebOnlyBridge({ activity: null }).catch(() => {});
+      } else {
+        fetch(`http://localhost:${state.serverPort}/clear-rpc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: `tab_${tabId}` }),
+        }).catch(() => {});
+      }
+    }
+
+    // Close IndexedDB
+    if (_dbPromise) {
+      _dbPromise
+        .then((db) => {
+          try {
+            db.close();
+          } catch (_) {}
+        })
+        .catch(() => {});
+    }
   });
 
   // Context Menu
   const manifestVersion = browser.runtime.getManifest().manifest_version;
   const contextType = manifestVersion === 3 ? "action" : "browser_action";
 
-  // Create Menu
-  try {
-    browser.contextMenus.removeAll().finally(() => {
-      // Restart Extension
-      browser.contextMenus.create({
+  const setupContextMenus = async () => {
+    try {
+      await browser.contextMenus.removeAll();
+
+      // A helper function to create menus
+      const createMenu = (options) => {
+        return new Promise((resolve, reject) => {
+          browser.contextMenus.create(options, () => {
+            if (browser.runtime.lastError) {
+              if (browser.runtime.lastError.message?.includes("already exists")) {
+                resolve();
+              } else {
+                reject(new Error(browser.runtime.lastError.message));
+              }
+            } else {
+              resolve();
+            }
+          });
+        });
+      };
+
+      // Create the menus
+      await createMenu({
+        id: "fullPageMode",
+        title: "Open in full page",
+        contexts: [contextType],
+      });
+
+      await createMenu({
         id: "reloadExtension",
         title: "Restart the extension (Page Reload Required)",
         contexts: [contextType],
       });
 
-      // Toggle Debug Mode
-      browser.contextMenus.create({
+      await createMenu({
         id: "toggleDebugMode",
         title: "Toggle Debug Mode (Check Developer Console)",
         contexts: [contextType],
       });
 
-      // Reset to Defaults
-      browser.contextMenus.create({
-        id: "factoryReset",
-        title: "Reset to Defaults (Click > Open Menu Again > Confirm)",
-        contexts: [contextType],
-      });
-    });
-  } catch (err) {}
+      logInfo("[background:setupContextMenus]: Context menus created successfully");
+    } catch (err) {
+      logError("[background:setupContextMenus]: Failed to create menus:", err);
+    }
+  };
+
+  setupContextMenus();
 
   // Handle click on menu
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
+    // FullPage Mode Action
+    if (info.menuItemId === "fullPageMode") {
+      const url = browser.runtime.getURL(`popup/popup.html?fullpage=1`);
+      await browser.tabs.query({ url }).then(([existing]) => {
+        if (existing) {
+          browser.tabs.update(existing.id, { active: true });
+          browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
+        } else {
+          browser.tabs.create({ url });
+        }
+      });
+    }
     // Restart Extension Action
     if (info.menuItemId === "reloadExtension") {
-      restartExtension(tab);
+      await restartExtension();
     }
 
     // Toggle Debug Mode Action
     if (info.menuItemId === "toggleDebugMode") {
-      toggleDebugMode(tab);
-    }
-
-    // Reset to Defaults Action
-    if (info.menuItemId === "factoryReset") {
-      factoryReset(tab);
+      await toggleDebugMode();
     }
   });
 };

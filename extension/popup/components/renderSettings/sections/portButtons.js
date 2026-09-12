@@ -1,4 +1,13 @@
 async function buildPortButtons(container) {
+  async function confirmReload() {
+    return showConfirm("", {
+      type: "info",
+      heading: i18n.t("setup.reload.notice"),
+      labelCancel: i18n.t("common.cancel"),
+      body: "",
+    });
+  }
+
   // Port
   const portWrapper = document.createElement("div");
   portWrapper.className = "settings-option port-wrapper";
@@ -32,17 +41,15 @@ async function buildPortButtons(container) {
   btnApply.addEventListener("click", async () => {
     btnApply.classList.toggle("spinner");
     try {
-      const [activeTab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
+      const confirmed = await confirmReload();
 
+      if (!confirmed) return;
       await browser.runtime.sendMessage({
         type: "UPDATE_RPC_PORT",
         data: { newPort: Number(portInput.value) },
       });
 
-      restartExtension(activeTab);
+      await restartExtension();
     } catch (err) {
       logError("[Port]: Port update failed:", err);
     } finally {
@@ -88,17 +95,15 @@ async function buildPortButtons(container) {
   btnWebBridgeApply.addEventListener("click", async () => {
     btnWebBridgeApply.classList.toggle("spinner");
     try {
-      const [activeTab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
+      const confirmed = await confirmReload();
 
+      if (!confirmed) return;
       await browser.runtime.sendMessage({
         type: "UPDATE_WEB_BRIDGE_PORT",
         data: { newPort: Number(webBridgeInput.value) },
       });
 
-      restartExtension(activeTab);
+      await restartExtension();
     } catch (err) {
       logError("[Web Bridge]: Port update failed:", err);
     } finally {
@@ -144,7 +149,9 @@ async function buildPortButtons(container) {
   portWrapper.insertAdjacentElement("beforebegin", modeWrapper);
 
   requestAnimationFrame(() => {
-    new TomSelect(modeSelect, {
+    let previousValue = modeSelect.value;
+
+    const ts = new TomSelect(modeSelect, {
       controlInput: null,
       sortField: false,
       plugins: {
@@ -153,6 +160,17 @@ async function buildPortButtons(container) {
       },
       async onChange(value) {
         const isWeb = value === "web-only";
+
+        // If the user does not give consent, cancel the operation and revert to the old value
+        const confirmed = await confirmReload();
+
+        if (!confirmed) {
+          ts.setValue(previousValue, true);
+          return;
+        }
+
+        // If approved, keep the new value as the current record and update the storage
+        previousValue = value;
         await browser.storage.local.set({ webOnlyMode: isWeb });
 
         // Enable/disable the port input according to the mode
@@ -160,9 +178,7 @@ async function buildPortButtons(container) {
         webBridgeInput.disabled = isWeb;
         btnApply.classList.toggle("disabled", isWeb);
         btnWebBridgeApply.classList.toggle("disabled", isWeb);
-
-        const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-        restartExtension(activeTab);
+        await restartExtension();
       },
     });
 
@@ -218,16 +234,20 @@ async function buildPortButtons(container) {
   };
 
   btnRestart.onclick = async () => {
-    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    restartExtension(activeTab);
+    const confirmed = await confirmReload();
+
+    if (!confirmed) return;
+    await restartExtension();
   };
 
   const debugWrap = document.createElement("div");
   debugWrap.className = "debug-wrap";
 
   btnDebug.onclick = async () => {
-    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    await toggleDebugMode(activeTab);
+    const confirmed = await confirmReload();
+
+    if (!confirmed) return;
+    await toggleDebugMode();
 
     const { debugMode: newStored } = await browser.storage.local.get("debugMode");
     debugState = newStored ?? CONFIG.debugMode;
@@ -236,7 +256,7 @@ async function buildPortButtons(container) {
     btnDebug.classList.toggle("active", isActive);
     btnDebugSection.classList.toggle("active", isActive);
     btnDebug.textContent = i18n.t(isActive ? "settings.debug.disable" : "settings.debug.enable");
-    restartExtension(activeTab);
+    await restartExtension();
   };
 
   btnDebugSection.onclick = () => openSettingsPage("debug");
@@ -247,7 +267,7 @@ async function buildPortButtons(container) {
 
   btnFactory.onclick = async () => {
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    const result = await factoryReset(activeTab, true);
+    const result = await factoryReset(activeTab);
 
     if (result?.needConfirm) {
       btnFactory.textContent = i18n.t("settings.factory_confirm");

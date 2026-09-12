@@ -50,6 +50,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "isValidUrl",
     "isDomainMatch",
     "sendAction",
+    "handlePendingTabReload",
     "restartExtension",
     "toggleDebugMode",
     "factoryResetConfirm",

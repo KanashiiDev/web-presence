@@ -1819,7 +1819,8 @@ async function showInitialSetupDialog(appendBody, isSetupAlreadyDone, loadingOve
 }
 
 // Show host permission dialog
-async function showHostPermissionDialog(appendBody) {
+async function showHostPermissionDialog(appendBody, loadingOverlay) {
+  if (loadingOverlay) loadingOverlay.remove();
   return new Promise((resolve) => {
     const wrapper = document.createElement("div");
     wrapper.id = "setupAlert";
@@ -2428,8 +2429,9 @@ async function activateSimpleBar(targets, timeout = 500, interval = 30) {
 
 // Destroy Single Simplebar
 async function destroySimplebar(panelOrId) {
-  const panel = typeof panelOrId === "string" ? document.getElementById(panelOrId) : panelOrId;
+  if (!panelOrId) return;
 
+  const panel = typeof panelOrId === "string" ? document.getElementById(panelOrId) : panelOrId;
   if (!panel) return;
 
   const instance = simpleBarInstances.get(panel);
@@ -2954,22 +2956,73 @@ function hidePopupMessage() {
   }
 }
 
-// Restart Extension
-async function restartExtension(tab) {
+// Handle pending tab reload
+const handlePendingTabReload = async () => {
   try {
-    if (tab && tab.id) {
-      await browser.tabs.reload(tab.id);
-      browser.runtime.reload();
+    const { _pendingReloadTabId } = await browser.storage.local.get("_pendingReloadTabId");
+    if (!_pendingReloadTabId) return;
+
+    await browser.storage.local.remove("_pendingReloadTabId");
+    logInfo("[background]: pending reload detected, reloading tabs...");
+
+    const tabIds = Array.isArray(_pendingReloadTabId) ? _pendingReloadTabId : [_pendingReloadTabId];
+    await Promise.allSettled(tabIds.map((id) => browser.tabs.reload(id).catch(() => {})));
+
+    logInfo("[background]: tabs reloaded");
+  } catch (err) {
+    logError("[background]: handlePendingTabReload error:", err);
+  }
+};
+
+// Restart Extension
+async function restartExtension(onlyActiveTab = false) {
+  try {
+    let reloadTabIds = [];
+    if (onlyActiveTab) {
+      const [activeTab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (activeTab?.id) reloadTabIds = [activeTab.id];
     } else {
-      browser.runtime.reload();
+      const { parserList = [] } = await browser.storage.local.get("parserList");
+      const domains = parserList.flatMap((p) => (Array.isArray(p.domain) ? p.domain : [p.domain])).filter(Boolean);
+      const tabs = await browser.tabs.query({});
+      for (const t of tabs) {
+        if (!t.url) continue;
+        try {
+          const url = new URL(t.url);
+          const hostname = url.hostname.replace(/^www\./, "");
+          if (domains.some((d) => hostname === d || hostname.endsWith(`.${d}`))) {
+            reloadTabIds.push(t.id);
+          }
+        } catch {}
+      }
     }
+
+    if (reloadTabIds.length > 0) {
+      await browser.storage.local.set({ _pendingReloadTabId: reloadTabIds });
+    }
+
+    if (typeof _dbPromise !== "undefined" && _dbPromise) {
+      try {
+        const db = await _dbPromise;
+        db.close();
+        await new Promise((r) => setTimeout(r, 50));
+      } catch (_) {}
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    browser.runtime.reload();
   } catch (err) {
     logError("[restartExtension]: Restart the extension error:", err);
+    console.error("[restartExtension] Failed, manual reload may be needed");
   }
 }
 
 // Toggle Debug Mode
-async function toggleDebugMode(tab) {
+async function toggleDebugMode() {
   try {
     const stored = (await browser.storage.local.get("debugMode")).debugMode;
     const current = stored ?? CONFIG.debugMode;
@@ -2977,8 +3030,7 @@ async function toggleDebugMode(tab) {
 
     await browser.storage.local.set({ debugMode: newValue });
     CONFIG.debugMode = newValue;
-
-    if (tab && tab.id) browser.tabs.reload(tab.id);
+    await restartExtension();
   } catch (err) {
     logError("[toggleDebugMode]: Toggle Debug Mode error:", err);
   }
@@ -2989,42 +3041,33 @@ let factoryResetConfirm = false;
 let factoryResetTimer = null;
 const factoryResetTimeout = 5000;
 
-async function factoryReset(tab, fromSettings = false) {
-  const ORIGINAL_FACTORY_TITLE = "Reset to Defaults (Click > Open Menu Again > Confirm)";
-  const CONFIRM_FACTORY_TITLE = "❗ Confirm Reset to Defaults (Click)";
-
-  // Settings Section Action
-  if (fromSettings && !factoryResetConfirm) {
+async function factoryReset(tab) {
+  if (!factoryResetConfirm) {
     factoryResetConfirm = true;
 
-    setTimeout(() => {
+    if (factoryResetTimer) {
+      clearTimeout(factoryResetTimer);
+    }
+
+    factoryResetTimer = setTimeout(() => {
       factoryResetConfirm = false;
+      factoryResetTimer = null;
     }, factoryResetTimeout);
 
     return { needConfirm: true };
   }
 
-  // Context Menu Action
-  if (!fromSettings && !factoryResetConfirm) {
-    factoryResetConfirm = true;
-
-    browser.contextMenus.update("factoryReset", { title: CONFIRM_FACTORY_TITLE });
-
-    factoryResetTimer = setTimeout(() => {
-      factoryResetConfirm = false;
-      browser.contextMenus.update("factoryReset", { title: ORIGINAL_FACTORY_TITLE });
-    }, factoryResetTimeout);
-
-    return;
-  }
-
   // Factory Reset Action
   factoryResetConfirm = false;
-  clearTimeout(factoryResetTimer);
+  if (factoryResetTimer) {
+    clearTimeout(factoryResetTimer);
+    factoryResetTimer = null;
+  }
+
   try {
     await browser.storage.local.clear();
     if (tab && tab.id) await browser.tabs.reload(tab.id);
-    browser.runtime.reload();
+    await restartExtension();
   } catch (err) {
     logError("[factoryReset]: Reset to Defaults error:", err);
   }

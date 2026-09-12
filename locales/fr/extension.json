@@ -161,6 +161,7 @@
   "setup.connectionMode.webOnly": "Navigateur uniquement",
   "setup.connectionMode.webAndApp": "Navigateur et application de bureau",
   "setup.connectionMode.webOnlyNotice": "En mode Navigateur uniquement, l'application de bureau n'est pas requise.",
+  "setup.reload.notice": "Pour appliquer ce paramètre, les onglets multimédias sur lesquels l’extension est active doivent être actualisés. Voulez-vous les actualiser maintenant ?",
   "setup.list.title": "Bibliothèque d’activités",
   "setup.list.message": "Veuillez ajouter au moins une activité.",
   "setup.companion.header": "Installation requise",

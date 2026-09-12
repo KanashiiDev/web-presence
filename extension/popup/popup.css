@@ -68,11 +68,13 @@ body[data-theme] {
   opacity: 1;
 }
 
-body.wideMode {
+html.fullPage,
+html.fullPage body {
   width: 95%;
   margin: auto;
   height: 100vh;
   max-height: 100vh;
+  max-width: 100vw;
 }
 
 html.setup-dialog-open,
@@ -1501,7 +1503,7 @@ footer a:hover,
   padding: 3px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: transparent;
+  background: var(--background-color);
   color: var(--text-color);
   cursor: pointer;
   font-size: 12px;
@@ -1940,13 +1942,13 @@ body.cleaning-mode .selected .history-trash {
   padding: 6px;
   opacity: 1 !important;
   width: calc(100% - 24px) !important;
-  min-width: 290px;
+  min-width: 280px;
   height: 115px !important;
 }
 
 .color.expandable-section {
   height: 250px !important;
-  min-width: 280px;
+  min-width: 270px;
   overflow: auto;
 }
 
