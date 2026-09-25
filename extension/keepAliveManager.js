@@ -10,9 +10,10 @@ class KeepAliveManager {
     this.audioContext = null;
     this.videoElement = null;
     this.peerConnection = null;
+    this.dataChannel = null;
     this.rafId = null;
-    this.canvasRafId = null;
     this.broadcastChannel = null;
+    this._db = null;
   }
 
   log = async (...args) => {
@@ -38,9 +39,8 @@ class KeepAliveManager {
     this.initAudioContext();
     this.initCanvasVideo();
     this.requestWakeLock();
-    this.startRAFLoop();
     this.initBroadcastChannel();
-    this.createIndexedDBActivity();
+    this.initIndexedDB();
 
     this.log("Keep alive initialized");
   }
@@ -65,12 +65,14 @@ class KeepAliveManager {
 
       this.visibilityHandlers.onBlur = () => {};
       this.visibilityHandlers.onVisibilityChange = () => {
-        if (document.hidden) {
-          Object.defineProperty(document, "hidden", {
-            configurable: true,
-            get: () => false,
-          });
-        }
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => false,
+        });
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
       };
 
       window.addEventListener("blur", this.visibilityHandlers.onBlur, true);
@@ -92,49 +94,37 @@ class KeepAliveManager {
 
   async initWebRTC() {
     try {
-      if (!window.RTCPeerConnection) {
-        return;
-      }
+      if (!window.RTCPeerConnection) return;
 
-      this.peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
-      });
+      const setup = () => {
+        this.peerConnection = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+        });
 
-      this.peerConnection.createDataChannel("keepalive", {
-        ordered: false,
-        maxRetransmits: 0,
-      });
-
-      const keepAlive = async () => {
-        if (!this.peerConnection || this.peerConnection.connectionState === "closed") return;
-        try {
-          const offer = await this.peerConnection.createOffer({
-            offerToReceiveAudio: false,
-            offerToReceiveVideo: false,
-          });
-          await this.peerConnection.setLocalDescription(offer);
-        } catch (e) {
-          this.log("WebRTC offer error:", e.message);
-        }
+        this.dataChannel = this.peerConnection.createDataChannel("keepalive", {
+          ordered: false,
+          maxRetransmits: 0,
+        });
       };
 
-      await keepAlive();
-      const webRTCInterval = setInterval(keepAlive, 12000);
-      this.intervals.push(webRTCInterval);
+      setup();
+
+      const pingInterval = setInterval(() => {
+        if (!this.dataChannel) return;
+        if (this.dataChannel.readyState === "open") {
+          try {
+            this.dataChannel.send("ping");
+          } catch (e) {
+            this.log("DataChannel send error:", e.message);
+          }
+        }
+      }, 10000);
+      this.intervals.push(pingInterval);
 
       const reconnectTimer = setInterval(() => {
         if (!this.peerConnection || this.peerConnection.connectionState === "closed" || this.peerConnection.connectionState === "failed") {
           this.peerConnection?.close();
-          this.peerConnection = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
-          });
-
-          this.peerConnection.createDataChannel("keepalive", {
-            ordered: false,
-            maxRetransmits: 0,
-          });
-
-          keepAlive().catch((e) => this.log("Reconnect error:", e));
+          setup();
         }
       }, 30000);
       this.intervals.push(reconnectTimer);
@@ -171,20 +161,17 @@ class KeepAliveManager {
         setupNodes();
       };
 
-      if (this.audioContext.state === "running") {
-        setupNodes();
-      }
+      resume().catch(() => {
+        const events = ["click", "keydown", "pointerdown", "touchstart"];
+        const onGesture = () => {
+          resume().catch((e) => this.log("AudioContext resume error:", e));
+          events.forEach((evt) => document.removeEventListener(evt, onGesture, true));
+        };
 
-      const events = ["click", "keydown", "pointerdown", "touchstart"];
-      const onGesture = () => {
-        resume().catch((e) => this.log("AudioContext resume error:", e));
-        events.forEach((evt) => document.removeEventListener(evt, onGesture, true));
-      };
-
-      this._audioGestureHandler = onGesture;
-      this._audioGestureEvents = events;
-
-      events.forEach((evt) => document.addEventListener(evt, onGesture, { capture: true, once: false }));
+        this._audioGestureHandler = onGesture;
+        this._audioGestureEvents = events;
+        events.forEach((evt) => document.addEventListener(evt, onGesture, { capture: true, once: false }));
+      });
     } catch (e) {
       this.log("AudioContext error:", e);
     }
@@ -243,7 +230,7 @@ class KeepAliveManager {
       const draw = () => {
         ctx.fillStyle = `rgb(${Math.random() * 255},${Math.random() * 255},${Math.random() * 255})`;
         ctx.fillRect(0, 0, 1, 1);
-        this.canvasRafId = requestAnimationFrame(draw);
+        this.rafId = requestAnimationFrame(draw);
       };
 
       draw();
@@ -258,8 +245,8 @@ class KeepAliveManager {
         document.addEventListener(
           "DOMContentLoaded",
           () => {
-            const target = document.body || document.documentElement;
-            target?.appendChild(this.videoHost);
+            const t = document.body || document.documentElement;
+            t?.appendChild(this.videoHost);
           },
           { once: true },
         );
@@ -278,7 +265,6 @@ class KeepAliveManager {
     if (!("wakeLock" in navigator)) return;
 
     const acquire = async () => {
-      if (document.visibilityState !== "visible") return;
       try {
         this.wakeLock = await navigator.wakeLock.request("screen");
         this.wakeLock.addEventListener("release", () => {
@@ -290,21 +276,8 @@ class KeepAliveManager {
     await acquire();
 
     document.addEventListener("visibilitychange", async () => {
-      if (document.visibilityState === "visible" && !this.wakeLock) {
-        await acquire();
-      }
+      if (!this.wakeLock) await acquire();
     });
-  }
-
-  startRAFLoop() {
-    const loop = () => {
-      let s = 0;
-      for (let i = 0; i < 15; i++) {
-        s += Math.random() * 0.1;
-      }
-      this.rafId = requestAnimationFrame(loop);
-    };
-    loop();
   }
 
   initBroadcastChannel() {
@@ -326,28 +299,24 @@ class KeepAliveManager {
     }
   }
 
-  createIndexedDBActivity() {
-    const interval = setInterval(() => {
-      if (!window.indexedDB) return;
+  initIndexedDB() {
+    const req = indexedDB.open("KeepAliveDB", 1);
 
-      const req = indexedDB.open("KeepAliveDB", 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("activity")) {
+        db.createObjectStore("activity", { keyPath: "id", autoIncrement: true });
+      }
+    };
 
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains("activity")) {
-          db.createObjectStore("activity", { keyPath: "id", autoIncrement: true });
-        }
-      };
+    req.onsuccess = (e) => {
+      this._db = e.target.result;
 
-      req.onsuccess = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains("activity")) {
-          db.close();
-          return;
-        }
+      const interval = setInterval(() => {
+        if (!this._db) return;
 
         try {
-          const tx = db.transaction("activity", "readwrite");
+          const tx = this._db.transaction("activity", "readwrite");
           const store = tx.objectStore("activity");
 
           store.add({ ts: Date.now(), r: Math.random() });
@@ -361,18 +330,16 @@ class KeepAliveManager {
             }
           };
 
-          tx.oncomplete = () => db.close();
-          tx.onerror = () => db.close();
+          tx.onerror = (e) => this.log("IndexedDB transaction error:", e.target.error);
         } catch (txError) {
-          this.log("IndexedDB transaction error:", txError);
-          db.close();
+          this.log("IndexedDB error:", txError);
         }
-      };
+      }, 12000);
 
-      req.onerror = (e) => this.log("IndexedDB error:", e.target.error);
-    }, 12000);
+      this.intervals.push(interval);
+    };
 
-    this.intervals.push(interval);
+    req.onerror = (e) => this.log("IndexedDB open error:", e.target.error);
   }
 
   destroy() {
@@ -383,11 +350,6 @@ class KeepAliveManager {
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
-    }
-
-    if (this.canvasRafId) {
-      cancelAnimationFrame(this.canvasRafId);
-      this.canvasRafId = null;
     }
 
     if (this.wakeLock) {
@@ -428,6 +390,11 @@ class KeepAliveManager {
 
     this.videoShadowRoot = null;
 
+    if (this.dataChannel) {
+      this.dataChannel.close();
+      this.dataChannel = null;
+    }
+
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
@@ -436,6 +403,11 @@ class KeepAliveManager {
     if (this.broadcastChannel) {
       this.broadcastChannel.close();
       this.broadcastChannel = null;
+    }
+
+    if (this._db) {
+      this._db.close();
+      this._db = null;
     }
 
     if (this.visibilityOverride) {
