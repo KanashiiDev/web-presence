@@ -324,18 +324,22 @@ function createTitleElements(root, editMode) {
   selectorTip.textContent = "i";
 
   selectorTip.addEventListener("click", async () => {
-    const fields = Object.entries(FIELDS_CONFIG)
+    const children = Object.entries(FIELDS_CONFIG)
       .filter(([, field]) => field.desc)
-      .map(([key, field]) => {
+      .flatMap(([key, field], index, array) => {
         const ignoreType = ["name", "domain"].includes(key);
+        const hasType = !ignoreType && typeof field.placeholder === "string";
+        const line = [h("b", {}, t(field.label)), hasType ? h("i", {}, ` - ${field.placeholder}`) : null, h("br", {}), t(field.desc)];
+        if (index < array.length - 1) {
+          line.push(h("br", {}), h("br", {}));
+        }
 
-        const type = !ignoreType && typeof field.placeholder === "string" ? ` - <i>${field.placeholder}</i>` : "";
-        return `<b>${t(field.label)}</b>${type}\n${t(field.desc)}`;
+        return line;
       });
 
-    const bodyText = fields.join("\n\n");
+    const body = h("span", {}, ...children);
 
-    await showAlert(t("selector.editor.addNew"), bodyText, "tip", {
+    await showAlert(t("selector.editor.addNew"), body, "tip", {
       target: root,
       labelOk: t("common.ok"),
     });
