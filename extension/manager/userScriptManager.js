@@ -95,6 +95,18 @@ class UserScriptUI {
 
     // GitHub Contribute settings
     $("btnGithubSettings").addEventListener("click", () => this.onGithubSettingsClick());
+
+    // Global Ctrl+S / Cmd+S: save from anywhere while the editor is open
+    document.addEventListener("keydown", (e) => {
+      const key = e.key ? e.key.toLowerCase() : "";
+      if ((e.ctrlKey || e.metaKey) && key === "s") {
+        const editor = $("editor");
+        if (editor && !editor.hidden) {
+          e.preventDefault();
+          $("btnSave").click();
+        }
+      }
+    });
   }
 
   async switchTab(tab) {
@@ -149,10 +161,6 @@ class UserScriptUI {
         },
         Esc: function (cm) {
           cm.execCommand("closeSearchAdvanced");
-        },
-        "Ctrl-S": function (cm) {
-          document.getElementById("btnSave").click();
-          cm.preventDefault && cm.preventDefault();
         },
       },
     };
@@ -1473,21 +1481,31 @@ ${codeIndented}
       if (!token) return;
     }
 
-    const upstreamInfo = await githubContributeService.fetchUpstreamScriptInfo(script, token);
+    let upstreamInfo = null;
+    try {
+      upstreamInfo = await githubContributeService.fetchUpstreamScriptInfo(script, token);
+    } catch (err) {
+      logError("[userScriptManager]: Unable to retrieve upstream information", err);
+      this._showUpstreamFetchErrorModal(err);
+      return;
+    }
 
-    if (upstreamInfo) {
-      const versionCmp = githubContributeService._compareVersions(upstreamInfo.version, script.version);
+    // If upstream information is available, perform a version comparison
+    if (upstreamInfo && upstreamInfo.version) {
+      const versionCmp = githubContributeService._compareVersions(upstreamInfo.version, script.version || "1.0.0");
 
-      // Block the upstream version if it is the same as or newer than the local script version.
+      // If the version in the repo is equal to or newer than the local version, block it
       if (versionCmp >= 0) {
         this._showVersionBlockModal(script, upstreamInfo);
         return;
       }
     }
 
+    // Show the confirmation modal
     const confirmResult = await this.showContributeConfirmModal(script, upstreamInfo);
     if (!confirmResult || !confirmResult.confirmed) return;
 
+    // Initiate the PR submission process
     await this.runContributeFlow(script, token, confirmResult.commitMessage);
   }
 
@@ -1540,6 +1558,44 @@ ${codeIndented}
     document.body.appendChild(modal);
   }
 
+  _showUpstreamFetchErrorModal(err) {
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.style.display = "flex";
+    modal.style.zIndex = "10000";
+
+    const content = document.createElement("div");
+    content.className = "modal-content contribute-confirm-content";
+
+    const title = document.createElement("h2");
+    title.textContent = i18n.t("userscript.contribute.upstream.error.title");
+
+    const msg = document.createElement("p");
+    msg.className = "contribute-status error";
+    msg.textContent = i18n.t("userscript.contribute.upstream.error.message");
+
+    const hint = document.createElement("p");
+    hint.className = "contribute-confirm-desc";
+    hint.textContent = err.message || "";
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "button-group footer-buttons";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "close-button";
+    closeBtn.textContent = i18n.t("common.close");
+
+    closeBtn.addEventListener("click", () => modal.remove());
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    btnRow.appendChild(closeBtn);
+    content.append(title, msg, hint, btnRow);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+  }
+
   async showContributeConfirmModal(script, upstreamInfo = null) {
     return new Promise((resolve) => {
       const isUpdate = !!upstreamInfo;
@@ -1567,7 +1623,7 @@ ${codeIndented}
       }
 
       if (isUpdate) {
-        const filePath = githubContributeService.getFilePath(script);
+        const filePath = upstreamInfo?.filePath ?? githubContributeService.getFilePath(script);
         const targetUrl = `https://github.com/${GITHUB_CONTRIBUTE.UPSTREAM_OWNER}/${GITHUB_CONTRIBUTE.UPSTREAM_REPO}/blob/main/${filePath}`;
         const compareContainer = document.createElement("div");
         compareContainer.className = "contribute-compare";
@@ -2027,7 +2083,8 @@ ${codeIndented}
         try {
           const user = await githubContributeService.fetchAndCacheUser();
           renderUser(user);
-          this.refreshGithubAuthBadge();
+          await this.refreshGithubAuthBadge();
+          showAlert(i18n.t("common.ok"), "", "tip", { labelOk: i18n.t("common.close") });
         } catch (_) {}
         reloadBtn.disabled = false;
       });
