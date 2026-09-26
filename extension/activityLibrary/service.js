@@ -1,7 +1,7 @@
 const STORE_STORAGE_KEY = "githubStoreRepos";
 const STORE_ETAG_KEY = "githubStoreETags";
 const STORE_ALARM_NAME = "githubStoreUpdateCheck";
-const STORE_CHECK_INTERVAL_HOURS = 6;
+const STORE_CHECK_INTERVAL_MINS = 60;
 
 // IndexedDB for githubStoreRepos
 const IDB_NAME = "githubStore";
@@ -385,6 +385,10 @@ class GitHubStoreService {
       // If the hash hasn't changed, data comes as null - use the scripts in storage
       const scripts = changed ? data : (repo.scripts ?? []);
 
+      // Snapshot of previous script IDs before overwriting — used for "new" detection
+      const previousScriptIds = new Set((repo.scripts ?? []).map((s) => s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors)));
+      const isFirstLoad = repo.scripts == null;
+
       if (changed) {
         repo.scripts = data;
         repo.lastChecked = Date.now();
@@ -438,6 +442,25 @@ class GitHubStoreService {
           logInfo(`[GitHubStore]: Auto-removed: ${script.title} (${script.id}) - no longer in repo`);
         } catch (err) {
           logError(`[GitHubStore]: Auto-remove failed: ${script.id}`, err);
+        }
+      }
+
+      // Detect new scripts: only when hash changed, not on first load, and absent from previous snapshot
+      if (changed && !isFirstLoad) {
+        const trulyNew = scripts.filter((s) => {
+          const sid = s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors);
+          return !previousScriptIds.has(sid);
+        });
+
+        if (trulyNew.length > 0) {
+          try {
+            const { storeNewScriptIds = [] } = await browser.storage.local.get("storeNewScriptIds");
+            const existing = new Set(storeNewScriptIds);
+            for (const s of trulyNew) {
+              existing.add(s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors));
+            }
+            await browser.storage.local.set({ storeNewScriptIds: [...existing] });
+          } catch (_) {}
         }
       }
 
@@ -580,7 +603,7 @@ class GitHubStoreService {
         return;
       }
 
-      const INTERVAL_MINS = STORE_CHECK_INTERVAL_HOURS * 60;
+      const INTERVAL_MINS = STORE_CHECK_INTERVAL_MINS;
       const INTERVAL_MS = INTERVAL_MINS * 60 * 1000;
 
       const repos = await this._loadRepos();

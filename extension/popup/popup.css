@@ -491,6 +491,24 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   background: var(--foreground-color-300);
 }
 
+#openLibraryBtn {
+  position: relative;
+}
+
+.library-badge-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green-color);
+  -webkit-box-shadow: var(--green-color) 0px 0px 4px;
+  box-shadow: var(--green-color) 0px 0px 4px;
+  pointer-events: none;
+  border: 1px solid;
+}
+
 #clearHistoryBtn {
   cursor: pointer;
   width: 100%;

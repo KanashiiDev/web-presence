@@ -16,8 +16,10 @@ const state = {
   repos: [], // [{ id, url, user, repo, branch, scripts, lastChecked}]
   installed: [], // userScriptsList from storage
   pendingUpdates: [],
+  newScriptIds: new Set(),
   _initialized: false,
   listView: false,
+  storeNewScriptNotification: true,
 };
 
 // WeakMap cache for generateScriptId - avoids recomputing for same meta object
@@ -41,8 +43,6 @@ const checkUpdates = () => apiCall("store_checkUpdates");
 const installScript = (repoId, meta) => apiCall("store_installScript", { repoId, scriptMeta: meta });
 const updateScript = (repoId, meta) => apiCall("store_updateScript", { repoId, scriptMeta: meta });
 const batchUpdate = (updates) => apiCall("store_batchUpdate", { updates });
-const getAutoUpdate = () => apiCall("store_getAutoUpdate");
-const setAutoUpdate = (enabled) => apiCall("store_setAutoUpdate", { enabled });
 
 const getInstalledScripts = async () => {
   const result = await browser.storage.local.get("userScriptsList").catch(() => ({}));
@@ -134,25 +134,66 @@ const init = async () => {
 
   bindEvents();
 
-  const { libraryListView = false } = await browser.storage.local.get("libraryListView");
+  const { libraryListView = false, storeNewScriptNotification = true } = await browser.storage.local.get(["libraryListView", "storeNewScriptNotification"]);
+
   state.listView = libraryListView;
-  const label = getElem("btnToggleViewLabel");
-  if (label) label.appendChild(createSVG(state.listView ? svg_paths.gridViewIconPaths : svg_paths.listViewIconPaths));
+  state.storeNewScriptNotification = storeNewScriptNotification;
+
+  state._initialized = true;
+
+  const bindCheckbox = async ({ elemId, storageKey, defaultValue = false, onChange }) => {
+    const elem = getElem(elemId);
+    if (!elem) return;
+
+    const result = await browser.storage.local.get(storageKey).catch(() => ({}));
+    const isChecked = result[storageKey] ?? defaultValue;
+    elem.checked = isChecked;
+
+    elem.addEventListener("change", async (e) => {
+      const checked = e.target.checked;
+      await browser.storage.local.set({ [storageKey]: checked }).catch(() => {});
+
+      if (onChange) {
+        await onChange(checked);
+      }
+    });
+  };
+
+  await bindCheckbox({
+    elemId: "chkAutoUpdate",
+    storageKey: "storeAutoUpdate",
+    defaultValue: true,
+  });
+
+  await bindCheckbox({
+    elemId: "newScriptNotification",
+    storageKey: "storeNewScriptNotification",
+    defaultValue: true,
+    onChange: (isChecked) => {
+      state.storeNewScriptNotification = isChecked;
+    },
+  });
+
+  await bindCheckbox({
+    elemId: "chkLibraryListView",
+    storageKey: "libraryListView",
+    defaultValue: false,
+    onChange: (isChecked) => {
+      state.listView = isChecked;
+
+      document.querySelectorAll(".script-list").forEach((el) => {
+        el.classList.toggle("list-view", state.listView);
+      });
+
+      document.querySelectorAll(".script-row:not([style*='display: none'])").forEach(refreshDescriptionToggle);
+    },
+  });
 
   renderAll();
   applyTranslations("extension");
   initApplyAttrs();
   initStorageListener();
   initMotionPreference();
-
-  state._initialized = true;
-
-  const autoUpdateResult = await getAutoUpdate().catch(() => ({ ok: false }));
-  const chkAutoUpdate = getElem("chkAutoUpdate");
-  if (chkAutoUpdate) {
-    chkAutoUpdate.checked = autoUpdateResult?.enabled ?? false;
-    chkAutoUpdate.addEventListener("change", (e) => setAutoUpdate(e.target.checked).catch(() => {}));
-  }
 };
 
 const injectHeaderIcons = () => {
@@ -184,28 +225,70 @@ const injectHeaderIcons = () => {
 
   const headerRight = document.querySelector(".library-header-right");
   if (headerRight) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "auto-update-wrapper";
+    const createToggleItem = (wrapperClass, labelI18n, labelText, inputId) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = `${wrapperClass} item`;
 
-    const labelText = document.createElement("span");
-    labelText.className = "auto-update-label";
-    labelText.setAttribute("data-i18n", "library.autoUpdate");
-    labelText.textContent = "Auto Update";
+      const span = document.createElement("span");
+      span.className = `${wrapperClass} label`;
+      span.setAttribute("data-i18n", labelI18n);
+      span.textContent = labelText;
 
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.id = "chkAutoUpdate";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = inputId;
 
-    const slider = document.createElement("span");
-    slider.className = "slider";
+      const slider = document.createElement("span");
+      slider.className = "slider";
 
-    const switchLabel = document.createElement("label");
-    switchLabel.className = "switch-label";
-    switchLabel.id = "autoUpdateSwitch";
-    switchLabel.append(input, slider);
+      const switchLabel = document.createElement("label");
+      switchLabel.className = "switch-label";
+      switchLabel.append(input, slider);
 
-    wrapper.append(labelText, switchLabel);
-    headerRight.insertBefore(wrapper, headerRight.firstChild);
+      wrapper.append(span, switchLabel);
+      return wrapper;
+    };
+
+    const menuContainer = document.createElement("div");
+    menuContainer.className = "toggle-menu-container";
+    menuContainer.style.position = "relative";
+
+    const menuBtn = document.createElement("button");
+    menuBtn.className = "btn-toggle-menu library-btn secondary";
+    menuBtn.id = "btnToggleMenu";
+    menuBtn.appendChild(createSVG(svg_paths.gearIconPaths, 14));
+
+    const dropdown = document.createElement("div");
+    dropdown.className = "toggle-dropdown-menu";
+    dropdown.style.display = "none";
+
+    // Auto Update Toggle
+    const autoUpdateWrapper = createToggleItem("auto-update-wrapper", "library.autoUpdate", "Auto Update", "chkAutoUpdate");
+
+    // New Script Notification Toggle
+    const notificationWrapper = createToggleItem("script-notification-wrapper", "library.newScriptNotification", "New Script Notification", "newScriptNotification");
+
+    // View Toggle
+    const libraryListViewWrapper = createToggleItem("list-view-wrapper", "library.listView", "List View", "chkLibraryListView");
+
+    dropdown.append(autoUpdateWrapper, notificationWrapper, libraryListViewWrapper);
+    menuContainer.append(menuBtn, dropdown);
+
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isVisible = dropdown.style.display === "flex";
+      dropdown.style.display = isVisible ? "none" : "flex";
+    });
+
+    document.addEventListener("click", () => {
+      dropdown.style.display = "none";
+    });
+
+    dropdown.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+
+    headerRight.appendChild(menuContainer);
   }
 };
 
@@ -263,9 +346,14 @@ const ensureMainRepo = async () => {
 };
 
 const loadAll = async () => {
-  const [repoRes, installed] = await Promise.all([listRepos().catch(() => ({ ok: true, list: [] })), getInstalledScripts()]);
+  const [repoRes, installed, { storeNewScriptIds = [] }] = await Promise.all([
+    listRepos().catch(() => ({ ok: true, list: [] })),
+    getInstalledScripts(),
+    browser.storage.local.get("storeNewScriptIds"),
+  ]);
   state.repos = repoRes.list ?? [];
   state.installed = installed;
+  state.newScriptIds = new Set(storeNewScriptIds);
   recomputePendingUpdates();
 };
 
@@ -315,20 +403,6 @@ const bindEvents = () => {
   on("btnToggleAdvanced", "click", handleToggleAdvanced);
   on("btnConfirmAddRepo", "click", handleAddRepo);
   on("btnCancelAddRepo", "click", () => toggleAddRepoPanel(false));
-  on("btnToggleView", "click", () => {
-    state.listView = !state.listView;
-    const label = getElem("btnToggleViewLabel");
-    if (label) {
-      label.replaceChildren();
-      label.appendChild(createSVG(state.listView ? svg_paths.gridViewIconPaths : svg_paths.listViewIconPaths));
-    }
-    document.querySelectorAll(".script-list").forEach((el) => {
-      el.classList.toggle("list-view", state.listView);
-    });
-    browser.storage.local.set({ libraryListView: state.listView }).catch(() => {});
-
-    document.querySelectorAll(".script-row:not([style*='display: none'])").forEach(refreshDescriptionToggle);
-  });
 
   const urlInput = getElem("repoUrlInput");
   if (urlInput) {
@@ -586,6 +660,7 @@ const handleScriptAction = async (btn, action) => {
   state.installed = await getInstalledScripts();
   recomputePendingUpdates();
   renderUpdateBanner();
+  updateRepoBadgeInPlace(repoId);
 
   const installedMap = buildInstalledMap();
 
@@ -817,6 +892,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
     { key: "all", label: i18n.t("library.filter.all") },
     { key: "installed", label: i18n.t("library.filter.installed") },
     { key: "updates", label: i18n.t("library.filter.updates") },
+    { key: "new", label: i18n.t("library.filter.new") },
   ];
 
   for (const f of filters) {
@@ -839,6 +915,49 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   });
 
   inner.appendChild(filterBar);
+
+  if (repo.id === MAIN_REPO_ID) {
+    const newInRepo = (repo.scripts ?? []).filter((s) => {
+      const sid = s.id ?? generateScriptId(s);
+      return state.newScriptIds.has(sid);
+    });
+
+    if (state.storeNewScriptNotification && newInRepo.length > 0) {
+      const newBanner = document.createElement("div");
+      newBanner.className = "repo-badge new";
+
+      const text = document.createElement("span");
+      text.className = "repo-new-banner-text";
+      text.textContent = i18n.t("library.banner.newActivities", [newInRepo.length]);
+
+      const dismissBanner = () => {
+        newBanner.remove();
+        browser.storage.local.set({ storeNewScriptIds: [] }).catch(() => {});
+        state.newScriptIds.clear();
+      };
+
+      const showBtn = document.createElement("button");
+      showBtn.className = "library-btn small show";
+      showBtn.textContent = i18n.t("library.banner.showNew");
+      showBtn.addEventListener("click", () => {
+        const chip = block.querySelector(".filter-chip[data-filter='new']");
+        if (chip) {
+          block.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
+          chip.classList.add("active");
+          applyFiltersInPlace(block, true);
+        }
+        dismissBanner();
+      });
+
+      const dismissBtn = document.createElement("button");
+      dismissBtn.className = "library-btn small close";
+      dismissBtn.textContent = i18n.t("common.close");
+      dismissBtn.addEventListener("click", dismissBanner);
+
+      newBanner.append(text, showBtn, dismissBtn);
+      inner.appendChild(newBanner);
+    }
+  }
 
   const scriptListEl = document.createElement("div");
   scriptListEl.className = "script-list";
@@ -879,22 +998,42 @@ const renderPagination = (block, repoId, totalVisible, currentPage) => {
   existing?.remove();
 
   const totalPages = Math.ceil(totalVisible / PAGE_SIZE);
-  if (totalPages <= 1) return;
+  const activeChip = block.querySelector(".filter-chip.active");
+  const activeFilter = activeChip?.dataset.filter ?? "all";
+  const isFiltered = activeFilter !== "all";
+
+  if (totalPages <= 1 && !isFiltered) return;
 
   const nav = document.createElement("div");
   nav.className = "script-pagination";
   nav.dataset.repoId = repoId;
 
-  for (let i = 1; i <= totalPages; i++) {
-    const btn = document.createElement("button");
-    btn.className = "pagination-btn" + (i === currentPage ? " active" : "");
-    btn.textContent = i;
-    btn.dataset.page = i;
-    btn.addEventListener("click", () => {
-      paginationState.set(repoId, i);
-      applyFiltersInPlace(block);
+  if (isFiltered) {
+    const backBtn = document.createElement("button");
+    backBtn.className = "pagination-btn pagination-back";
+    backBtn.textContent = i18n.t("library.filter.backToAll");
+    backBtn.addEventListener("click", () => {
+      block.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
+      const allChip = block.querySelector(".filter-chip[data-filter='all']");
+      if (allChip) allChip.classList.add("active");
+      paginationState.set(repoId, 1);
+      applyFiltersInPlace(block, true);
     });
-    nav.appendChild(btn);
+    nav.appendChild(backBtn);
+  }
+
+  if (totalPages > 1) {
+    for (let i = 1; i <= totalPages; i++) {
+      const btn = document.createElement("button");
+      btn.className = "pagination-btn" + (i === currentPage ? " active" : "");
+      btn.textContent = i;
+      btn.dataset.page = i;
+      btn.addEventListener("click", () => {
+        paginationState.set(repoId, i);
+        applyFiltersInPlace(block);
+      });
+      nav.appendChild(btn);
+    }
   }
 
   const inner = block.querySelector(".repo-block-body-inner");
@@ -945,7 +1084,7 @@ const applyFiltersInPlace = (block, resetPage = false) => {
     const local = findLocal(installedMap, sid, meta);
     const hasUpdate = local?.version && isNewer(meta.version, local.version);
 
-    const matchFilter = (filter !== "installed" || !!local) && (filter !== "updates" || !!hasUpdate);
+    const matchFilter = (filter !== "installed" || !!local) && (filter !== "updates" || !!hasUpdate) && (filter !== "new" || state.newScriptIds.has(sid));
 
     let matchSearch = true;
     if (search) {

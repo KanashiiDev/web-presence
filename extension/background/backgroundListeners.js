@@ -1603,14 +1603,6 @@ const setupListeners = () => {
           case "store_removeScript":
             result = await handleStoreRemoveScript(req);
             break;
-          case "store_setAutoUpdate": {
-            await browser.storage.local.set({ storeAutoUpdate: req.enabled });
-            return { ok: true };
-          }
-          case "store_getAutoUpdate": {
-            const { storeAutoUpdate = true } = await browser.storage.local.get("storeAutoUpdate");
-            return { ok: true, enabled: storeAutoUpdate };
-          }
           case "debug_log": {
             if (typeof debugLog === "function") {
               const { level = "info", source = "unknown", args = [] } = req;
@@ -1619,12 +1611,10 @@ const setupListeners = () => {
             result = { ok: true };
             break;
           }
-
           case "debug_read_logs": {
             result = { ok: true, entries: await debugLogReadAll() };
             break;
           }
-
           case "debug_clear_logs": {
             await debugLogClear();
             result = { ok: true };

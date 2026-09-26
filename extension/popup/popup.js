@@ -436,6 +436,13 @@ domLoadedListener = async () => {
     document.querySelector("#openDashboardBtn").appendChild(createSVG(svg_paths.dashboardIconPaths));
     document.querySelector("#openLibraryBtn").appendChild(createSVG(svg_paths.storeIconPaths));
 
+    const { storeNewScriptIds = [], storeNewScriptNotification = true } = await browser.storage.local.get(["storeNewScriptIds", "storeNewScriptNotification"]);
+    if (storeNewScriptNotification && storeNewScriptIds.length > 0) {
+      const dot = document.createElement("span");
+      dot.className = "library-badge-dot";
+      btnStore.appendChild(dot);
+    }
+
     // Initial render
     const renderStatus = await renderList();
     await activateSimpleBar("siteList");
