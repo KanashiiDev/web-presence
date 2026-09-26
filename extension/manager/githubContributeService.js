@@ -112,6 +112,7 @@ class GitHubContributeService {
       authorsLinks: uniqueLinks,
     };
   }
+
   _parseVersionFromContent(content) {
     const match = content.match(/version:\s*["']([^"']+)["']/);
     return match ? match[1] : null;
@@ -142,11 +143,11 @@ class GitHubContributeService {
     const hasBody = options.body != null;
 
     const headers = {
-      Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       ...(options.headers || {}),
     };
+    if (token) headers.Authorization = `Bearer ${token}`;
     if (hasBody) {
       headers["Content-Type"] = "application/json";
     }
@@ -173,7 +174,7 @@ class GitHubContributeService {
       let errorMessage = err.message || `GitHub API error ${res.status}`;
       if (err.errors && Array.isArray(err.errors)) {
         const nestedMessages = err.errors
-          .map((e) => e.message)
+          .map((e) => (typeof e === "string" ? e : e.message || JSON.stringify(e)))
           .filter(Boolean)
           .join("; ");
         if (nestedMessages) {
@@ -221,11 +222,16 @@ class GitHubContributeService {
    */
   async pollForToken(device_code, interval = 5, signal) {
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Track the base interval separately so slow_down only affects the current cycle.
+    // Accumulating interval += 5 on every slow_down would make long auth flows wait forever.
+    let currentInterval = interval;
 
     while (true) {
       if (signal?.aborted) throw new Error("cancelled");
 
-      await delay(interval * 1000);
+      await delay(currentInterval * 1000);
+      // Reset to base after each cycle; slow_down will bump it again if needed
+      currentInterval = interval;
 
       if (signal?.aborted) throw new Error("cancelled");
 
@@ -251,8 +257,8 @@ class GitHubContributeService {
           // Normal - user hasn't approved yet, keep polling
           break;
         case "slow_down":
-          // GitHub wants us to slow down - increase interval
-          interval += 5;
+          // GitHub wants us to back off for this cycle only
+          currentInterval = interval + 5;
           break;
         case "expired_token":
           throw new Error("expired");
@@ -264,14 +270,40 @@ class GitHubContributeService {
     }
   }
 
-  // Path helper
+  /**
+   * Converts the text to camelCase format by removing diacritical marks and special characters.
+   */
+  toCamelCase(text) {
+    if (!text) return "";
+
+    return text
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .map((word, index) => {
+        const isAllUpper = word === word.toUpperCase() && word !== word.toLowerCase();
+
+        if (index === 0) {
+          return isAllUpper ? word.toLowerCase() : word.charAt(0).toLowerCase() + word.slice(1);
+        } else {
+          const normalized = isAllUpper ? word.toLowerCase() : word;
+          return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        }
+      })
+      .join("");
+  }
 
   /**
    * Returns the default commit message for a contribute operation.
    * Single source of truth - used by both the confirm modal preview and the actual commit.
    */
   getDefaultCommitMessage(script, isUpdate) {
-    return isUpdate ? `fix(scripts): update ${script.title} to v${script.version || "1.0.0"}` : `feat(scripts): add ${script.title} activity`;
+    const scope = this.toCamelCase(script.title);
+    const version = script.version ? `v${script.version}` : "v1.0.0";
+    return isUpdate ? `fix(${scope}): update to ${version}` : `feat(${scope}): add activity`;
   }
 
   /**
@@ -286,35 +318,20 @@ class GitHubContributeService {
   }
 
   /**
+   * Determines the folder letter according to the first character of the title (A-Z or 0-9, otherwise "#").
+   */
+  getScriptLetterFolder(title) {
+    const firstChar = (title || "").trim()[0]?.toUpperCase() || "";
+    return /[A-Z0-9]/.test(firstChar) ? firstChar : "#";
+  }
+
+  /**
    * activities/<LETTER>/<scriptId>.js
-   * Letter = first char of script title uppercased (A-Z or 0-9), else "#".
    */
   getFilePath(script) {
-    const title = (script.title || "").trim();
-    const first = title[0]?.toUpperCase() || "0";
-    const letter = /[A-Z]/.test(first) ? first : /[0-9]/.test(first) ? first : "#";
+    const letter = this.getScriptLetterFolder(script.title);
+    const fileName = this.toCamelCase(script.title);
 
-    const hasSpace = /\s/.test(title);
-    const cleaned = title.replace(/\s/g, "");
-    const isAllUpper = cleaned === cleaned.toUpperCase();
-    const isTitleCase = !hasSpace && title[0] === title[0].toUpperCase() && title.slice(1) === title.slice(1).toLowerCase();
-
-    let fileName;
-
-    if (!hasSpace) {
-      fileName = isAllUpper || isTitleCase ? title.toLowerCase() : title;
-    } else {
-      fileName = title
-        .split(/\s+/)
-        .map((word, i) => {
-          const wordIsAllUpper = word === word.toUpperCase();
-          const normalized = wordIsAllUpper ? word.toLowerCase() : word;
-          return i === 0 ? normalized.charAt(0).toLowerCase() + normalized.slice(1) : normalized.charAt(0).toUpperCase() + normalized.slice(1);
-        })
-        .join("");
-    }
-
-    fileName = fileName.replace(/[^a-zA-Z0-9]/g, "");
     return `${GITHUB_CONTRIBUTE.ACTIVITIES_DIR}/${letter}/${fileName}.js`;
   }
 
@@ -391,8 +408,9 @@ class GitHubContributeService {
         authors: this._toStringArray(match.authors),
         authorsLinks: this._toStringArray(match.authorsLinks),
       };
-    } catch (_) {
-      return null;
+    } catch (e) {
+      if (e instanceof SyntaxError || e instanceof TypeError) return null;
+      throw e;
     }
   }
 
@@ -426,7 +444,7 @@ class GitHubContributeService {
     contributeScript.authorsLinks = authorsLinks;
     const fileContent = userScriptUI.exportToRegisterParser([contributeScript]);
 
-    const filePath = this.getFilePath(contributeScript);
+    const filePath = upstreamInfo?.filePath || this.getFilePath(contributeScript);
     const fileBaseName = filePath.split("/").pop().replace(".js", "");
     const branchName = `contribute/${fileBaseName.slice(0, 60)}`;
 
@@ -437,7 +455,8 @@ class GitHubContributeService {
         const remoteFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token).catch(() => null);
 
         if (remoteFile?.content) {
-          const remoteContent = atob(remoteFile.content);
+          const _b64pr = remoteFile.content.replace(/\s/g, "");
+          const remoteContent = new TextDecoder().decode(Uint8Array.from(atob(_b64pr), (c) => c.charCodeAt(0)));
 
           // Content is the same → skip
           if (remoteContent.trim() === fileContent.trim()) {
@@ -474,7 +493,8 @@ class GitHubContributeService {
         const remoteFile = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/contents/${filePath}?ref=main`, {}, token).catch(() => null);
 
         if (remoteFile?.content) {
-          const remoteContent = atob(remoteFile.content);
+          const _b64main = remoteFile.content.replace(/\s/g, "");
+          const remoteContent = new TextDecoder().decode(Uint8Array.from(atob(_b64main), (c) => c.charCodeAt(0)));
 
           // The same content already exists in upstream main
           if (upstreamInfo.version === script.version && remoteContent.trim() === fileContent.trim()) {
@@ -494,46 +514,59 @@ class GitHubContributeService {
       }
     }
 
-    // 4. Fork (idempotent)
+    // 3. Fork (idempotent)
     onStatus("forking");
     await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/forks`, { method: "POST", body: {} }, token);
     await this._waitForFork(forkOwner, UPSTREAM_REPO, token);
 
-    // 5. Fetch upstream default branch info, then sync fork
+    // 4. Sync fork with upstream
     onStatus("syncing");
     const upstream = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}`, {}, token);
     const defaultBranch = upstream.default_branch;
     // Sync first so we get the post-sync HEAD SHA, not a potentially stale one
     try {
       await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/merge-upstream`, { method: "POST", body: { branch: defaultBranch } }, token);
-    } catch (_) {
-      // merge-upstream fails if fork is already up to date on some GitHub versions - safe to ignore
+    } catch (e) {
+      // 409: fork already up to date
+      // 404: fork not fully ready yet
+      // 422: branch tree not fully populated by GitHub yet
+      if (e.status !== 409 && e.status !== 404 && e.status !== 422) throw e;
     }
     const upstreamRef = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/git/ref/heads/${defaultBranch}`, {}, token);
     const baseSha = upstreamRef.object.sha;
 
-    // 6. Create feature branch (idempotent - skip if already exists)
+    // 5. Create feature branch (idempotent - skip if already exists)
     onStatus("branching");
     try {
       await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/git/refs`, { method: "POST", body: { ref: `refs/heads/${branchName}`, sha: baseSha } }, token);
     } catch (e) {
-      if (e.status !== 422 && !e.message.includes("already exists") && !e.message.includes("Reference already exists")) {
+      if (e.status === 422 || e.message.includes("already exists") || e.message.includes("Reference already exists")) {
+        // Branch exists but there is no open PR (open PR case was handled above and returned early).
+        // Force-reset the branch to the current upstream HEAD so stale commits from a previously
+        // rejected/closed PR don't cause the new PR to be silently swallowed.
+        await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/git/refs/heads/${branchName}`, { method: "PATCH", body: { sha: baseSha, force: true } }, token);
+      } else {
         throw e;
       }
     }
 
-    // 7. Check upstream file & Push
+    // 6. Check upstream file & Push
     onStatus("checking");
-    const contentBase64 = btoa(unescape(encodeURIComponent(fileContent)));
+    const _bytes = new TextEncoder().encode(fileContent);
+    const _binary = Array.from(_bytes, (byte) => String.fromCharCode(byte)).join("");
+    const contentBase64 = btoa(_binary);
     let existingFileSha = null;
     const isUpdate = !!upstreamInfo;
 
     try {
-      const forkFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token).catch(async () =>
-        this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${defaultBranch}`, {}, token),
-      );
+      // Only read the SHA from the feature branch itself.
+      // Falling back to defaultBranch would give us a SHA that belongs to a different tree,
+      // which causes GitHub to return 409/422 on the PUT request.
+      const forkFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token);
       existingFileSha = forkFile.sha;
-    } catch (_) {}
+    } catch (_) {
+      // File doesn't exist on the branch yet -> create without SHA
+    }
 
     onStatus("pushing");
     const defaultCommitMessage = this.getDefaultCommitMessage(contributeScript, isUpdate);
@@ -548,7 +581,7 @@ class GitHubContributeService {
 
     await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}`, { method: "PUT", body: commitBody }, token);
 
-    // 8. Open PR
+    // 7. Open PR
     onStatus("opening_pr");
     const domains = [contributeScript.domain].flat().filter(Boolean).join(", ");
     const prTitle = commitMessage;
@@ -565,7 +598,7 @@ class GitHubContributeService {
       contributeScript.description ? `| **Description** | ${contributeScript.description} |` : null,
       ``,
       `---`,
-      `*Submitted via Web Presence UserScript Manager*`,
+      `*Submitted via Web Presence UserScript Manager v${browser.runtime.getManifest().version}*`,
     ]
       .filter((l) => l !== null)
       .join("\n");
@@ -600,9 +633,11 @@ class GitHubContributeService {
         await this._req(`/repos/${owner}/${repo}`, {}, token);
         return;
       } catch (e) {
-        // Propagate auth/permission errors immediately - retrying won't help
-        if (e.status === 401 || e.status === 403) throw e;
-        // 404 means fork isn't ready yet - keep waiting
+        // Only retry on statuses that may resolve with time.
+        // 404: fork not ready yet. 500/502/503/504: transient server errors.
+        // Everything else (401, 403, 422, etc.) won't be fixed by waiting.
+        const RETRYABLE = new Set([404, 500, 502, 503, 504]);
+        if (!RETRYABLE.has(e.status)) throw e;
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
