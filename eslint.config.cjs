@@ -3,10 +3,56 @@ const js = require("@eslint/js");
 
 /**
  * ============================================
- * GLOBAL IGNORES
+ * BASE RULES
+ * Shared rules for standard Node/CommonJS environments
  * ============================================
  */
+function baseRules(overrides = {}) {
+  return {
+    "no-unused-vars": [
+      "error",
+      {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      },
+    ],
+    "no-empty": ["error", { allowEmptyCatch: true }],
+    "no-var": "error",
+    "prefer-const": "warn",
+    "no-console": "off",
+    ...overrides,
+  };
+}
+
+/**
+ * ============================================
+ * EXTENSION RULES
+ * Shared rules for build-inlined extension files
+ * ============================================
+ */
+function extensionRules(overrides = {}) {
+  return {
+    "no-undef": "off",
+    "no-unused-vars": "off",
+    "no-redeclare": "off",
+    "no-empty": ["error", { allowEmptyCatch: true }],
+    "no-var": "error",
+    "prefer-const": "warn",
+    "no-control-regex": "off",
+    "no-useless-escape": "off",
+    "no-prototype-builtins": "off",
+    "no-constant-binary-expression": "warn",
+    ...overrides,
+  };
+}
+
 module.exports = [
+  /**
+   * ============================================
+   * GLOBAL IGNORES
+   * ============================================
+   */
   {
     ignores: [
       "**/node_modules/**",
@@ -18,7 +64,7 @@ module.exports = [
       "**/*.exe",
       "**/*.deb",
       "**/*.rpm",
-      "**/*.appImage",
+      "**/*.AppImage",
       "**/*.blockmap",
       "**/*.pak",
       "**/*.dat",
@@ -34,38 +80,24 @@ module.exports = [
 
   /**
    * ============================================
-   * ESLint Recommended Rules
+   * ESLINT RECOMMENDED RULES
    * ============================================
    */
   js.configs.recommended,
 
   /**
    * ============================================
-   * NODE / ELECTRON
+   * BUILD / TOOLING SCRIPTS - scripts/**
    * ============================================
    */
   {
-    files: ["*.js", "scripts/**/*.js"],
-    ignores: ["eslint.config.cjs", "app/**/*.js"],
+    files: ["scripts/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "commonjs",
       globals: globals.node,
     },
-    rules: {
-      "no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-        },
-      ],
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-console": "off",
-    },
+    rules: baseRules(),
   },
 
   /**
@@ -78,25 +110,9 @@ module.exports = [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "commonjs",
-      globals: {
-        ...globals.node,
-      },
+      globals: { ...globals.node },
     },
-    rules: {
-      "no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-        },
-      ],
-      "no-unused-labels": "off",
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-console": "off",
-    },
+    rules: baseRules({ "no-unused-labels": "off" }),
   },
 
   /**
@@ -106,12 +122,13 @@ module.exports = [
    */
   {
     files: ["server/*.js", "server/routes/**/*.js", "server/rpc/**/*.js", "server/services/**/*.js"],
+    ignores: ["server/utils.js"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "module",
+      sourceType: "commonjs",
       globals: globals.node,
     },
-    rules: {
+    rules: baseRules({
       "no-unused-vars": [
         "warn",
         {
@@ -120,16 +137,12 @@ module.exports = [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-console": "off",
-    },
+    }),
   },
 
   /**
    * ============================================
-   * SERVER — Browser frontend (public/)
+   * SERVER FRONTEND - public/**
    * ============================================
    */
   {
@@ -139,7 +152,7 @@ module.exports = [
       sourceType: "module",
       globals: globals.browser,
     },
-    rules: {
+    rules: baseRules({
       "no-undef": "off",
       "no-unused-vars": [
         "warn",
@@ -149,11 +162,7 @@ module.exports = [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-console": "off",
-    },
+    }),
   },
 
   /**
@@ -165,26 +174,10 @@ module.exports = [
     files: ["server/utils.js"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "module",
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-      },
+      sourceType: "commonjs",
+      globals: { ...globals.browser, ...globals.node },
     },
-    rules: {
-      "no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-        },
-      ],
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-console": "off",
-    },
+    rules: baseRules(),
   },
 
   /**
@@ -203,23 +196,12 @@ module.exports = [
         ...globals.serviceworker,
       },
     },
-    rules: {
-      "no-undef": "off",
-      "no-unused-vars": "off",
-      "no-redeclare": "off",
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-control-regex": "off",
-      "no-useless-escape": "off",
-      "no-prototype-builtins": "off",
-      "no-constant-binary-expression": "warn",
-    },
+    rules: extensionRules(),
   },
 
   /**
    * ============================================
-   * EXTENSION — All other files
+   * EXTENSION OTHER & SHARED
    * ============================================
    */
   {
@@ -228,22 +210,8 @@ module.exports = [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "commonjs",
-      globals: {
-        ...globals.browser,
-        ...globals.webextensions,
-      },
+      globals: { ...globals.browser, ...globals.webextensions },
     },
-    rules: {
-      "no-undef": "off",
-      "no-unused-vars": "off",
-      "no-redeclare": "off",
-      "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-var": "error",
-      "prefer-const": "warn",
-      "no-control-regex": "off",
-      "no-useless-escape": "off",
-      "no-prototype-builtins": "off",
-      "no-constant-binary-expression": "warn",
-    },
+    rules: extensionRules(),
   },
 ];
