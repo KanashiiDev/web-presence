@@ -103,7 +103,7 @@ async function startServer() {
         stdio: ["pipe", "pipe", "pipe", "ipc"],
         silent: false,
         detached: false,
-        execArgv: ["--optimize-for-size", "--gc-interval=100", "--no-warnings"],
+        execArgv: ["--optimize-for-size", "--max-old-space-size=256", "--no-warnings"],
       });
       state.serverPid = state.serverProcess.pid;
       state.serverSpawnTime = Date.now();

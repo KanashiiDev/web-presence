@@ -25,7 +25,7 @@ for (const flag of [
 ])
   app.commandLine.appendSwitch(flag);
 
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=192 --optimize-for-size --expose-gc");
+app.commandLine.appendSwitch("js-flags", "--optimize-for-size");
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("ozone-platform", "x11");
