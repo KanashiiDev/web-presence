@@ -88,6 +88,14 @@ async function tick(historyFilePath) {
     // Client gone: check with the grace period
     if (!clientLooksAlive() && !state.isConnecting && !reconnectState.isReconnecting && !reconnectState.scheduled) {
       maybeReconnect("health: client dead");
+      return;
+    }
+
+    if (state.rpcClient?.user?.clearActivity && !isReconnecting()) {
+      const ok = await safeClear();
+      if (!ok) {
+        maybeReconnect("health: liveness probe failed");
+      }
     }
   } catch (err) {
     console.error("[HEALTH] error:", err.message);

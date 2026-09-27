@@ -306,10 +306,13 @@ async function clearRpcActivity({ maxRetries = 1, timeoutMs = 5000 } = {}) {
       await Promise.race([state.rpcClient.user.clearActivity(), new Promise((_, reject) => setTimeout(() => reject(new Error("Clear timeout")), timeoutMs))]);
       return true;
     } catch (err) {
-      console.warn(`[ACTIVITY] clearActivity failed (attempt ${attempt}/${maxRetries}):`, err.message);
+      const reason = err?.message || err?.stack?.split("\n")[0] || err?.code || "unknown";
+      console.warn(`[ACTIVITY] clearActivity failed (attempt ${attempt}/${maxRetries}): ${reason}`);
       if (attempt < maxRetries) await new Promise((r) => setTimeout(r, 1000));
     }
   }
+
+  state.isRpcConnected = false;
   return false;
 }
 

@@ -28,13 +28,17 @@ async function destroyClient(client) {
 }
 
 // Full state reset + destroy old client
-async function hardReset() {
+async function hardResetClient() {
   const old = state.rpcClient;
   state.rpcClient = null;
   state.isRpcConnected = false;
-  state.isConnecting = false;
   state.connectPromise = null;
   await destroyClient(old);
+}
+
+async function hardReset() {
+  await hardResetClient();
+  state.isConnecting = false;
 }
 
 // Execute a single reconnect attempt
@@ -128,9 +132,11 @@ function cancelReconnect() {
 // Wire up client lifecycle events for a given epoch
 function setupClientEvents(client, epoch) {
   client.setMaxListeners(20);
+  let hadReady = false;
 
   client.once("ready", () => {
     if (epoch !== state.connectionEpoch) return;
+    hadReady = true;
     state.isRpcConnected = true;
     state.isConnecting = false;
     cancelReconnect();
@@ -140,6 +146,7 @@ function setupClientEvents(client, epoch) {
 
   const handleDisconnect = (reason) => {
     if (epoch !== state.connectionEpoch) return;
+    if (!hadReady) return;
     state.isRpcConnected = false;
     state.isConnecting = false;
     notifyRpcStatus(false);
@@ -151,6 +158,7 @@ function setupClientEvents(client, epoch) {
 
   client.on("error", (err) => {
     if (epoch !== state.connectionEpoch) return;
+    if (!hadReady) return;
     state.isRpcConnected = false;
 
     const isFatal =
@@ -165,8 +173,8 @@ function setupClientEvents(client, epoch) {
 }
 
 async function createClient(epoch) {
-  await hardReset();
-  const client = new Client({ clientId: CLIENT_ID, transport: "ipc", useSteam: false, reconnect: false });
+  await hardResetClient();
+  const client = new Client({ clientId: CLIENT_ID, useSteam: false, reconnect: false });
   state.rpcClient = client;
   setupClientEvents(client, epoch);
   return client;
@@ -244,7 +252,7 @@ async function _connect() {
       return true;
     } catch (err) {
       state.isRpcConnected = false;
-      await hardReset();
+      await hardResetClient();
 
       if (shouldLogError(err.message)) {
         console.error("[RPC] Connect fail:", err.message);
