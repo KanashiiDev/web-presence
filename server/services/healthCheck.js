@@ -90,13 +90,6 @@ async function tick(historyFilePath) {
       maybeReconnect("health: client dead");
       return;
     }
-
-    if (state.rpcClient?.user?.clearActivity && !isReconnecting()) {
-      const ok = await safeClear();
-      if (!ok) {
-        maybeReconnect("health: liveness probe failed");
-      }
-    }
   } catch (err) {
     console.error("[HEALTH] error:", err.message);
     if (!isReconnecting() && !state.isConnecting) scheduleReconnect(3000, "health: exception");
