@@ -1089,28 +1089,6 @@ const setupListeners = () => {
         await loadParserListOnce(req.force);
         return { ok: true, data: state.parserList || [] };
       }
-      if (req.type === "FETCH_IFRAME_DATA") {
-        if (sender.tab?.id != null) {
-          const tabId = sender.tab.id;
-          browser.webNavigation
-            .getAllFrames({ tabId })
-            .then((frames) => {
-              for (const frame of frames) {
-                if (frame.frameId === 0) continue;
-                browser.tabs.sendMessage(tabId, req, { frameId: frame.frameId }).catch(() => {});
-              }
-            })
-            .catch(() => {});
-        }
-        return { ok: true };
-      }
-
-      if (req.type === "IFRAME_DATA") {
-        if (sender.tab?.id != null) {
-          browser.tabs.sendMessage(sender.tab.id, req, { frameId: 0 }).catch(() => {});
-        }
-        return { ok: true };
-      }
       if (req.type === "ACCESS_WINDOW") {
         try {
           const { path, callFunction, args } = req.payload;
@@ -1769,10 +1747,18 @@ const setupListeners = () => {
     // Clear KeepAlive
     keepAlivePorts.delete(tabId);
     stopLock(tabId);
+
+    // Clear iframe registry
+    tabFrames.delete(tabId);
   });
 
   // onUpdated
   browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    // Clear iframe registry
+    if (changeInfo.status === "loading" && changeInfo.url) {
+      tabFrames.delete(tabId);
+    }
+
     const tabState = state.activeTabMap.get(tabId);
     if (!tabState) return;
 
@@ -2029,3 +2015,63 @@ const setupListeners = () => {
     }
   });
 };
+
+// Iframe Listeners
+const tabFrames = new Map();
+function setupIframeListeners() {
+  browser.runtime.onMessage.addListener((req, sender) => {
+    if (req?.type === "IFRAME_REGISTER") {
+      const tabId = sender.tab?.id;
+      const frameId = sender.frameId;
+      if (tabId != null && frameId != null && frameId !== 0) {
+        if (!tabFrames.has(tabId)) tabFrames.set(tabId, new Set());
+        tabFrames.get(tabId).add(frameId);
+      }
+      return Promise.resolve({ ok: true });
+    }
+
+    if (req?.type === "IFRAME_UNREGISTER") {
+      const tabId = sender.tab?.id;
+      const frameId = sender.frameId;
+      tabFrames.get(tabId)?.delete(frameId);
+      return Promise.resolve({ ok: true });
+    }
+
+    if (req?.type === "FETCH_IFRAME_DATA") {
+      const tabId = sender.tab?.id;
+      if (tabId == null) return Promise.resolve({ ok: true });
+
+      return (async () => {
+        let frames = tabFrames.get(tabId);
+
+        if (frames === undefined) {
+          try {
+            const results = await browser.scripting.executeScript({
+              target: { tabId, allFrames: true },
+              func: () => true,
+            });
+            frames = new Set(results.map((r) => r.frameId).filter((id) => id !== 0));
+            tabFrames.set(tabId, frames);
+          } catch {
+            frames = new Set();
+          }
+        }
+
+        for (const frameId of frames) {
+          browser.tabs.sendMessage(tabId, req, { frameId }).catch(() => {});
+        }
+
+        return { ok: true };
+      })();
+    }
+
+    if (req.type === "IFRAME_DATA") {
+      if (sender.tab?.id != null) {
+        browser.tabs.sendMessage(sender.tab.id, req, { frameId: 0 }).catch(() => {});
+      }
+      return { ok: true };
+    }
+
+    return undefined;
+  });
+}

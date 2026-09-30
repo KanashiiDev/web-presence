@@ -2,6 +2,18 @@
 // Looks at window.iframeParsers defined by compiledIframeParsers.js,
 // runs the matching parser, and sends the data to the main frame via the background.
 
+if (window.top !== window) {
+  browser.runtime.sendMessage({ type: "IFRAME_REGISTER" }).catch(() => {});
+
+  window.addEventListener(
+    "pagehide",
+    () => {
+      browser.runtime.sendMessage({ type: "IFRAME_UNREGISTER" }).catch(() => {});
+    },
+    { once: true },
+  );
+}
+
 function getVideoInfo() {
   const isValidDuration = (d) => Number.isFinite(d) && d > 0;
 

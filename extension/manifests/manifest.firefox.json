@@ -8,7 +8,7 @@
     "scripts": ["libs/browser-polyfill.js", "libs/pako.js", "background.js"]
   },
 
-  "permissions": ["tabs", "storage", "contextMenus", "scripting", "webNavigation", "alarms"],
+  "permissions": ["tabs", "storage", "contextMenus", "scripting", "alarms"],
   "optional_permissions": ["userScripts"],
   "optional_host_permissions": ["*://*/*"],
 

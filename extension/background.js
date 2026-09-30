@@ -1021,6 +1021,9 @@ async function sendToWebOnlyBridge(payload) {
 browser.runtime.onConnect.addListener(handleKeepAliveConnect);
 keepAliveBackground();
 
+// Setup Iframe Listeners
+setupIframeListeners();
+
 // Start
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
@@ -1030,8 +1033,8 @@ const init = async () => {
   if (storageData.webOnlyMode !== undefined) state.webOnlyMode = storageData.webOnlyMode;
   if (storageData.discordWebPort !== undefined) state.discordWebPort = storageData.discordWebPort;
 
-  await debugLogCleanup();
   setupListeners();
+  await debugLogCleanup();
   await parserReady();
   await scriptManager.registerAllScripts();
 
