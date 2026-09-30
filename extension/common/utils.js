@@ -1714,7 +1714,7 @@ async function showInitialSetupDialog(appendBody, isSetupAlreadyDone, loadingOve
       },
       {
         label: "More",
-        url: `https://github.com/KanashiiDev/web-presence#desktop-app`,
+        url: `https://github.com/KanashiiDev/web-presence#installation-guide`,
       },
     ];
     contentLinkContainer.appendChild(createPlatformDropdown("Linux", linuxOptions, version));
