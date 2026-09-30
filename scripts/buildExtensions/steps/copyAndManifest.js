@@ -14,6 +14,8 @@ const DEFAULT_JS_FILES = [
   "main.js",
 ];
 
+const MAIN_WORLD_JS_FILES = ["keepAliveMain.js"];
+
 const IFRAME_JS_FILES = ["libs/browser-polyfill.js", "iframeParser.js"];
 const EXCLUDED_DIRS = ["manifests", "parsers", "matches", path.join("libs", "codemirror", "addons")];
 
@@ -52,6 +54,13 @@ function buildManifest(extensionDir, target, pkgVersion) {
     matches: ["<all_urls>"],
     js: currentDefaultJs,
   }));
+
+  manifest.content_scripts.unshift({
+    matches: ["<all_urls>"],
+    js: MAIN_WORLD_JS_FILES,
+    world: "MAIN",
+    run_at: "document_start",
+  });
 
   // iframe content script
   manifest.content_scripts.push({

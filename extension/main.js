@@ -54,7 +54,6 @@ function stopWatching() {
   state.lastRawPosition = null;
   state.lastSeekDetected = 0;
   rpcState.reset();
-  keepAliveManager.destroy();
 }
 
 // Schedule the next update based on activity
@@ -86,9 +85,12 @@ async function mainLoop() {
     hostMatch = await waitForHostname();
     if (!hostMatch) {
       if (rpcState.lastActivity?.lastUpdated) await handleNoSong();
+      if (keepAliveManager.initialized) keepAliveManager.destroy();
       scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, "HOST_NOT_MATCH");
       return;
     }
+    if (!keepAliveManager.initialized) keepAliveManager.init();
+
     const song = await safeGetSongInfo();
     window._lastParsedSong = song && song !== "blocked" ? song : null;
 
@@ -418,19 +420,14 @@ async function processRPCUpdate(song, progress) {
       }
       state.isConnected = true;
 
-      if (!keepAliveManager.initialized) {
-        keepAliveManager.init();
-      }
       rpcState.updateLastActivity(song, progress);
       logInfo("[main]: Rich Presence Updated Successfully!");
       return true;
     } else if (res?.waiting) {
       logInfo("[main]: RPC waiting (tab not audible yet)");
-      if (keepAliveManager.initialized) keepAliveManager.destroy();
       return false;
     } else {
       logInfo("[main]: unexpected response state:", res);
-      if (keepAliveManager.initialized) keepAliveManager.destroy();
       return false;
     }
   } catch (e) {
@@ -460,13 +457,11 @@ async function handleNoSong() {
     logInfo(`[main]:%c No song is currently playing - clearing RPC...`, "color:#ff9800; font-weight:bold;");
     await browser.runtime.sendMessage({ type: "CLEAR_RPC" });
     rpcState.reset();
-    keepAliveManager.destroy();
     window._lastParsedSong = null;
     logOnce("[main]: RPC cleared successfully", "RPC");
   } catch (e) {
     logError("[main:handleNoSong]: failed to clear RPC:", e);
     rpcState.reset();
-    keepAliveManager.destroy();
   } finally {
     clearingRpc = false;
   }

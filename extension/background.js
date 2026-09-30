@@ -667,21 +667,132 @@ const mainLoop = async () => {
   }
 };
 
+// Keep Alive
+const KEEP_ALIVE_PORT_NAME = "wp-keepalive";
+const keepAlivePorts = new Map();
+const activeLocks = new Map();
+
 const keepAliveBackground = () => {
   if (typeof browser !== "undefined" && browser.alarms) {
-    browser.alarms.create("keepAlive", {
-      periodInMinutes: 0.4,
+    browser.alarms.create("keepAliveServiceWorker", {
+      periodInMinutes: 1,
     });
+
     browser.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === "keepAlive") {
-        // keep the service worker awake
+      if (alarm.name === "keepAliveServiceWorker") {
+        for (const [tabId, port] of keepAlivePorts) {
+          try {
+            port.postMessage({ type: "ping" });
+          } catch {}
+        }
       }
     });
   }
-  if (typeof chrome !== "undefined" && chrome.runtime?.getPlatformInfo) {
-    setInterval(() => {
-      chrome.runtime.getPlatformInfo(() => {});
-    }, 20000);
+};
+
+const handleKeepAliveConnect = (port) => {
+  if (port.name !== KEEP_ALIVE_PORT_NAME) return;
+  if (port.sender?.id !== browser.runtime.id) return;
+
+  const tabId = port.sender?.tab?.id;
+  if (!Number.isInteger(tabId) || tabId < 0 || (port.sender.frameId ?? 0) !== 0) {
+    port.disconnect();
+    return;
+  }
+
+  const oldPort = keepAlivePorts.get(tabId);
+  if (oldPort) {
+    try {
+      oldPort.disconnect();
+    } catch {}
+  }
+
+  keepAlivePorts.set(tabId, port);
+  logInfo(`[background:keepAlive]: Tab ${tabId} connected`);
+
+  const handleMessage = async (msg) => {
+    switch (msg?.type) {
+      case "init":
+        await setTabAutoDiscardable(tabId, false, "init");
+        startLock(tabId);
+        break;
+
+      case "heartbeat":
+        if (msg.mainActive === false) {
+          logInfo(`[background:keepAlive]: Tab ${tabId} heartbeat reports override inactive`);
+        }
+        break;
+    }
+  };
+
+  port.onMessage.addListener((msg) => {
+    handleMessage(msg).catch((err) => logError(`[background:keepAlive]: message handling failed for tab ${tabId}:`, err));
+  });
+
+  port.onDisconnect.addListener(() => {
+    void browser.runtime.lastError;
+    if (keepAlivePorts.get(tabId) === port) {
+      keepAlivePorts.delete(tabId);
+      stopLock(tabId);
+      setTabAutoDiscardable(tabId, true, "disconnect");
+      logInfo(`[background:keepAlive]: Tab ${tabId} disconnected`);
+    }
+  });
+};
+
+const startLock = (tabId) => {
+  if (activeLocks.has(tabId)) return;
+
+  if (!navigator.locks) {
+    logError("[background:keepAlive]: The Web Locks API is not supported in this environment.");
+    return;
+  }
+
+  const controller = new AbortController();
+  activeLocks.set(tabId, controller);
+
+  const lockName = `wp-keepalive-lock-${tabId}`;
+
+  navigator.locks
+    .request(lockName, { signal: controller.signal }, async () => {
+      logInfo(`[background:keepAlive]: Lock acquired for tab ${tabId}`);
+      return new Promise((resolve) => {
+        controller.signal.addEventListener("abort", () => {
+          logInfo(`[background:keepAlive]: Lock released for tab ${tabId}`);
+          resolve();
+        });
+      });
+    })
+    .catch((err) => {
+      if (err.name !== "AbortError") {
+        logError(`[background:keepAlive]: Lock error for tab ${tabId}:`, err);
+      }
+    });
+};
+
+const stopLock = (tabId) => {
+  const controller = activeLocks.get(tabId);
+  if (controller) {
+    controller.abort();
+    activeLocks.delete(tabId);
+  }
+};
+
+const setTabAutoDiscardable = async (tabId, discardable, reason = "") => {
+  try {
+    const tab = await browser.tabs.get(tabId);
+
+    if (typeof tab.autoDiscardable !== "undefined" && tab.autoDiscardable === discardable) {
+      return;
+    }
+
+    await browser.tabs.update(tabId, { autoDiscardable: discardable });
+    logInfo(`[background:keepAlive][${reason}]: Tab ${tabId} autoDiscardable set to ${discardable}`);
+  } catch (err) {
+    if (err.message && err.message.includes("Invalid tab ID")) {
+      return;
+    }
+    logError(`[background:keepAlive][${reason}]: Failed to set autoDiscardable for tab ${tabId}:`, err);
   }
 };
 
@@ -906,6 +1017,10 @@ async function sendToWebOnlyBridge(payload) {
   }
 }
 
+// Start KeepAlive
+browser.runtime.onConnect.addListener(handleKeepAliveConnect);
+keepAliveBackground();
+
 // Start
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
@@ -927,7 +1042,6 @@ const init = async () => {
 
   logInfo("[background:init]: Init complete, starting main loop");
   await mainLoop();
-  keepAliveBackground();
 };
 
 init();

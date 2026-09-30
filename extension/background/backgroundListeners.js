@@ -1763,8 +1763,12 @@ const setupListeners = () => {
     // Clear RPC
     await clearRpcForTab(tabId, "tab removed").catch((err) => logError("[background:clearRpcForTab]: ", err));
 
-    // Clean URL cache
+    // Clear URL Cache
     state.tabUrlMap.delete(tabId);
+
+    // Clear KeepAlive
+    keepAlivePorts.delete(tabId);
+    stopLock(tabId);
   });
 
   // onUpdated
