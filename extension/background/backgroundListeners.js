@@ -135,7 +135,7 @@ const handleSaveUserScript = async (req) => {
       logInfo("[background:handleSaveUserScript]: Script disabled, unregistered:", scriptData.id);
     }
 
-    //  Save current status
+    // Save current status
     const updatedList = await scriptManager.storage.getScripts();
     const updatedScript = updatedList.find((s) => s.id === scriptData.id);
     if (updatedScript) {
@@ -507,7 +507,7 @@ const handleFilterHistoryReplace = async (request) => {
   const parsers = Array.isArray(request.parsers) ? request.parsers : [];
   const parserList = Array.isArray(request.parserList) ? request.parserList : [];
 
-  //  Check for empty entries
+  // Check for empty entries
   if (!entries.length) {
     return { ok: true, count: 0, message: "No entries provided" };
   }
@@ -1179,142 +1179,303 @@ const setupListeners = () => {
             if (window._RPC_BRIDGE_LOADED_) return;
             window._RPC_BRIDGE_LOADED_ = true;
 
+            const DEBUG = false;
+            const PREFIX = "[Web Presence - RPC Bridge]";
+            const SOCKET_ID = "web-presence";
             const BRIDGE_URL = `ws://127.0.0.1:${webPort || 1337}`;
             const RETRY_DELAYS = [1000, 2000, 5000, 10000];
-            const MAX_RETRY_DELAY = 10000;
 
-            let Dispatcher, lookupAsset, lookupApp;
-            const apps = {};
+            window.__WP_RPC_DEBUG__ = window.__WP_RPC_DEBUG__ || {};
+
+            const isDebug = () => DEBUG || window.__WP_RPC_DEBUG__?.enabled === true;
+            const dbg = (...a) => isDebug() && console.log(PREFIX, "[debug]", ...a);
+
+            let Dispatcher = null;
+            let lookupAsset = null;
+            let lookupApp = null;
+            let cachedRequire = null;
             let ws = null;
             let retryCount = 0;
             let retryTimer = null;
+            const apps = {};
+            const assetCache = {};
 
             // Webpack Helpers
-            const eachCandidate = (mod, fn) => {
-              if (!mod) return;
+            const getWebpackRequire = () => {
+              if (cachedRequire) return cachedRequire;
+
+              let chunkKey = "webpackChunkdiscord_app";
+              if (!Array.isArray(window[chunkKey])) {
+                chunkKey = Object.keys(window).find((k) => k.startsWith("webpackChunk") && Array.isArray(window[k]));
+                dbg("Using alternative webpack chunk key:", chunkKey);
+              }
+              if (!chunkKey) {
+                console.warn(PREFIX, "webpackChunk global not found");
+                return null;
+              }
+
+              let found = null;
               try {
-                fn(mod);
-              } catch {}
+                window[chunkKey].push([
+                  [Symbol()],
+                  {},
+                  (req) => {
+                    if (req && !found) found = req;
+                  },
+                ]);
+                window[chunkKey].pop();
+              } catch (err) {
+                console.warn(PREFIX, "Failed to obtain webpack require:", err);
+                return null;
+              }
+
+              if (found) {
+                cachedRequire = found;
+                dbg(`webpack require OK | modules: ${Object.keys(found.m || {}).length} | cache: ${Object.keys(found.c || {}).length}`);
+              }
+              return found;
+            };
+
+            const srcOf = (wpRequire, id) => {
               try {
-                if (mod.default) fn(mod.default);
-              } catch {}
+                return wpRequire.m[id]?.toString?.() || "";
+              } catch {
+                return "";
+              }
+            };
+
+            const safeRequire = (wpRequire, id) => {
+              try {
+                return wpRequire(id);
+              } catch {
+                return undefined;
+              }
+            };
+
+            // The module itself + its exports (one level deep)
+            const candidatesOf = (mod) => {
+              const out = [];
+              if (!mod || (typeof mod !== "object" && typeof mod !== "function")) return out;
+              out.push(mod);
               try {
                 for (const key of Reflect.ownKeys(mod)) {
                   try {
-                    fn(mod[key]);
+                    const v = mod[key];
+                    if (v && (typeof v === "object" || typeof v === "function")) out.push(v);
                   } catch {}
                 }
               } catch {}
+              return out;
             };
 
-            const getWebpackRequire = () => {
-              const reqs = [];
-              const seen = new Set();
-
-              window.webpackChunkdiscord_app.push([
-                [Symbol()],
-                {},
-                (req) => {
-                  if (req && !seen.has(req)) {
-                    seen.add(req);
-                    reqs.push(req);
-                  }
-                },
-              ]);
-              window.webpackChunkdiscord_app.pop();
-
-              return reqs[0] || null;
+            // Extracts all `x(12345)`-style import IDs from a module source (independent of minified names)
+            const importedIds = (src) => {
+              const ids = new Set();
+              for (const m of src.matchAll(/\b[\w$]{1,3}\((\d{2,8})\)/g)) ids.add(m[1]);
+              return [...ids];
             };
 
-            const findModule = (wpRequire, ...needles) => {
-              for (const id in wpRequire.m) {
-                let source;
-                try {
-                  source = wpRequire.m[id]?.toString?.();
-                } catch {
-                  continue;
-                }
-                if (!source || !needles.every((n) => source.includes(n))) continue;
-                try {
-                  return wpRequire(id);
-                } catch {}
-              }
-            };
+            // Dispatcher (matched by API shape)
+            const BASE_API = ["dispatch", "subscribe", "unsubscribe"];
+            const EXTRA_API = [
+              "addInterceptor",
+              "wait",
+              "flushWaitQueue",
+              "isDispatching",
+              "register",
+              "addDependencies",
+              "dispatchForStoreChange",
+              "dispatchForStoreTest",
+            ];
 
-            // Dispatcher Finder
-            function findDispatcher(wpRequire) {
-              // Method 1: Hardcoded module ID
+            const isDispatcher = (v) => {
+              if (!v || typeof v !== "object") return false;
               try {
-                const mod = wpRequire(228366);
-                if (mod && typeof mod === "object") {
-                  for (const key in mod) {
-                    const val = mod[key];
-                    if (val && typeof val === "object" && typeof val.dispatch === "function" && val._subscriptions && val._actionHandlers) {
-                      console.log(`[Web Presence - RPC Bridge] Found Dispatcher at module 228366.${key}`);
-                      return val;
-                    }
+                if (!BASE_API.every((k) => typeof v[k] === "function")) return false;
+                const extra = EXTRA_API.filter((k) => k in v).length;
+                return extra >= 2;
+              } catch {
+                return false;
+              }
+            };
+
+            const findInExports = (mod, classes = []) => {
+              for (const c of candidatesOf(mod)) {
+                if (isDispatcher(c)) return c;
+                if (classes.length && typeof c === "object") {
+                  for (const K of classes) {
+                    try {
+                      if (c instanceof K) return c;
+                    } catch {}
                   }
                 }
-              } catch {}
+              }
+              return null;
+            };
 
-              // Method 2: Cache scan
+            function findDispatcher(wpRequire) {
+              // 1) Scan the module cache
               for (const id in wpRequire.c) {
-                const mod = wpRequire.c[id]?.exports;
-                if (!mod || typeof mod !== "object") continue;
-                if (mod._subscriptions && mod._actionHandlers && typeof mod.dispatch === "function" && typeof mod.subscribe === "function") {
-                  console.log(`[Web Presence - RPC Bridge] Found Dispatcher at cache[${id}]`);
-                  return mod;
+                const found = findInExports(wpRequire.c[id]?.exports);
+                if (found) {
+                  dbg(`Dispatcher found: cache[${id}]`);
+                  return found;
                 }
               }
+              dbg("Method 1 (cache scan) failed");
 
-              // Method 3: Find the module using LOCAL_ACTIVITY_UPDATE and analyze its source code
+              // 2) Find the Dispatcher CLASS by its API, then look for an instance in the modules that import it
+              const classes = [];
+              const classModIds = [];
               for (const id in wpRequire.m) {
-                try {
-                  const source = wpRequire.m[id]?.toString?.();
-                  if (!source?.includes("LOCAL_ACTIVITY_UPDATE")) continue;
-
-                  const dispatchMatches = [...source.matchAll(/([a-zA-Z_$][a-zA-Z0-9_$]*)\.([a-zA-Z_$][a-zA-Z0-9_$]*)\.dispatch\(/g)];
-                  for (const match of dispatchMatches) {
-                    const [, varName, propName] = match;
-                    const importPatterns = [new RegExp(`${varName}=n\\((\\d+)\\)`, "g"), new RegExp(`\\{[^}]*${varName}[^}]*\\}=n\\((\\d+)\\)`, "g")];
-                    for (const pattern of importPatterns) {
-                      let m;
-                      while ((m = pattern.exec(source)) !== null) {
-                        try {
-                          const mod = wpRequire(parseInt(m[1]));
-                          const candidate = mod?.[propName];
-                          if (candidate && typeof candidate.dispatch === "function" && (candidate._subscriptions || candidate._actionHandlers)) {
-                            console.log(`[Web Presence - RPC Bridge] Dispatcher found via code analysis at module[${m[1]}].${propName}`);
-                            return candidate;
-                          }
-                        } catch {}
-                      }
-                    }
+                const src = srcOf(wpRequire, id);
+                if (!src || !BASE_API.every((k) => src.includes(k)) || !src.includes("addInterceptor")) continue;
+                classModIds.push(id);
+                const mod = safeRequire(wpRequire, id);
+                for (const c of candidatesOf(mod)) {
+                  if (typeof c === "function" && c.prototype && BASE_API.every((k) => typeof c.prototype[k] === "function")) classes.push(c);
+                  if (isDispatcher(c)) {
+                    dbg(`Dispatcher found: class module [${id}]`);
+                    return c;
                   }
-                  break;
-                } catch {}
+                }
               }
+              dbg("Class modules:", classModIds, "| class count:", classes.length);
 
-              // Method 4: Full module scan
+              if (classes.length) {
+                // 2a) instanceof check on already loaded modules
+                for (const id in wpRequire.c) {
+                  const found = findInExports(wpRequire.c[id]?.exports, classes);
+                  if (found) {
+                    dbg(`Dispatcher found: instanceof in cache[${id}]`);
+                    return found;
+                  }
+                }
+                // 2b) Load the modules that import the class module
+                const importerRe = classModIds.map((id) => new RegExp(`\\b[\\w$]{1,3}\\(${id}\\)`));
+                for (const id in wpRequire.m) {
+                  const src = srcOf(wpRequire, id);
+                  if (!src || !importerRe.some((re) => re.test(src))) continue;
+                  const found = findInExports(safeRequire(wpRequire, id), classes);
+                  if (found) {
+                    dbg(`Dispatcher found: module[${id}] importing the class`);
+                    return found;
+                  }
+                }
+              }
+              dbg("Method 2 (class + importer) failed");
+
+              // 3) Try every module imported by modules that reference LOCAL_ACTIVITY_UPDATE
               for (const id in wpRequire.m) {
-                try {
-                  const exports = wpRequire(id);
-                  if (!exports || typeof exports !== "object") continue;
-                  if (exports._subscriptions && exports._actionHandlers && typeof exports.dispatch === "function") {
-                    console.log(`[Web Presence - RPC Bridge] Dispatcher found at module[${id}]`);
-                    return exports;
+                const src = srcOf(wpRequire, id);
+                if (!src.includes("LOCAL_ACTIVITY_UPDATE")) continue;
+                for (const impId of importedIds(src)) {
+                  const found = findInExports(safeRequire(wpRequire, impId), classes);
+                  if (found) {
+                    dbg(`Dispatcher found: module[${id}] -> imported module[${impId}]`);
+                    return found;
                   }
-                  for (const key in exports) {
-                    const val = exports[key];
-                    if (val && typeof val === "object" && val._subscriptions && val._actionHandlers && typeof val.dispatch === "function") {
-                      console.log(`[Web Presence - RPC Bridge] Dispatcher found at module[${id}].${key}`);
-                      return val;
-                    }
-                  }
-                } catch {}
+                }
+              }
+              dbg("Method 3 (import analysis) failed");
+
+              // 4) Last resort: load every module
+              for (const id in wpRequire.m) {
+                const found = findInExports(safeRequire(wpRequire, id), classes);
+                if (found) {
+                  dbg(`Dispatcher found: full scan module[${id}]`);
+                  return found;
+                }
               }
 
               return null;
+            }
+
+            // Asset / App lookup (internal function, REST fallback otherwise)
+            const findFunctionBySource = (wpRequire, needles, extraCheck) => {
+              const tryMod = (mod) => {
+                for (const c of candidatesOf(mod)) {
+                  if (typeof c !== "function") continue;
+                  let s;
+                  try {
+                    s = c.toString();
+                  } catch {
+                    continue;
+                  }
+                  if (needles.every((n) => s.includes(n)) && (!extraCheck || extraCheck(c))) return c;
+                }
+                return null;
+              };
+
+              for (const id in wpRequire.c) {
+                const f = tryMod(wpRequire.c[id]?.exports);
+                if (f) return f;
+              }
+              for (const id in wpRequire.m) {
+                if (!needles.some((n) => srcOf(wpRequire, id).includes(n))) continue;
+                const f = tryMod(safeRequire(wpRequire, id));
+                if (f) return f;
+              }
+              return null;
+            };
+
+            const restAssetLookup = async (appId, name) => {
+              if (!name) return name;
+              if (/^(mp:|https?:)/.test(name)) return name;
+              try {
+                if (!assetCache[appId]) {
+                  const res = await fetch(`/api/v9/oauth2/applications/${appId}/assets`);
+                  assetCache[appId] = res.ok ? await res.json() : [];
+                }
+                const hit = assetCache[appId].find((a) => a.name === name || a.id === name);
+                return hit ? hit.id : name;
+              } catch {
+                return name;
+              }
+            };
+
+            const restAppLookup = async (appId) => {
+              try {
+                const res = await fetch(`/api/v9/applications/${appId}/rpc`);
+                return res.ok ? await res.json() : null;
+              } catch {
+                return null;
+              }
+            };
+
+            function runDiagnostics(wpRequire) {
+              try {
+                const list = (needle, limit = 15) => {
+                  const ids = [];
+                  for (const id in wpRequire.m) {
+                    if (srcOf(wpRequire, id).includes(needle)) {
+                      ids.push(id);
+                      if (ids.length >= limit) break;
+                    }
+                  }
+                  return ids;
+                };
+                const info = {
+                  moduleCount: Object.keys(wpRequire.m || {}).length,
+                  cacheCount: Object.keys(wpRequire.c || {}).length,
+                  addInterceptor: list("addInterceptor"),
+                  LOCAL_ACTIVITY_UPDATE: list("LOCAL_ACTIVITY_UPDATE"),
+                  assetFetch: list("APPLICATION_ASSETS_FETCH_SUCCESS"),
+                  invalidOrigin: list("Invalid Origin"),
+                };
+                window.__WP_RPC_DEBUG__.diagnostics = info;
+                console.warn(PREFIX, "DIAGNOSTICS (window.__WP_RPC_DEBUG__.diagnostics):", info);
+
+                const id = info.LOCAL_ACTIVITY_UPDATE[0];
+                if (id) {
+                  const src = srcOf(wpRequire, id);
+                  const i = src.indexOf("LOCAL_ACTIVITY_UPDATE");
+                  window.__WP_RPC_DEBUG__.snippet = { id, code: src.slice(Math.max(0, i - 400), i + 400) };
+                  console.warn(PREFIX, `module[${id}] code around LOCAL_ACTIVITY_UPDATE:\n`, window.__WP_RPC_DEBUG__.snippet.code);
+                }
+              } catch (err) {
+                console.error(PREFIX, "Diagnostics error:", err);
+              }
             }
 
             // Discord Internals
@@ -1322,124 +1483,106 @@ const setupListeners = () => {
               if (Dispatcher && lookupAsset && lookupApp) return true;
 
               const wpRequire = getWebpackRequire();
-              if (!wpRequire) {
-                console.warn("[Web Presence - RPC Bridge] Could not get webpack require");
-                return false;
-              }
+              if (!wpRequire) return false;
 
-              // Find the dispatcher
               if (!Dispatcher) {
                 Dispatcher = findDispatcher(wpRequire);
+                window.__WP_RPC_DEBUG__.Dispatcher = Dispatcher;
               }
 
-              // Find the asset lookup
               if (!lookupAsset) {
-                const assetMod = findModule(wpRequire, "getAssetImage: size must === [");
-                if (assetMod) {
-                  eachCandidate(assetMod, (candidate) => {
-                    if (!lookupAsset && typeof candidate === "function" && candidate.toString().includes("APPLICATION_ASSETS_FETCH_SUCCESS")) {
-                      lookupAsset = async (appId, name) => {
-                        try {
-                          const result = await candidate(appId, [name]);
-                          return Array.isArray(result) ? result[0] : result;
-                        } catch {
-                          return null;
-                        }
-                      };
+                const fn = findFunctionBySource(wpRequire, ["APPLICATION_ASSETS_FETCH_SUCCESS"]);
+                if (fn) {
+                  lookupAsset = async (appId, name) => {
+                    try {
+                      const result = await fn(appId, [name]);
+                      const v = Array.isArray(result) ? result[0] : result;
+                      return v || (await restAssetLookup(appId, name));
+                    } catch {
+                      return restAssetLookup(appId, name);
                     }
-                  });
+                  };
+                  dbg("lookupAsset: internal function");
+                } else {
+                  lookupAsset = restAssetLookup;
+                  dbg("lookupAsset: REST fallback");
                 }
               }
 
-              // Find the app lookup
               if (!lookupApp) {
-                const appMod = findModule(wpRequire, "Invalid Origin", "coverImage", ".application");
-                if (appMod) {
-                  eachCandidate(appMod, (candidate) => {
-                    if (!lookupApp && typeof candidate === "function") {
-                      const str = candidate.toString();
-                      if (str.includes("Invalid Origin") && str.includes("coverImage")) {
-                        lookupApp = async (appId) => {
-                          try {
-                            const socket = {};
-                            await candidate(socket, appId);
-                            return socket.application || socket;
-                          } catch {
-                            return null;
-                          }
-                        };
-                      }
+                const fn = findFunctionBySource(wpRequire, ["Invalid Origin", "coverImage"]);
+                if (fn) {
+                  lookupApp = async (appId) => {
+                    try {
+                      const socket = {};
+                      await fn(socket, appId);
+                      return socket.application || socket;
+                    } catch {
+                      return restAppLookup(appId);
                     }
-                  });
+                  };
+                  dbg("lookupApp: internal function");
+                } else {
+                  lookupApp = restAppLookup;
+                  dbg("lookupApp: REST fallback");
                 }
               }
 
-              if (!Dispatcher || !lookupAsset || !lookupApp) {
-                console.warn(
-                  `[Web Presence - RPC Bridge] Internals not ready: ${[!Dispatcher && "Dispatcher", !lookupAsset && "lookupAsset", !lookupApp && "lookupApp"].filter(Boolean).join(", ")}`,
-                );
+              if (!Dispatcher) {
+                console.warn(PREFIX, "Dispatcher not found");
+                if (isDebug()) runDiagnostics(wpRequire);
                 return false;
               }
 
-              console.log("[Web Presence - RPC Bridge] All internals initialized.");
+              dbg("Internals initialized.");
               return true;
             }
 
             // Activity Dispatch
             async function handleMessage(msg) {
               try {
-                // Start the internals
                 if (!Dispatcher || !lookupAsset || !lookupApp) {
-                  const initialized = initDiscordInternals();
-                  if (!initialized) {
-                    throw new Error("Discord internals not ready");
-                  }
+                  if (!initDiscordInternals()) throw new Error("Discord internals not ready");
                 }
 
-                if (!msg.activity || msg.activity === null) {
-                  Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null });
+                if (!msg.activity) {
+                  Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: SOCKET_ID });
                   return;
                 }
 
-                // Process if there are assets
-                if (msg.activity.assets) {
-                  if (msg.activity.assets.large_image) {
-                    msg.activity.assets.large_image = await lookupAsset(msg.activity.application_id, msg.activity.assets.large_image);
-                  }
-                  if (msg.activity.assets.small_image) {
-                    msg.activity.assets.small_image = await lookupAsset(msg.activity.application_id, msg.activity.assets.small_image);
-                  }
-                }
-
-                // Get app information
                 const appId = msg.activity.application_id;
-                if (appId) {
-                  if (!apps[appId]) {
-                    apps[appId] = await lookupApp(appId);
-                  }
-                  const app = apps[appId];
-                  if (!msg.activity.name && app?.name) {
-                    msg.activity.name = app.name;
-                  }
+
+                if (msg.activity.assets) {
+                  const a = msg.activity.assets;
+                  if (a.large_image) a.large_image = await lookupAsset(appId, a.large_image);
+                  if (a.small_image) a.small_image = await lookupAsset(appId, a.small_image);
                 }
 
+                if (appId) {
+                  if (!apps[appId]) apps[appId] = await lookupApp(appId);
+                  const app = apps[appId];
+                  if (!msg.activity.name && app?.name) msg.activity.name = app.name;
+                }
+
+                dbg("Dispatch payload:", msg.activity);
                 Dispatcher.dispatch({
                   type: "LOCAL_ACTIVITY_UPDATE",
                   activity: msg.activity,
+                  socketId: SOCKET_ID,
                 });
 
-                console.log("[Web Presence - RPC Bridge] Dispatch OK.");
+                dbg("Dispatch OK.");
               } catch (err) {
-                console.error("[Web Presence - RPC Bridge] Failed to handle message:", err);
+                console.error(PREFIX, "Failed to handle message:", err);
               }
             }
 
             function clearActivity() {
               if (!Dispatcher) return;
               try {
-                Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: "arrpc" });
+                Dispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: SOCKET_ID });
               } catch (err) {
-                console.error("[Web Presence - RPC Bridge] Failed to clear activity:", err);
+                console.error(PREFIX, "Failed to clear activity:", err);
               }
             }
 
@@ -1470,7 +1613,7 @@ const setupListeners = () => {
                 try {
                   await handleMessage(JSON.parse(x.data));
                 } catch (err) {
-                  console.error("[Web Presence - RPC Bridge] Failed to parse/handle message:", err);
+                  console.error(PREFIX, "Failed to parse/handle message:", err);
                 }
               };
 
@@ -1494,7 +1637,7 @@ const setupListeners = () => {
               connect();
             }
 
-            document.addEventListener("beforeunload", clearActivity);
+            window.addEventListener("beforeunload", clearActivity);
           },
           args: [state.discordWebPort, state.webOnlyMode],
           world: "MAIN",
@@ -1713,7 +1856,14 @@ const setupListeners = () => {
         }
       }
       // If the parser list or settings have changed, reload
-      if (key === "parserList" || key === "userParserSelectors" || key === "userScriptsList" || key === "parserSettings" || key === "parserEnabledState") {
+      if (
+        key === "parserList" ||
+        key === "userParserSelectors" ||
+        key === "userScriptsList" ||
+        key === "parserSettings" ||
+        key === "parserEnabledState" ||
+        key === "statusDisplayType"
+      ) {
         if (state.parserReloadDebounce) {
           clearTimeout(state.parserReloadDebounce);
         }
@@ -1900,7 +2050,7 @@ const setupListeners = () => {
   browser.runtime.onSuspend.addListener(() => {
     logInfo("[background:onSuspend]: Suspending...");
 
-    //  RPC cleanup
+    // RPC cleanup
     for (const [tabId] of state.activeTabMap) {
       if (state.webOnlyMode) {
         sendToWebOnlyBridge({ activity: null }).catch(() => {});
@@ -1920,7 +2070,7 @@ const setupListeners = () => {
       } catch (_) {}
     }
 
-    //  Clear the timers
+    // Clear the timers
     for (const [, timerId] of state.audibleTimers) {
       clearTimeout(timerId);
     }

@@ -172,9 +172,7 @@ async function getParserSettings(parserId) {
     const parsedSettings =
       typeof rawSettings === "object" && rawSettings !== null ? Object.fromEntries(Object.entries(rawSettings).map(([key, obj]) => [key, obj?.value])) : {};
 
-    if (statusDisplayType !== undefined) {
-      parsedSettings.statusDisplayType = statusDisplayType;
-    }
+    parsedSettings.statusDisplayType = statusDisplayType || "1";
 
     if (state.parserMap?.[parserId]) {
       state.parserMap[parserId].settings = parsedSettings;
@@ -485,7 +483,7 @@ const updateRpc = async (data, tabId) => {
     };
 
     if (state.webOnlyMode) {
-      const rawActivity = buildActivityLocally(payload.data);
+      const rawActivity = buildActivityLocally(payload);
       const webOnlyActivity = formatForWebConnection(rawActivity);
       await sendToWebOnlyBridge({ activity: webOnlyActivity });
     } else {
@@ -796,7 +794,9 @@ const setTabAutoDiscardable = async (tabId, discardable, reason = "") => {
   }
 };
 
-function buildActivityLocally(data) {
+function buildActivityLocally(payload) {
+  const data = payload.data || {};
+
   const dataTitle = String(data.title ?? "").trim();
   const rawArtist = String(data.artist ?? "").trim();
   const artistIsIntentionallyEmpty = !rawArtist || rawArtist === "-1";
@@ -807,27 +807,7 @@ function buildActivityLocally(data) {
 
   if (!dataArtist && dataSource) dataArtist = dataSource;
 
-  const mergeSettings = (defaults, overrides) => {
-    const result = {};
-    for (const key in defaults) {
-      const defVal = defaults[key];
-      const overVal = overrides?.[key];
-      const finalVal =
-        overVal && typeof overVal === "object" && "value" in overVal
-          ? overVal.value
-          : overVal !== undefined
-            ? overVal
-            : defVal && typeof defVal === "object" && "value" in defVal
-              ? defVal.value
-              : defVal;
-      result[key] = finalVal;
-    }
-    return result;
-  };
-
-  const activitySettings = mergeSettings(DEFAULT_PARSER_OPTIONS, {
-    ...data.settings,
-  });
+  const activitySettings = data.settings;
 
   // FavIcon
   let favIcon = null;
