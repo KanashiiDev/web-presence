@@ -59,6 +59,7 @@
   "settings.language": "Язык",
   "settings.port": "Порт",
   "settings.discordWebPort": "Порт Discord Web",
+  "settings.port.bridge.error": "Не удалось подключиться к приложению Bridge. Убедитесь, что оно запущено.",
   "settings.apply": "Применить",
   "settings.port_info": "Нет необходимости менять порт отдельно в приложении.",
   "settings.animations": "Анимации",

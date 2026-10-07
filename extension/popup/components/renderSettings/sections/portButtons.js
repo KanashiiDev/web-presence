@@ -38,12 +38,25 @@ async function buildPortButtons(container) {
   btnApply.className = "port-apply-btn button";
   btnApply.title = i18n.t("settings.apply");
 
-  btnApply.addEventListener("click", async () => {
-    btnApply.classList.toggle("spinner");
-    try {
-      const confirmed = await confirmReload();
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
 
+  btnApply.addEventListener("click", async () => {
+    btnApply.appendChild(spinner);
+    btnApply.classList.add("loading");
+    try {
+      // Check if the application is accessible
+      const currentPort = storedPort ?? CONFIG.serverPort;
+      const response = await fetchWithTimeout(`http://localhost:${currentPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+
+      if (!response || !response.ok) {
+        await showAlert(i18n.t("settings.port.bridge.error"), "", "warn");
+        return;
+      }
+
+      const confirmed = await confirmReload();
       if (!confirmed) return;
+
       await browser.runtime.sendMessage({
         type: "UPDATE_RPC_PORT",
         data: { newPort: Number(portInput.value) },
@@ -53,7 +66,8 @@ async function buildPortButtons(container) {
     } catch (err) {
       logError("[Port]: Port update failed:", err);
     } finally {
-      btnApply.classList.toggle("spinner");
+      btnApply.removeChild(spinner);
+      btnApply.classList.remove("loading");
     }
   });
 
@@ -93,8 +107,18 @@ async function buildPortButtons(container) {
   btnWebBridgeApply.title = i18n.t("settings.apply");
 
   btnWebBridgeApply.addEventListener("click", async () => {
-    btnWebBridgeApply.classList.toggle("spinner");
+    btnWebBridgeApply.appendChild(spinner);
+    btnWebBridgeApply.classList.add("loading");
     try {
+      // Check if the application is accessible
+      const currentPort = storedPort ?? CONFIG.serverPort;
+      const response = await fetchWithTimeout(`http://localhost:${currentPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+
+      if (!response || !response.ok) {
+        await showAlert(i18n.t("settings.port.bridge.error"), "", "warn");
+        return;
+      }
+
       const confirmed = await confirmReload();
 
       if (!confirmed) return;
@@ -107,7 +131,8 @@ async function buildPortButtons(container) {
     } catch (err) {
       logError("[Web Bridge]: Port update failed:", err);
     } finally {
-      btnWebBridgeApply.classList.toggle("spinner");
+      btnWebBridgeApply.removeChild(spinner);
+      btnWebBridgeApply.classList.remove("loading");
     }
   });
 

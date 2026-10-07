@@ -59,6 +59,7 @@
   "settings.language": "Dil",
   "settings.port": "Port",
   "settings.discordWebPort": "Discord Web Portu",
+  "settings.port.bridge.error": "Bridge uygulamasına ulaşılamadı. Uygulamanın açık olduğundan emin olun.",
   "settings.apply": "Uygula",
   "settings.port_info": "Portu uygulamada ayrı olarak değiştirmenize gerek yoktur.",
   "settings.animations": "Animasyonlar",

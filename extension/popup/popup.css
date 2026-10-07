@@ -1729,10 +1729,19 @@ body.cleaning-mode .selected .history-trash {
   color: var(--text-color-muted);
 }
 
-.port-apply-btn.spinner {
-  height: 16px;
-  width: 16px;
-  margin: 0;
+.port-apply-btn .spinner {
+  height: 18px;
+  width: 18px;
+  position: absolute;
+}
+
+.port-apply-btn.loading {
+  pointer-events: none;
+  cursor: default;
+}
+
+.port-apply-btn.loading svg {
+  opacity: 0.7;
 }
 
 .filter-select-wrapper {
