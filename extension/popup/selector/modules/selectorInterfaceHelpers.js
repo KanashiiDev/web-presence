@@ -549,22 +549,6 @@ async function populateExistingData(shadow, hostname = getCleanHostname()) {
   const matchedParser = userParsers.find((parser) => parser.patterns?.some((regex) => regex.test(pathname)));
 
   const domainInput = shadow.getElementById("domainSelector");
-  if (domainInput) {
-    if (matchedParser) {
-      const settings = await browser.storage.local.get("userParserSelectors");
-      const parserArray = Array.isArray(settings.userParserSelectors) ? settings.userParserSelectors : [];
-      const current =
-        parserArray.find((p) => p.id === matchedParser.id) ||
-        parserArray.find((p) => {
-          const raw = Array.isArray(p.domain) ? p.domain[0] : p.domain;
-          const pDomain = (raw || "").toLowerCase();
-          return hostname.endsWith(`.${pDomain}`);
-        });
-      domainInput.value = current?.domain ?? hostname;
-    } else {
-      domainInput.value = hostname;
-    }
-  }
 
   if (matchedParser) {
     const settings = await browser.storage.local.get("userParserSelectors");
@@ -577,12 +561,24 @@ async function populateExistingData(shadow, hostname = getCleanHostname()) {
         return hostname.endsWith(`.${pDomain}`);
       });
 
-    if (current?.selectors) {
-      for (const [key, val] of Object.entries(current.selectors)) {
-        const input = shadow.getElementById(`${key}Selector`);
-        if (input) input.value = val;
+    if (current) {
+      shadow._editingParserId = current.id;
+
+      if (domainInput) {
+        domainInput.value = current.domain ?? hostname;
       }
+
+      if (current.selectors) {
+        for (const [key, val] of Object.entries(current.selectors)) {
+          const input = shadow.getElementById(`${key}Selector`);
+          if (input) input.value = val;
+        }
+      }
+    } else if (domainInput) {
+      domainInput.value = hostname;
     }
+  } else if (domainInput) {
+    domainInput.value = hostname;
   }
 }
 
@@ -673,13 +669,16 @@ function setupEventListeners(shadow) {
     const settings = await browser.storage.local.get("userParserSelectors");
     const parserArray = Array.isArray(settings.userParserSelectors) ? settings.userParserSelectors : [];
 
-    const existingIndex = parserArray.findIndex((p) => p.id === id);
+    const targetId = shadow._editingParserId || id;
+    const existingIndex = parserArray.findIndex((p) => p.id === targetId);
+
     if (existingIndex !== -1) {
       parserArray[existingIndex] = newEntry;
     } else {
       parserArray.push(newEntry);
     }
 
+    shadow._editingParserId = id;
     await browser.storage.local.set({ userParserSelectors: parserArray });
 
     showStatusMsg(t("selector.editor.saved"), 0, 0, shadow);
