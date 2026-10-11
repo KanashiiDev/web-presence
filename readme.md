@@ -138,7 +138,7 @@ Open the activity library from the extension popup, install the activities you w
 
 These integrations are available through the activity library.
 
-Additional sites can be added using the built-in selector system or the UserScript manager. See [How to Add a New Site](#-how-to-add-a-new-site) for details.
+Additional sites can be added using the built-in selector system or the UserScript manager. See [Adding a New Site](https://github.com/KanashiiDev/web-presence/wiki/Adding-a-New-Website) for details.
 
 <table>
   <tr>
