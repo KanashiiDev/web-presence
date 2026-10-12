@@ -75,12 +75,12 @@ function createPreviewSection(root) {
   link.textContent = "Open on Source";
 
   const customButton = document.createElement("a");
-  customButton.className = "custom-button";
+  customButton.className = "custom-btn";
   customButton.id = "customButton";
   customButton.textContent = "Custom Action";
 
   const customButton2 = document.createElement("a");
-  customButton2.className = "custom-button";
+  customButton2.className = "custom-btn";
   customButton2.id = "customButton2";
   customButton2.textContent = "Custom Action";
 
@@ -253,7 +253,7 @@ async function updatePreview(shadow, editMode) {
         el.style.display = "none";
       }
     }
-    const buttons = details.querySelectorAll(".custom-button");
+    const buttons = details.querySelectorAll(".custom-btn");
     const link = details.querySelector(".link");
 
     if (buttons) {
@@ -263,7 +263,7 @@ async function updatePreview(shadow, editMode) {
       if (link) link.style.display = "block";
     }
 
-    if (shadow.querySelector(".custom-button[style='display: block;']") && shadow.querySelector(".addButtonsToggle")) {
+    if (shadow.querySelector(".custom-btn[style='display: block;']") && shadow.querySelector(".addButtonsToggle")) {
       shadow.querySelector(".addButtonsToggle").click();
     }
   };

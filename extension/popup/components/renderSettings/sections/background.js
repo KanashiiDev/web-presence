@@ -25,12 +25,12 @@ async function buildBackground(container) {
   const urlInput = document.createElement("input");
   urlInput.type = "text";
   urlInput.placeholder = i18n.t("settings.backgroundImage.url");
-  urlInput.className = "bg-url-input settings-input";
+  urlInput.className = "bg-url-input input";
   urlInput.value = bgSettings.image ?? "";
 
   const btnExpand = document.createElement("span");
   btnExpand.appendChild(createSVG(svg_paths.gearIconPaths));
-  btnExpand.className = "bg-expand-btn button";
+  btnExpand.className = "bg-expand-btn btn";
   btnExpand.title = i18n.t("settings.backgroundImage.toggle");
 
   bgUrlControl.appendChild(urlInput);
@@ -41,7 +41,7 @@ async function buildBackground(container) {
   // Delete button
   const btnDeleteBg = document.createElement("span");
   btnDeleteBg.appendChild(createSVG(svg_paths.crossIconPaths));
-  btnDeleteBg.className = "bg-delete-btn button";
+  btnDeleteBg.className = "bg-delete-btn btn";
   btnDeleteBg.title = i18n.t("settings.backgroundImage.remove");
   btnDeleteBg.classList.toggle("disabled", !bgSettings.image);
 

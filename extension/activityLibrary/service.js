@@ -733,9 +733,9 @@ class GitHubStoreService {
 
     // authors / authorsLinks
     const authorsRaw = extractStr("authors");
-    const authors = authorsRaw ? authorsRaw.split(",").map((a) => a.trim()) : [];
+    const authors = authorsRaw ? splitAndTrim(authorsRaw) : [];
     const authorsLinksRaw = extractStr("authorsLinks");
-    const authorsLinks = authorsLinksRaw ? authorsLinksRaw.split(",").map((a) => a.trim()) : [];
+    const authorsLinks = authorsLinksRaw ? splitAndTrim(authorsLinksRaw) : [];
 
     // tags: ["a", "b"] array
     const tagsArrayMatch = /\btags:\s*\[([\s\S]*?)\]/.exec(block);

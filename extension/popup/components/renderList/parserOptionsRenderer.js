@@ -115,7 +115,7 @@ async function renderOption(key, mode, data, container, settingKey, addListener)
       });
     });
   } else if (data.type === "checkbox") {
-    const switchLabel = Object.assign(document.createElement("label"), { className: "switch-label" });
+    const switchLabel = Object.assign(document.createElement("label"), { className: "switch-label no-select" });
     const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: !!data.value });
     cb.dataset.optionKey = key;
     cb.dataset.settingKey = settingKey;

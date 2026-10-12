@@ -58,9 +58,6 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   // 8. Apply CSS components
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-components.css", CSS_TARGETS, "/*CSS-COMPONENTS*/");
 
-  // 9. Apply CSS utilities
-  applyCssConfig(SHARED_DIR, DIST_DIR, "css-utilities.css", CSS_TARGETS, "/*CSS-UTILITIES*/");
-
   // 9. Copy locales
   checkMissingTranslations(LOCALES_DIR, ["extension"]);
   generateLanguages(LOCALES_DIR);

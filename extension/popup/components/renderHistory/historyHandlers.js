@@ -36,7 +36,7 @@ function initHistoryModeSwitch() {
 
   const wrapper = document.createElement("div");
   wrapper.id = "historyModeSwitch";
-  wrapper.className = "history-mode-switch";
+  wrapper.className = "history-mode-switch segmented-toggle";
 
   const modes = [
     { value: "listen", i18n: "history.mode.music" },
@@ -47,6 +47,7 @@ function initHistoryModeSwitch() {
   modes.forEach(({ value, i18n: key }) => {
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.className = "segmented-option";
     btn.dataset.mode = value;
     btn.dataset.i18n = key;
     btn.textContent = i18n.t(key);
@@ -97,7 +98,7 @@ function attachCheckboxListeners() {
     if (entry.querySelector(".history-trash")) return;
     const cb = entry.querySelector(".history-checkbox");
     const trashIcon = document.createElement("span");
-    trashIcon.className = "history-trash";
+    trashIcon.className = "history-trash no-select btn-action";
     trashIcon.appendChild(createSVG(svg_paths.trashIconPaths));
     const cbId = cb.id || `cb-${Date.now()}-${Math.random()}`;
     cb.id ||= cbId;

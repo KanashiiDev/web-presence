@@ -10,8 +10,7 @@ const handleApplyCustomRange = async () => {
 
   const container = document.getElementById("statsEntries");
   container.replaceChildren();
-  const spinner = document.createElement("div");
-  spinner.className = "spinner";
+  const spinner = createSpinner();
   container.appendChild(spinner);
 
   await renderTopStats(historyState.fullHistory, "custom", 5, statsModule.currentCustomStart, statsModule.currentCustomEnd);

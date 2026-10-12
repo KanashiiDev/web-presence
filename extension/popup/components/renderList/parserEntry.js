@@ -7,7 +7,7 @@ async function buildParserEntry({ entry, parserEnabledState, parserSettings, con
 
   const favIconContainer = createFavIconElement(domain, title, homepage, addListener);
 
-  const entryInner = Object.assign(document.createElement("span"), { className: "parser-span" });
+  const entryInner = Object.assign(document.createElement("span"), { className: "parser-span no-select btn-action" });
   const siteTitle = Object.assign(document.createElement("a"), {
     className: "parser-title",
     textContent: title ?? domain,

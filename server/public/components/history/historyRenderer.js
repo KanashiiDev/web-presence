@@ -106,6 +106,7 @@ function createHistoryRenderer(mode) {
 
         if (this.state.currentOffset < data.length) {
           await new Promise((resolve) => requestAnimationFrame(resolve));
+          simpleBars[ids.simplebar]?.recalculate();
           const needsMore = scrollEl.scrollHeight <= scrollEl.clientHeight + 5;
           if (needsMore && scrollEl.offsetParent !== null) {
             this._isRendering = false;
@@ -114,6 +115,8 @@ function createHistoryRenderer(mode) {
           }
         }
 
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        simpleBars[ids.simplebar]?.recalculate();
         updateSimpleBarPadding(ids.wrapper);
       } finally {
         this._isRendering = false;

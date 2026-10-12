@@ -41,8 +41,7 @@ async function renderTopStats(history, range = "day", topN = 5, customStart = nu
   }
 
   container.replaceChildren();
-  const spinner = document.createElement("div");
-  spinner.className = "spinner";
+  const spinner = createSpinner();
   container.appendChild(spinner);
 
   const filteredHistory = filterHistoryByRange(history, range, customStart, customEnd);
@@ -61,7 +60,7 @@ async function renderTopStats(history, range = "day", topN = 5, customStart = nu
 
     stats.topArtists.forEach((artist, i) => {
       const div = document.createElement("div");
-      div.className = "history-stats-artist-entry";
+      div.className = "history-stats-artist-entry list-item";
       div.dataset.artist = artist.name;
       div.dataset.artistId = `artist-${i}`;
       div.dataset.range = range;

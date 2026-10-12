@@ -19,7 +19,7 @@ async function buildColors(container) {
 
     const btnDelete = document.createElement("span");
     btnDelete.appendChild(createSVG(svg_paths.crossIconPaths));
-    btnDelete.className = "color-delete-btn button";
+    btnDelete.className = "color-delete-btn btn";
     btnDelete.title = "Revert";
 
     const isDefault = !colorConfig[item.key] || colorConfig[item.key] === item.default;
@@ -74,14 +74,14 @@ async function buildColors(container) {
   colorSectionLabel.textContent = i18n.t("settings.color");
 
   const toggleSpan = document.createElement("span");
-  toggleSpan.className = "color-expand-btn button";
+  toggleSpan.className = "color-expand-btn btn";
   toggleSpan.title = i18n.t("settings.color.edit");
   toggleSpan.appendChild(createSVG(svg_paths.gearIconPaths));
 
   // Delete Button
   const btnDeleteColors = document.createElement("span");
   btnDeleteColors.appendChild(createSVG(svg_paths.crossIconPaths));
-  btnDeleteColors.className = "all-colors-delete-btn button";
+  btnDeleteColors.className = "all-colors-delete-btn btn";
   btnDeleteColors.title = i18n.t("settings.color.remove");
   btnDeleteColors.classList.toggle("disabled", Object.keys(colorConfig).length === 0);
 

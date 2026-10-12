@@ -54,7 +54,14 @@ async function injectSelectorUI(editMode = false, theme = "dark", style = {}, bg
   createPreviewSection(content);
 
   shadow.appendChild(root);
+
+  const tempStyle = disableTransitionsTemporarily(shadow);
+
   await injectStyles(shadow);
+
+  setTimeout(() => {
+    if (tempStyle.isConnected) tempStyle.remove();
+  }, 2000);
 
   applyInjectedTranslations(root);
   resolveFieldsConfig(FIELDS_CONFIG);

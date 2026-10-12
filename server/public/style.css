@@ -312,13 +312,6 @@ footer a:hover {
   box-shadow: 0 0 10px var(--shadow-color);
 }
 
-.music-header {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 15px;
-  color: var(--text-color-primary);
-}
-
 .activity-body {
   display: flex;
   gap: 20px;
@@ -479,13 +472,17 @@ img:not(.summary-img)[src*="assets/icon-dark.png"] {
 .logEntry.error {
   border: 1px solid var(--red-color);
 }
+
 .logEntry .header {
   display: flex;
   justify-content: space-between;
-  padding-bottom: 6px;
   border-bottom: 1px solid var(--foreground-color-200);
   color: var(--text-color-muted);
+  background: 0;
+  margin: 0;
+  padding: 0 0 6px;
 }
+
 .logEntry .message {
   margin: 6px 0;
 }
@@ -613,7 +610,7 @@ input[type="text"],
 input[type="number"] {
   max-width: 120px;
   width: 100%;
-  background: var(--foreground-color-500);
+  background: var(--foreground-color-300);
   outline: 0;
   border: 0;
   border-radius: var(--radius-sm);
@@ -1389,21 +1386,10 @@ input[type="number"] {
   background: var(--foreground-color-100);
 }
 
-.capture-preset-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
 .capture-preset-name {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-color-primary);
-}
-
-.capture-preset-sub {
-  font-size: 11px;
-  color: var(--text-color-muted);
 }
 
 .capture-preset-dims {

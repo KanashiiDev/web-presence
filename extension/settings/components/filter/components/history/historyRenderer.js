@@ -9,8 +9,7 @@ const HistoryRenderer = {
       HistoryState.lastRenderedHeader = null;
       HistoryState.currentOffset = 0;
 
-      const spinner = document.createElement("div");
-      spinner.className = "spinner";
+      const spinner = createSpinner();
       target.appendChild(spinner);
 
       HistoryState.fullHistory = (await sendAction("loadHistory")).data;
@@ -87,7 +86,7 @@ const HistoryRenderer = {
     });
 
     if (!document.querySelector(".history-filter")) {
-      HistoryDOM.filterBtn.className = "history-filter";
+      HistoryDOM.filterBtn.className = "history-filter btn";
       HistoryDOM.filterBtn.appendChild(createSVG(svg_paths.filterIconPaths));
     }
 

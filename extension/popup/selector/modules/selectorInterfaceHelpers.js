@@ -407,17 +407,17 @@ function createActionButtons(root, shadow) {
   optionsDiv.className = "userRpc-listItemOptions";
 
   const saveBtn = document.createElement("a");
-  saveBtn.className = "userRpc-optionButtons";
+  saveBtn.className = "userRpc-optionButtons btn";
   saveBtn.id = "saveSelectors";
   saveBtn.textContent = "common.save";
 
   const exitBtn = document.createElement("a");
-  exitBtn.className = "userRpc-optionButtons";
+  exitBtn.className = "userRpc-optionButtons btn";
   exitBtn.id = "closeSelectorUI";
   exitBtn.textContent = "common.close";
 
   const addButtonsToggle = document.createElement("a");
-  addButtonsToggle.className = "userRpc-optionButtons addButtonsToggle";
+  addButtonsToggle.className = "userRpc-optionButtons btn addButtonsToggle";
   addButtonsToggle.textContent = "selector.editor.addButtons";
   addButtonsToggle.addEventListener("click", () => {
     shadow.querySelectorAll('[id*="buttonText"], [id*="buttonLink"]').forEach((el) => {
@@ -501,6 +501,13 @@ function setupDragFunctionality(root) {
     const rect = root.getBoundingClientRect();
     moveWithinBounds(rect.left, rect.top);
   }
+}
+
+function disableTransitionsTemporarily(shadowRoot) {
+  const style = document.createElement("style");
+  style.textContent = "* { transition: none !important; }";
+  shadowRoot.appendChild(style);
+  return style;
 }
 
 // Inject Selector CSS

@@ -58,6 +58,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "factoryResetTimer",
     "factoryResetTimeout",
     "factoryReset",
+    "splitAndTrim",
   ]);
 
   // Main Utils

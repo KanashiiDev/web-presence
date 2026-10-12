@@ -1,5 +1,5 @@
 function createHistoryEntry(entry, historyIndex, type, filteredHistory = []) {
-  const div = Object.assign(document.createElement("div"), { className: "history-entry" });
+  const div = Object.assign(document.createElement("div"), { className: "history-entry list-item" });
   div.dataset.historyIndex = historyIndex;
 
   // Checkbox
@@ -26,18 +26,18 @@ function createHistoryEntry(entry, historyIndex, type, filteredHistory = []) {
 
   // Info
   const info = document.createElement("div");
-  info.className = "history-info";
+  info.className = "history-info content-meta";
 
   // Title
   const strong = Object.assign(document.createElement("strong"), {
     textContent: entry.t,
-    className: "history-title",
+    className: "history-title content-meta-title",
   });
   info.appendChild(strong);
 
   // Source and plays container
   const small = document.createElement("small");
-  small.className = "history-source";
+  small.className = "history-source content-meta-tertiary";
 
   // Source span
   const sourceSpan = document.createElement("span");
@@ -81,7 +81,7 @@ function createHistoryEntry(entry, historyIndex, type, filteredHistory = []) {
 
   if (entry.a !== "Radio") {
     const artist = Object.assign(document.createElement("span"), {
-      className: "history-artist",
+      className: "history-artist content-meta-secondary",
       textContent: entry.a,
     });
     info.append(artist, document.createElement("br"));

@@ -143,8 +143,7 @@ const handleSaveUserScript = async (req) => {
       await scriptManager.storage.saveScripts(updatedList);
     }
 
-    scriptData.registered = isRegistered;
-    return { ok: true, script: scriptData };
+    return { ok: true, script: { ...scriptData, registered: isRegistered } };
   } catch (err) {
     logError("[background:userScript]: Error during register/unregister after save:", err);
     return { ok: false, error: err.message };

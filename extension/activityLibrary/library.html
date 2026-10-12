@@ -11,13 +11,13 @@
   <div id="bg-layer"></div>
 
   <body data-theme="dark">
-    <div class="library-header">
-      <div class="library-header-left">
-        <h3 class="library-title" data-i18n="library.title">Web Presence - Activity Library</h3>
-        <p class="library-subtitle" data-i18n="library.subtitle">Discover activities!</p>
+    <div class="header">
+      <div>
+        <h3 class="header-title" data-i18n="library.title">Web Presence - Activity Library</h3>
+        <p class="header-desc" data-i18n="library.subtitle">Discover activities!</p>
       </div>
-      <div class="library-header-right">
-        <button id="btnCheckUpdates" class="library-btn secondary" data-i18n-attr="title" data-i18n="library.checkUpdatesTooltip">
+      <div class="header-right">
+        <button id="btnCheckUpdates" class="library-btn btn btn-secondary" data-i18n-attr="title" data-i18n="library.checkUpdatesTooltip">
           <span data-i18n="library.checkUpdates">Check Updates</span>
         </button>
       </div>
@@ -25,7 +25,7 @@
     <div class="content">
       <div id="updateBanner" class="update-banner" hidden>
         <span id="updateBannerText"></span>
-        <button id="btnBatchUpdate" class="library-btn primary small" data-i18n="library.updateAll">Update All</button>
+        <button id="btnBatchUpdate" class="library-btn btn btn-primary btn-sm" data-i18n="library.updateAll">Update All</button>
       </div>
       <div class="library-content" id="storeContent">
         <div id="emptyState" class="empty-state" hidden>
@@ -37,16 +37,16 @@
       </div>
 
       <div id="advancedSection" class="advanced-section">
-        <button id="btnToggleAdvanced" class="library-btn ghost advanced-toggle">
+        <button id="btnToggleAdvanced" class="library-btn btn btn-ghost btn-sm advanced-toggle">
           <span data-i18n="library.addCustomRepo">[+] Add Custom Repo (Advanced)</span>
         </button>
         <div id="addRepoPanel" class="add-repo-panel" hidden>
           <div class="add-repo-inner">
             <p class="add-repo-label" data-i18n="library.addRepo.label">GitHub Repo URL</p>
             <div class="add-repo-row">
-              <input type="text" id="repoUrlInput" class="library-input" placeholder="https://github.com/user/repo" spellcheck="false" />
-              <button id="btnConfirmAddRepo" class="library-btn primary small" data-i18n="library.addRepo.confirm">Add</button>
-              <button id="btnCancelAddRepo" class="library-btn secondary small" data-i18n="library.addRepo.cancel">Cancel</button>
+              <input type="text" id="repoUrlInput" class="library-input input" placeholder="https://github.com/user/repo" spellcheck="false" />
+              <button id="btnConfirmAddRepo" class="library-btn btn btn-primary btn-sm" data-i18n="library.addRepo.confirm">Add</button>
+              <button id="btnCancelAddRepo" class="library-btn btn btn-secondary btn-sm" data-i18n="library.addRepo.cancel">Cancel</button>
             </div>
             <span id="addRepoError" class="library-error"></span>
             <small class="add-repo-hint">

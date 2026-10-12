@@ -342,7 +342,7 @@ domLoadedListener = async () => {
   const loadingOverlay = document.createElement("div");
   loadingOverlay.className = "popup-loading-overlay";
 
-  const spinner = Object.assign(document.createElement("div"), { className: "spinner" });
+  const spinner = createSpinner();
   loadingOverlay.appendChild(spinner);
   document.body.appendChild(loadingOverlay);
 

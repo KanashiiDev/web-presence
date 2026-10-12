@@ -1,19 +1,4 @@
-const $ = (id) => document.getElementById(id);
-
 // Small, reusable utility helpers
-function clearChildren(el) {
-  if (!el) return;
-  while (el.firstChild) {
-    el.removeChild(el.firstChild);
-  }
-}
-
-function splitAndTrim(str = "") {
-  return str
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 class UserScriptUI {
   constructor() {
@@ -71,39 +56,39 @@ class UserScriptUI {
 
   bindEvents() {
     // Main buttons
-    $("btnNew").addEventListener("click", () => this.showEditor());
-    $("btnCancel").addEventListener("click", () => this.hideEditor(1));
-    $("btnSave").addEventListener("click", () => this.saveScript());
+    document.getElementById("btnNew").addEventListener("click", () => this.showEditor());
+    document.getElementById("btnCancel").addEventListener("click", () => this.hideEditor(1));
+    document.getElementById("btnSave").addEventListener("click", () => this.saveScript());
 
     // Import/Export
-    $("btnImport").addEventListener("click", () => $("fileInput").click());
-    $("fileInput").addEventListener("change", (e) => this.handleImport(e));
-    $("btnExport").addEventListener("click", (e) => {
+    document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
+    document.getElementById("fileInput").addEventListener("change", (e) => this.handleImport(e));
+    document.getElementById("btnExport").addEventListener("click", (e) => {
       this.exportMenuClick(e);
     });
 
     // Editor Input Checks
-    $("inDomain").addEventListener("input", () => this.handlePatternStatus());
-    $("inUrlPatterns").addEventListener("input", () => this.handlePatternStatus());
+    document.getElementById("inDomain").addEventListener("input", () => this.handlePatternStatus());
+    document.getElementById("inUrlPatterns").addEventListener("input", () => this.handlePatternStatus());
 
     // Header Tab
-    $("tabMyScripts")?.addEventListener("click", () => this.switchTab("my"));
-    $("tabRepoScripts")?.addEventListener("click", () => this.switchTab("repo"));
+    document.getElementById("tabMyScripts")?.addEventListener("click", () => this.switchTab("my"));
+    document.getElementById("tabRepoScripts")?.addEventListener("click", () => this.switchTab("repo"));
 
     // List events
-    $("scriptList").addEventListener("click", (e) => this.handleListClick(e));
+    document.getElementById("scriptList").addEventListener("click", (e) => this.handleListClick(e));
 
     // GitHub Contribute settings
-    $("btnGithubSettings").addEventListener("click", () => this.onGithubSettingsClick());
+    document.getElementById("btnGithubSettings").addEventListener("click", () => this.onGithubSettingsClick());
 
     // Global Ctrl+S / Cmd+S: save from anywhere while the editor is open
     document.addEventListener("keydown", (e) => {
       const key = e.key ? e.key.toLowerCase() : "";
       if ((e.ctrlKey || e.metaKey) && key === "s") {
-        const editor = $("editor");
+        const editor = document.getElementById("editor");
         if (editor && !editor.hidden) {
           e.preventDefault();
-          $("btnSave").click();
+          document.getElementById("btnSave").click();
         }
       }
     });
@@ -120,9 +105,9 @@ class UserScriptUI {
   }
 
   handlePatternStatus() {
-    const rawPatterns = $("inUrlPatterns").value;
+    const rawPatterns = document.getElementById("inUrlPatterns").value;
     const { normalizedList, invalidPatterns } = PatternValidator.processPatterns(rawPatterns);
-    const patternStatus = $("patternStatus");
+    const patternStatus = document.getElementById("patternStatus");
 
     // Clear previous content
     clearChildren(patternStatus);
@@ -383,9 +368,9 @@ class UserScriptUI {
 
   renderList(list) {
     this.hideEditor();
-    const editor = $("editor");
+    const editor = document.getElementById("editor");
     document.body.appendChild(editor);
-    const ul = $("scriptList");
+    const ul = document.getElementById("scriptList");
     ul.innerHTML = "";
 
     if (!list.length) {
@@ -448,7 +433,7 @@ class UserScriptUI {
       header.prepend(favIconContainer);
 
       const status = document.createElement("span");
-      status.className = "script-status";
+      status.className = "script-status badge badge-sm badge-rounded";
       status.classList.toggle("status-active", !!script.registered);
       status.classList.toggle("status-inactive", !script.registered);
       const inactiveStatus =
@@ -485,24 +470,14 @@ class UserScriptUI {
       const actions = document.createElement("div");
       actions.className = "script-actions";
 
-      const btnToggle = document.createElement("button");
-      btnToggle.classList.add("btnToggle");
       const isActivelyRunning = script.enabled && script.registered;
-      btnToggle.classList.add(isActivelyRunning ? "btn-disable" : "btn-enable");
-      btnToggle.title = isActivelyRunning ? i18n.t("common.disable") : i18n.t("common.enable");
-      isActivelyRunning ? btnToggle.appendChild(createSVG(svg_paths.pauseIconPaths)) : btnToggle.appendChild(createSVG(svg_paths.startIconPaths));
+      const { btnToggle, btnExport, btnDelete } = createListActionButtons(script.id, isActivelyRunning);
 
       const btnEdit = document.createElement("button");
       btnEdit.className = "btnEdit";
       btnEdit.title = i18n.t("common.edit");
       btnEdit.setAttribute("data-id", script.id);
       btnEdit.appendChild(createSVG(svg_paths.penIconPaths));
-
-      const btnExport = document.createElement("button");
-      btnExport.className = "btnExport";
-      btnExport.title = i18n.t("userscript.listControls.export");
-      btnExport.setAttribute("data-id", script.id);
-      btnExport.appendChild(createSVG(svg_paths.exportIconPaths, { strokeWidth: 1.5 }));
 
       const btnContribute = document.createElement("button");
       btnContribute.className = "btnContribute";
@@ -514,11 +489,6 @@ class UserScriptUI {
       btnRegister.className = "btnRegister";
       btnRegister.title = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
       btnRegister.textContent = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
-
-      const btnDelete = document.createElement("button");
-      btnDelete.className = "btnDelete";
-      btnDelete.title = i18n.t("common.delete");
-      btnDelete.appendChild(createSVG(svg_paths.trashIconPaths));
 
       actions.append(btnToggle, btnEdit, btnExport, btnContribute, btnDelete);
 
@@ -561,8 +531,8 @@ class UserScriptUI {
 
   async showEditor(script = null, insertAfterEl = null) {
     this.editingId = script?.id || null;
-    const editor = $("editor");
-    const listContainer = $("scriptList");
+    const editor = document.getElementById("editor");
+    const listContainer = document.getElementById("scriptList");
     if (!editor || !listContainer) return;
 
     const currentSection = script?.id || "new";
@@ -581,8 +551,8 @@ class UserScriptUI {
       listContainer.prepend(editor);
     }
 
-    const authorsInput = $("inAuthors");
-    const authorsLinksInput = $("inAuthorsLinks");
+    const authorsInput = document.getElementById("inAuthors");
+    const authorsLinksInput = document.getElementById("inAuthorsLinks");
     const githubUser = typeof githubContributeService !== "undefined" ? await githubContributeService.getCachedUser() : null;
 
     const isRepoScript = !!script?.storeFilePath;
@@ -607,27 +577,27 @@ class UserScriptUI {
       authorsLinksInput.value = Array.isArray(script?.authorsLinks) ? script.authorsLinks.join(", ") : script?.authorsLinks || "";
     }
 
-    $("editorTitle").textContent = script ? `${i18n.t("userscript.editor.editScript")} [${script.title}]` : i18n.t("userscript.editor.newScript");
-    $("inTitle").value = script?.title || "";
+    document.getElementById("editorTitle").textContent = script ? `${i18n.t("userscript.editor.editScript")} [${script.title}]` : i18n.t("userscript.editor.newScript");
+    document.getElementById("inTitle").value = script?.title || "";
 
     const [vMaj, vMin, vPat] = (script?.version || "1.0.0").split(".").map((n) => parseInt(n, 10) || 0);
-    $("inVersionMajor").value = vMaj;
-    $("inVersionMinor").value = vMin;
-    $("inVersionPatch").value = vPat;
-    $("inDesc").value = script?.description || "";
+    document.getElementById("inVersionMajor").value = vMaj;
+    document.getElementById("inVersionMinor").value = vMin;
+    document.getElementById("inVersionPatch").value = vPat;
+    document.getElementById("inDesc").value = script?.description || "";
 
-    $("inDomain").value = Array.isArray(script?.domain) ? script.domain.join(", ") : script?.domain || "";
-    $("inHomepage").value = script?.homepage || "";
+    document.getElementById("inDomain").value = Array.isArray(script?.domain) ? script.domain.join(", ") : script?.domain || "";
+    document.getElementById("inHomepage").value = script?.homepage || "";
     this.inModeTom.setValue(script?.mode || "listen");
-    $("inWatchAutoDetect").value = script?.watchAutoDetect || "disable";
+    document.getElementById("inWatchAutoDetect").value = script?.watchAutoDetect || "disable";
     const rawCategory = script?.category ?? "";
     const categoryItems = Array.isArray(rawCategory) ? rawCategory : splitAndTrim(rawCategory);
 
     this.categorySelect.clear(true);
     this.categorySelect.setValue(categoryItems, true);
-    $("inTags").value = Array.isArray(script?.tags) ? script.tags.join(", ") : script?.tags || "";
+    document.getElementById("inTags").value = Array.isArray(script?.tags) ? script.tags.join(", ") : script?.tags || "";
     this.updateWatchAutoDetectVisibility();
-    $("inDebug").checked = script?.debug || false;
+    document.getElementById("inDebug").checked = script?.debug || false;
 
     const iframeSelectorsContainer = document.getElementById("iframeSelectorsContainer");
     const iframeSelectorsContainerHeader = document.getElementById("jsonCodeHeader");
@@ -651,8 +621,8 @@ class UserScriptUI {
       this.iframeSelectorsEditor.setValue(JSON.stringify({ fields: { $video: { type: "video" } } }, null, 2));
     }
 
-    $("inUrlPatterns").value = this.formatPatterns(script?.urlPatterns) || ".*";
-    $("inUrlPatterns").dispatchEvent(new Event("input"));
+    document.getElementById("inUrlPatterns").value = this.formatPatterns(script?.urlPatterns) || ".*";
+    document.getElementById("inUrlPatterns").dispatchEvent(new Event("input"));
     this.codeEditor.setValue(
       script?.code ||
         `let title = "";
@@ -670,9 +640,9 @@ class UserScriptUI {
     this.checkSettings(this.codeEditor);
     if (!script?.code) document.getElementById("btnFormat").click();
 
-    $("editorMsg").textContent = "";
-    $("editorMsg").classList = "";
-    $("editor").hidden = false;
+    document.getElementById("editorMsg").textContent = "";
+    document.getElementById("editorMsg").classList = "";
+    document.getElementById("editor").hidden = false;
     this.codeEditor.refresh();
 
     // Reset useSettings Container
@@ -685,8 +655,8 @@ class UserScriptUI {
   }
 
   hideEditor(btn) {
-    $("editor").hidden = true;
-    $("editorMsg").classList = "";
+    document.getElementById("editor").hidden = true;
+    document.getElementById("editorMsg").classList = "";
     this.editingId = null;
     const params = new URLSearchParams(window.location.search);
     const target = params.get("target");
@@ -698,16 +668,16 @@ class UserScriptUI {
   }
 
   async saveScript() {
-    const domainRaw = $("inDomain").value.trim();
+    const domainRaw = document.getElementById("inDomain").value.trim();
     const domain = domainRaw.includes(",") ? splitAndTrim(domainRaw).map((d) => this.cleanDomain(d)) : this.cleanDomain(domainRaw);
     const domainEmpty = Array.isArray(domain) ? domain.length === 0 : !domain;
     if (domainEmpty) {
       this.showMessage(i18n.t("userscript.editor.warn.emptyDomain"), "error");
       return;
     }
-    const rawPatterns = $("inUrlPatterns").value.trim() || ".*";
+    const rawPatterns = document.getElementById("inUrlPatterns").value.trim() || ".*";
     const { normalizedList } = PatternValidator.processPatterns(rawPatterns);
-    $("editor").setAttribute("current", "0");
+    document.getElementById("editor").setAttribute("current", "0");
 
     function extractSettingsFromCode(code) {
       const regex = /useSetting\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*,\s*["']([^"']+)"(?:\s*,\s*([\s\S]*?))?\s*\)/g;
@@ -787,23 +757,23 @@ class UserScriptUI {
       }
     }
 
-    const authorsData = splitAndTrim($("inAuthors").value);
+    const authorsData = splitAndTrim(document.getElementById("inAuthors").value);
 
     const script = {
       id: this.editingId || generateParserKey(domain, normalizedList, authorsData),
-      title: $("inTitle").value.trim(),
-      version: `${parseInt($("inVersionMajor").value) || 0}.${parseInt($("inVersionMinor").value) || 0}.${parseInt($("inVersionPatch").value) || 0}`,
-      description: $("inDesc").value.trim(),
+      title: document.getElementById("inTitle").value.trim(),
+      version: `${parseInt(document.getElementById("inVersionMajor").value) || 0}.${parseInt(document.getElementById("inVersionMinor").value) || 0}.${parseInt(document.getElementById("inVersionPatch").value) || 0}`,
+      description: document.getElementById("inDesc").value.trim(),
       authors: authorsData,
-      authorsLinks: splitAndTrim($("inAuthorsLinks").value),
+      authorsLinks: splitAndTrim(document.getElementById("inAuthorsLinks").value),
       domain,
-      homepage: $("inHomepage").value.trim(),
+      homepage: document.getElementById("inHomepage").value.trim(),
       urlPatterns: normalizedList,
       lastUpdated: Date.now(),
       runAt: "document_idle",
       code: this.codeEditor.getValue(),
       mode: this.inModeTom.getValue(),
-      watchAutoDetect: $("inWatchAutoDetect").value.trim(),
+      watchAutoDetect: document.getElementById("inWatchAutoDetect").value.trim(),
       iframeSelectors,
       category: (() => {
         const vals = this.categorySelect.getValue();
@@ -811,8 +781,8 @@ class UserScriptUI {
         if (vals.length === 1) return vals[0];
         return vals;
       })(),
-      tags: splitAndTrim($("inTags").value),
-      debug: $("inDebug").checked,
+      tags: splitAndTrim(document.getElementById("inTags").value),
+      debug: document.getElementById("inDebug").checked,
       settings: extractSettingsFromCode(this.codeEditor.getValue()),
     };
 
@@ -1194,14 +1164,7 @@ ${codeIndented}
 
   async showImportModalSelection(duplicates, newScripts, existing) {
     return new Promise((resolve) => {
-      // Modal
-      const modal = document.createElement("div");
-      modal.className = "modal";
-      modal.style.display = "flex";
-
-      const content = document.createElement("div");
-      content.className = "modal-content";
-      modal.appendChild(content);
+      const { modal, content } = createModal();
 
       const title = document.createElement("h2");
       title.textContent = i18n.t("userscript.import.title");
@@ -1286,7 +1249,7 @@ ${codeIndented}
           contentWrapper.remove();
         }
       });
-      confirmBtn.className = "confirm-button";
+      confirmBtn.className = "btn confirm-button";
 
       const closeBtn = this.createButton(i18n.t("common.close"), async () => {
         if (importFinished) {
@@ -1295,7 +1258,7 @@ ${codeIndented}
         }
       });
 
-      closeBtn.className = "close-button";
+      closeBtn.className = "btn close-btn";
       const buttonContainer = document.createElement("div");
       buttonContainer.className = "button-group footer-buttons";
       buttonContainer.append(confirmBtn, closeBtn);
@@ -1392,7 +1355,7 @@ ${codeIndented}
   createButton(text, onClick) {
     const btn = document.createElement("button");
     btn.textContent = text;
-    btn.className = "button";
+    btn.className = "btn btn-action";
     if (onClick) btn.onclick = onClick;
     return btn;
   }
@@ -1446,19 +1409,13 @@ ${codeIndented}
     let fileName;
 
     const dataStr = this.exportToRegisterParser(scripts);
-    const blob = new Blob([dataStr], { type: "text/javascript" });
     if (options.type === "single") {
       fileName = `web-presence-userScript-${scripts[0].title || "script"}.js`;
     } else {
       fileName = `web-presence-userScripts-${new Date().toISOString().split("T")[0]}.js`;
     }
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(dataStr, fileName, "text/javascript");
     showAlert(i18n.t("backup.export.complete"));
   }
 
@@ -1532,11 +1489,11 @@ ${codeIndented}
     btnRow.className = "button-group footer-buttons";
 
     const editBtn = document.createElement("button");
-    editBtn.className = "confirm-button";
+    editBtn.className = "btn confirm-button";
     editBtn.textContent = i18n.t("common.edit");
 
     const closeBtn = document.createElement("button");
-    closeBtn.className = "close-button";
+    closeBtn.className = "btn close-btn";
     closeBtn.textContent = i18n.t("common.close");
 
     editBtn.addEventListener("click", () => {
@@ -1582,7 +1539,7 @@ ${codeIndented}
     btnRow.className = "button-group footer-buttons";
 
     const closeBtn = document.createElement("button");
-    closeBtn.className = "close-button";
+    closeBtn.className = "btn close-btn";
     closeBtn.textContent = i18n.t("common.close");
 
     closeBtn.addEventListener("click", () => modal.remove());
@@ -1726,8 +1683,7 @@ ${codeIndented}
       // Commit Message Input Field
       const defaultCommitMsg = githubContributeService.getDefaultCommitMessage(script, isUpdate);
 
-      const commitGroup = document.createElement("div");
-      commitGroup.className = "form-row contribute-commit-group";
+      const commitGroup = createEl("div", { className: "form-row contribute-commit-group" });
       commitGroup.style.margin = "12px 0";
 
       const commitLabel = document.createElement("label");
@@ -1737,7 +1693,7 @@ ${codeIndented}
 
       const commitInput = document.createElement("input");
       commitInput.type = "text";
-      commitInput.className = "input-text";
+      commitInput.className = "input";
       commitInput.value = defaultCommitMsg;
       commitInput.style.width = "100%";
 
@@ -1748,11 +1704,11 @@ ${codeIndented}
       btnRow.className = "button-group footer-buttons";
 
       const cancelBtn = document.createElement("button");
-      cancelBtn.className = "close-button";
+      cancelBtn.className = "btn close-btn";
       cancelBtn.textContent = i18n.t("common.cancel");
 
       const submitBtn = document.createElement("button");
-      submitBtn.className = "confirm-button";
+      submitBtn.className = "btn confirm-button";
       submitBtn.textContent = isUpdate ? i18n.t("userscript.contribute.confirm.submitUpdate") : i18n.t("userscript.contribute.confirm.submit");
 
       cancelBtn.addEventListener("click", () => {
@@ -1958,17 +1914,17 @@ ${codeIndented}
     btnRow.className = "button-group footer-buttons";
 
     const retryBtn = document.createElement("button");
-    retryBtn.className = "contribute-retry button";
+    retryBtn.className = "contribute-retry btn";
     retryBtn.textContent = i18n.t("setup.permission.grant.retry");
     retryBtn.hidden = true;
 
     const reAuthBtn = document.createElement("button");
-    reAuthBtn.className = "contribute-reauth button";
+    reAuthBtn.className = "contribute-reauth btn";
     reAuthBtn.textContent = i18n.t("userscript.contribute.reauth");
     reAuthBtn.hidden = true;
 
     const closeBtn = document.createElement("button");
-    closeBtn.className = "contribute-close close-button";
+    closeBtn.className = "contribute-close btn close-btn";
     closeBtn.textContent = i18n.t("common.close");
 
     btnRow.append(retryBtn, reAuthBtn, closeBtn);
@@ -1983,7 +1939,7 @@ ${codeIndented}
   }
 
   async refreshGithubAuthBadge() {
-    const btn = $("btnGithubSettings");
+    const btn = document.getElementById("btnGithubSettings");
     if (!btn) return;
     const token = await githubContributeService.getToken();
 
@@ -2068,14 +2024,14 @@ ${codeIndented}
       btnRow.className = "button-group footer-buttons";
 
       const disconnectBtn = document.createElement("button");
-      disconnectBtn.className = "button github-disconnect-btn";
+      disconnectBtn.className = "btn btn-action github-disconnect-btn";
       disconnectBtn.textContent = i18n.t("userscript.contribute.oauth.disconnect");
 
       const reloadBtn = document.createElement("button");
-      reloadBtn.className = "button";
+      reloadBtn.className = "btn btn-action";
       reloadBtn.appendChild(createSVG(svg_paths.refreshIconPaths));
       const closeBtn = document.createElement("button");
-      closeBtn.className = "close-button";
+      closeBtn.className = "btn btn-action close-btn";
       closeBtn.textContent = i18n.t("common.close");
 
       reloadBtn.addEventListener("click", async () => {
@@ -2142,11 +2098,11 @@ ${codeIndented}
       btnRow.className = "button-group footer-buttons";
 
       const cancelBtn = document.createElement("button");
-      cancelBtn.className = "close-button";
+      cancelBtn.className = "btn close-btn";
       cancelBtn.textContent = i18n.t("common.cancel");
 
       const disconnectBtn = document.createElement("button");
-      disconnectBtn.className = "button github-disconnect-btn";
+      disconnectBtn.className = "btn btn-action github-disconnect-btn";
       disconnectBtn.textContent = i18n.t("userscript.contribute.oauth.disconnect");
 
       disconnectBtn.addEventListener("click", async () => {
@@ -2218,7 +2174,7 @@ ${codeIndented}
 
           // Open GitHub button
           const openBtn = document.createElement("button");
-          openBtn.className = "device-flow-open-btn confirm-button";
+          openBtn.className = "device-flow-open-btn btn confirm-button";
           openBtn.target = "_blank";
           openBtn.rel = "noopener noreferrer";
           openBtn.textContent = i18n.t("userscript.contribute.oauth.openGitHub");
@@ -2284,7 +2240,7 @@ ${codeIndented}
             stateEl.appendChild(errEl);
 
             const retryBtn = document.createElement("button");
-            retryBtn.className = "confirm-button";
+            retryBtn.className = "btn confirm-button";
             retryBtn.textContent = i18n.t("setup.permission.grant.retry");
             retryBtn.addEventListener("click", () => {
               modal.remove();
@@ -2304,7 +2260,7 @@ ${codeIndented}
   }
 
   showMessage(message, type = "info") {
-    const msgElement = $("editorMsg");
+    const msgElement = document.getElementById("editorMsg");
     msgElement.textContent = message;
     msgElement.className = `message ${type}`;
   }

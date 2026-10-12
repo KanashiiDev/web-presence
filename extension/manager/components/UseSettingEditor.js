@@ -96,8 +96,7 @@ class UseSettingEditor {
 
   // UI helpers
   createRow(labelText, inputEl) {
-    const row = document.createElement("div");
-    row.className = "form-row";
+    const row = createEl("div", { className: "form-row" });
     const label = document.createElement("label");
     label.textContent = labelText;
     row.append(label, inputEl);

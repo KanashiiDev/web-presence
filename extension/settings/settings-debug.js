@@ -69,11 +69,9 @@ function _buildRow(entry, lineNum) {
     pills.className = "activity-pills";
 
     const pill = (label, value, okWhen) => {
-      const s = document.createElement("span");
       const isOk = typeof okWhen === "boolean" ? okWhen : value === okWhen;
-      s.className = `activity-pill ${isOk ? "pill-ok" : "pill-warn"}`;
-      s.textContent = `${label}: ${value ?? "—"}`;
-      pills.appendChild(s);
+      const badge = createBadge(`${label}: ${value ?? "—"}`, `activity-pill badge-xs ${isOk ? "badge-success-dark" : "badge-warning-dark"}`);
+      pills.appendChild(badge);
     };
 
     pill("status", d.status, "SONG");
@@ -97,9 +95,10 @@ function _buildRow(entry, lineNum) {
     msg.appendChild(timing);
 
     if (d.updateReason || d.shouldUpdate != null) {
-      const decision = document.createElement("span");
-      decision.className = `activity-decision ${d.shouldUpdate ? "decision-update" : "decision-skip"}`;
-      decision.textContent = d.shouldUpdate ? `▶ ${d.updateReason ?? "update"}` : `⏭ skip${d.updateReason ? ": " + d.updateReason : ""}`;
+      const decision = createBadge(
+        d.shouldUpdate ? `▶ ${d.updateReason ?? "update"}` : `⏭ skip${d.updateReason ? ": " + d.updateReason : ""}`,
+        `activity-decision ${d.shouldUpdate ? "badge-xs badge-primary" : "badge-xs badge-secondary"}`,
+      );
       msg.appendChild(decision);
     }
   } else {
@@ -414,7 +413,7 @@ function _wireSearchInput(elementId, state, renderFn) {
 // Init
 function initDebug() {
   // Tab switcher
-  const tabBtns = document.querySelectorAll(".debug-tab-btn");
+  const tabBtns = document.querySelectorAll(".debug-tab-bar button");
   const panels = document.querySelectorAll(".debug-panel");
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -429,8 +428,8 @@ function initDebug() {
   });
 
   // Level filter buttons
-  _wireLevelFilterButtons(".debug-activity-level-btn", _activityState, _renderActivity);
-  _wireLevelFilterButtons(".debug-level-btn", _debugState, _renderLogs);
+  _wireLevelFilterButtons(".debug-panel[data-panel='activity'] .debug-filters button", _activityState, _renderActivity);
+  _wireLevelFilterButtons(".debug-panel[data-panel='logs'] .debug-filters button", _debugState, _renderLogs);
 
   // Search inputs
   _wireSearchInput("activitySearch", _activityState, _renderActivity);

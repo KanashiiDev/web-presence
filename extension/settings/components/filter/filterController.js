@@ -24,7 +24,7 @@ const FilterTabsController = {
 
     tabs.forEach((tab) => {
       const btn = document.createElement("button");
-      btn.className = `filter-tab${FilterState.ui.activeTab === tab.value ? " active" : ""}`;
+      btn.className = `filter-tab${FilterState.ui.activeTab === tab.value ? " active" : ""} btn`;
       btn.textContent = tab.label;
       btn.dataset.tab = tab.value;
 
@@ -131,7 +131,7 @@ const FilterListController = {
 
   createFilterItem(filter) {
     const item = document.createElement("div");
-    item.className = "filter-item";
+    item.className = "filter-item card card-sm";
     item.dataset.filterId = filter.id;
 
     const isReplace = FilterUtils.isReplaceFilter(filter);
@@ -139,14 +139,15 @@ const FilterListController = {
 
     // Card Header
     const header = document.createElement("div");
-    header.className = "filter-card-header";
+    header.className = "filter-card-header card-header";
 
-    const modePill = document.createElement("span");
-    modePill.className = `filter-mode-pill ${isReplace ? "replace-mode" : "block-mode"}`;
-    modePill.textContent = isReplace ? i18n.t("common.replace") : i18n.t("common.block");
+    const modePill = createBadge(
+      isReplace ? i18n.t("common.replace") : i18n.t("common.block"),
+      `filter-mode-pill badge-sm ${isReplace ? "badge-text-warning" : "badge-text-danger"}`,
+    );
 
     const sourceTag = document.createElement("span");
-    sourceTag.className = "filter-source-tag";
+    sourceTag.className = "filter-source-tag badge badge-sm";
     const sourceDot = document.createElement("span");
     sourceDot.className = "filter-source-dot";
     const sourceNames =
@@ -165,19 +166,19 @@ const FilterListController = {
     const actions = document.createElement("div");
     actions.className = "filter-actions";
 
-    const editBtn = document.createElement("button");
-    editBtn.className = "btn-edit icon-btn";
-    editBtn.title = i18n.t("common.edit");
-    editBtn.appendChild(createSVG(svg_paths.penIconPaths));
+    const editBtn = createIconButton(svg_paths.penIconPaths, {
+      className: "icon-btn",
+      title: i18n.t("common.edit"),
+    });
     FilterEvents.add(editBtn, "click", (e) => {
       e.stopPropagation();
       FormController.startEdit(filter);
     });
 
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "btn-delete icon-btn icon-btn-danger";
-    deleteBtn.title = i18n.t("common.delete");
-    deleteBtn.appendChild(createSVG(svg_paths.trashIconPaths));
+    const deleteBtn = createIconButton(svg_paths.trashIconPaths, {
+      className: "icon-btn icon-btn-danger",
+      title: i18n.t("common.delete"),
+    });
     FilterEvents.add(deleteBtn, "click", (e) => {
       e.stopPropagation();
       this.delete(filter.id);
@@ -189,7 +190,7 @@ const FilterListController = {
     FilterEvents.add(header, "click", () => FormController.startEdit(filter));
 
     const collapsedBody = document.createElement("div");
-    collapsedBody.className = "filter-card-body filter-collapsed-body";
+    collapsedBody.className = "filter-card-body card-body filter-collapsed-body";
 
     // Entries
     const entriesWrapper = document.createElement("div");
@@ -219,7 +220,7 @@ const FilterListController = {
 
     // More button
     const moreBtn = document.createElement("button");
-    moreBtn.className = "btn-more";
+    moreBtn.className = "btn btn-secondary btn-sm";
     moreBtn.textContent = i18n.t("common.more");
     moreBtn.style.display = "none";
     FilterEvents.add(moreBtn, "click", (e) => {

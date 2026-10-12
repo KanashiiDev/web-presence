@@ -20,7 +20,7 @@ async function renderList(filteredList = null, isSearch = null) {
   const contWrapper = document.querySelector("#siteList .simplebar-content-wrapper");
   if (contWrapper) contWrapper.style.paddingBottom = "";
 
-  const spinner = Object.assign(document.createElement("div"), { className: "spinner" });
+  const spinner = createSpinner();
   container.appendChild(spinner);
 
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });

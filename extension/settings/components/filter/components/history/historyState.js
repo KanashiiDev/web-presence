@@ -91,7 +91,7 @@ const HistoryUtils = {
 
   createHistoryEntry(entry, historyIndex) {
     const div = document.createElement("div");
-    div.className = "history-entry";
+    div.className = "history-entry list-item";
     div.dataset.historyIndex = historyIndex;
     div.dataset.entryKey = HistoryUtils.createEntryKey(entry);
 
@@ -106,10 +106,10 @@ const HistoryUtils = {
 
     // Info
     const info = document.createElement("div");
-    info.className = "history-info";
+    info.className = "history-info content-meta";
 
     const title = document.createElement("strong");
-    title.className = "history-title";
+    title.className = "history-title content-meta-title";
     title.textContent = entry.t;
 
     const artist = document.createElement("div");
@@ -117,7 +117,7 @@ const HistoryUtils = {
     artist.textContent = entry.a;
 
     const source = document.createElement("small");
-    source.className = "history-source";
+    source.className = "history-source content-meta-tertiary";
     const time = new Date(entry.p);
     source.textContent = `${entry.s} • ${dateHourMinute(time)}`;
 
@@ -129,7 +129,8 @@ const HistoryUtils = {
 
     // Block button
     const blockBtn = document.createElement("button");
-    blockBtn.className = "history-action-btn block-btn";
+    blockBtn.className = "btn history-action-btn";
+    blockBtn.dataset.levelAction = "block";
 
     const isBlocked = this.checkIfBlocked(entry);
     blockBtn.textContent = isBlocked ? i18n.t("common.unblock") : i18n.t("common.block");
@@ -142,7 +143,8 @@ const HistoryUtils = {
 
     // Replace button
     const replaceBtn = document.createElement("button");
-    replaceBtn.className = "history-action-btn replace-btn";
+    replaceBtn.className = "btn history-action-btn";
+    replaceBtn.dataset.levelAction = "replace";
 
     const existingReplace = this.findExistingReplace(entry);
     replaceBtn.textContent = existingReplace ? i18n.t("common.editReplace") : i18n.t("common.replace");

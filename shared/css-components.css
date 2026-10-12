@@ -1,0 +1,583 @@
+/* Shared UI Components - opt-in via class selectors only */
+/* This file is injected at the /*CSS-COMPONENTS*/
+/* marker in each page CSS file */
+/* It provides reusable component styles that page CSS can override via specificity */
+
+/* Utility - prevent text selection */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Badge - small status labels */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-color-btn);
+  background: var(--foreground-color-400);
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background: var(--accent-color);
+  color: var(--text-color-btn);
+}
+
+.badge-secondary {
+  background: var(--foreground-color-300);
+  color: var(--text-color-primary);
+}
+
+.badge-success {
+  background: var(--green-color);
+  color: var(--text-color-btn);
+}
+
+.badge-warning {
+  background: var(--warning-color);
+  color: var(--text-color-btn);
+}
+
+.badge-success-dark {
+  background: var(--green-color-dark);
+  color: var(--text-color-btn);
+}
+
+.badge-warning-dark {
+  background: var(--yellow-color-dark);
+  color: var(--text-color-btn);
+}
+
+.badge-text-warning {
+  color: var(--yellow-color);
+}
+
+.badge-text-danger {
+  color: var(--red-color);
+}
+
+.badge-sm {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.badge-xs {
+  font-size: 9.5px;
+  padding: 1px 5px;
+}
+
+.badge-bold {
+  font-weight: 700;
+}
+
+.badge-normal {
+  font-weight: 400;
+}
+
+.badge-pill {
+  border-radius: 9999px;
+}
+
+.badge-rounded {
+  border-radius: 12px;
+}
+
+/* Empty State - placeholder for empty content areas */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-color-muted);
+}
+
+/* Content Meta - info block with title and metadata lines (e.g. track info) */
+.content-meta {
+  font-size: var(--font-md);
+}
+
+.content-meta .content-meta-title {
+  display: block;
+  font-size: var(--font-md-lg);
+  color: var(--text-color-primary);
+}
+
+.content-meta .content-meta-secondary {
+  font-size: var(--font-sm);
+  color: var(--text-color-secondary);
+}
+
+.content-meta .content-meta-tertiary {
+  font-size: var(--font-xs);
+  color: var(--text-color-muted);
+}
+
+/* Icon Button - compact button for icon actions */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.icon-btn:hover {
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+}
+
+.icon-btn-danger {
+  color: var(--red-color);
+}
+
+.icon-btn-danger:hover {
+  background: var(--alert-color);
+  color: var(--text-color-btn);
+}
+
+/* Input - shared text input styles */
+.ts-control,
+input[type="text"]:not(.ts-control),
+.input:not(.ts-control) {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: var(--font-md);
+  font-family: inherit;
+  color: var(--text-color-primary);
+  background: var(--foreground-color-300);
+  box-shadow: var(--shadow-color) 0px 1px 3px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition:
+    border-color var(--transition-normal) ease,
+    background var(--transition-normal) ease;
+}
+#editor .ts-control,
+#editor .input:not(.ts-control),
+#editor input[type="text"]:not(.ts-control) {
+  box-shadow: none !important;
+}
+
+.ts-wrapper:not(.dropdown-active) .ts-control:focus,
+input[type="text"]:not(.ts-control input):focus,
+.input:not(.ts-control input):focus {
+  background: var(--foreground-color-400);
+  border-color: var(--accent-color) !important;
+}
+
+.ts-wrapper:not(.dropdown-active) .ts-control:hover,
+input[type="text"]:not(.ts-control input):hover,
+.input:not(.ts-control input):hover {
+  border: 1px solid var(--accent-color-border) !important;
+}
+
+input[type="text"]::placeholder,
+.input::placeholder {
+  color: var(--text-color-muted) !important;
+}
+
+input[type="range"] {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  width: 100% !important;
+  cursor: pointer !important;
+  outline: none !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  background: var(--foreground-color-100) !important;
+  height: 10px !important;
+  min-width: 0 !important;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  background: var(--foreground-color-100);
+  border-radius: 16px;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 10px;
+  background: var(--foreground-color-100);
+  border-radius: 16px;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 10px;
+  background: var(--foreground-color-600);
+  border-radius: 16px 0 0 16px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+  background: var(--text-color-primary);
+  border: 1px solid var(--text-color-secondary);
+  -webkit-box-shadow: -407px 0 0 400px var(--foreground-color-600);
+  box-shadow: -407px 0 0 400px var(--foreground-color-600);
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 8.2px;
+  width: 8.2px;
+  border-radius: 50%;
+  background: var(--text-color-primary);
+  border: 1px solid var(--text-color-secondary);
+}
+
+/* Select - shared dropdown styles */
+.select {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: var(--font-md);
+  font-family: inherit;
+  color: var(--text-color-primary);
+  background: var(--foreground-color-300);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-normal) ease,
+    background var(--transition-normal) ease;
+  appearance: none;
+}
+
+.select:focus {
+  background: var(--foreground-color-400);
+  border-color: var(--accent-color);
+}
+
+/* Button - opt-in via .btn class; never use bare <button> selector */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 2px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-default, 6px);
+  box-shadow: var(--shadow-color) 0px 0px 3px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  color: var(--text-color-primary);
+  background: var(--foreground-color-300);
+  -webkit-transition: background var(--transition-normal) ease;
+  transition: background var(--transition-normal) ease;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  text-decoration: none;
+  text-align: center;
+}
+
+.btn:hover {
+  background: var(--foreground-color-400);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Action Button - compact icon/action variant of .btn */
+.btn-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: 2px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--foreground-color-200);
+  box-shadow: 0 1px 3px var(--shadow-color);
+  -webkit-transition: background var(--transition-normal) ease;
+  transition: background var(--transition-normal) ease;
+}
+
+.btn-action:hover {
+  background: var(--foreground-color-300);
+}
+
+.btn-action.active {
+  color: var(--text-color-btn) !important;
+}
+
+.btn-primary {
+  background: var(--accent-color);
+  color: var(--text-color-btn);
+  border: var(--accent-color-border);
+}
+
+.btn-primary:hover {
+  background: var(--accent-color-bright);
+}
+
+.btn-secondary {
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--foreground-color-500);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--red-color);
+  border: 1px solid var(--red-color-dark);
+}
+
+.btn-danger:hover {
+  background: var(--alert-color);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-color-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-ghost:hover {
+  background: var(--foreground-color-300);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.btn.disabled {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* List Item - card-style container for history entries and similar */
+.list-item {
+  display: flex;
+  align-items: center;
+  background: var(--foreground-color-200);
+  box-shadow: 0 1px 3px var(--shadow-color);
+  transition: background var(--transition-normal) ease;
+  padding: 8px;
+  border-radius: var(--radius-default);
+  word-break: break-word;
+  gap: 10px;
+}
+
+.list-item:hover {
+  background: var(--foreground-color-300);
+}
+
+.list-item.selected {
+  background: var(--alert-color);
+}
+
+/* Card - container with background and shadow */
+.card {
+  background: var(--foreground-color-200);
+  border-radius: var(--radius-md);
+}
+
+.card-sm {
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+.card-md {
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.card-xs {
+  box-shadow: 0 1px 3px var(--shadow-color);
+}
+
+/* Card Header - flex row inside a card, typically with a title and actions */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+}
+
+.card-header:hover {
+  background: var(--foreground-color-300);
+}
+
+/* Card Body - content area inside a card */
+.card-body {
+  border-top: 0.5px solid var(--border-color);
+  padding: 8px 12px 10px;
+}
+
+/* Page Header - top bar with title, description, and action buttons */
+.header {
+  margin-bottom: 20px;
+  padding: 10px;
+  color: var(--text-color-primary);
+  background: var(--foreground-color-100);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 10px;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.header h3 {
+  font-size: 20px;
+}
+
+.header-desc {
+  font-size: 14px;
+  color: var(--text-color-secondary);
+}
+
+/* Segmented Toggle - tab-style control for selecting between options */
+.segmented-toggle {
+  display: flex;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  padding: 2px;
+  gap: 2px;
+}
+
+.segmented-toggle .segmented-option {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--transition-reduced) ease,
+    color var(--transition-reduced) ease;
+}
+
+.segmented-toggle .segmented-option.active {
+  background: var(--accent-color);
+  color: var(--text-color-btn);
+  font-weight: 500;
+}
+
+.segmented-toggle .segmented-option:hover:not(.active) {
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+}
+
+/* Modal - overlay + content container for dialogs */
+.modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 9999;
+  font-family: sans-serif;
+}
+
+.modal-content {
+  background: var(--foreground-color-300);
+  border-radius: var(--radius-lg);
+  padding: 20px 30px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px var(--shadow-color);
+  animation: popIn var(--transition-reduced) ease;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  text-align: center;
+  color: var(--text-color-primary);
+}
+
+.modal-content-wrapper {
+  max-height: 382px;
+  overflow-y: auto;
+  padding: 16px;
+  margin: 10px 0;
+  border-radius: var(--radius-default);
+  background: var(--foreground-color-100);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.modal-content .close-btn {
+  background: var(--foreground-color-400);
+  flex: 1;
+}
+
+.modal-content .close-btn:hover {
+  background: var(--foreground-color-500);
+}
+
+.modal .button-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.modal .button-group.footer-buttons {
+  display: flex;
+}
+
+.modal .button-group.footer-buttons button:first-child {
+  flex: 1;
+}
+
+.modal .button-group button {
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+}
+
+.modal .button-group button:hover {
+  background: var(--foreground-color-500);
+}
+
+.modal .button-group .confirm-button,
+.modal .button-group .active {
+  background: var(--accent-color-bright);
+  color: var(--text-color-btn);
+}
+
+.modal .button-group .active:hover {
+  background: var(--accent-color);
+}

@@ -20,7 +20,7 @@ async function buildPortButtons(container) {
   const portInput = document.createElement("input");
   portInput.type = "text";
   portInput.id = "portInput";
-  portInput.className = "settings-input";
+  portInput.className = "input";
 
   const { serverPort: storedPort } = await browser.storage.local.get("serverPort");
   portInput.value = storedPort ?? CONFIG.serverPort;
@@ -35,11 +35,10 @@ async function buildPortButtons(container) {
   // Apply Button
   const btnApply = document.createElement("span");
   btnApply.appendChild(createSVG(svg_paths.penIconPaths));
-  btnApply.className = "port-apply-btn button";
+  btnApply.className = "port-apply-btn btn";
   btnApply.title = i18n.t("settings.apply");
 
-  const spinner = document.createElement("span");
-  spinner.className = "spinner";
+  const spinner = createSpinner("", "span");
 
   btnApply.addEventListener("click", async () => {
     btnApply.appendChild(spinner);
@@ -86,7 +85,7 @@ async function buildPortButtons(container) {
   const webBridgeInput = document.createElement("input");
   webBridgeInput.type = "text";
   webBridgeInput.id = "discordWebPortInput";
-  webBridgeInput.className = "settings-input";
+  webBridgeInput.className = "input";
 
   const { discordWebPort: storeddiscordWebPort } = await browser.storage.local.get("discordWebPort");
 
@@ -103,7 +102,7 @@ async function buildPortButtons(container) {
 
   const btnWebBridgeApply = document.createElement("span");
   btnWebBridgeApply.appendChild(createSVG(svg_paths.penIconPaths));
-  btnWebBridgeApply.className = "port-apply-btn button";
+  btnWebBridgeApply.className = "port-apply-btn btn";
   btnWebBridgeApply.title = i18n.t("settings.apply");
 
   btnWebBridgeApply.addEventListener("click", async () => {

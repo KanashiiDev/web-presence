@@ -1,33 +1,9 @@
 async function openSettingsPage(section) {
-  const url = browser.runtime.getURL(`settings/settings.html?section=${section}`);
-  try {
-    const [existing] = await browser.tabs.query({ url });
-    if (existing) {
-      await browser.tabs.update(existing.id, { active: true });
-      await browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
-    } else {
-      await browser.tabs.create({ url });
-    }
-  } catch (err) {
-    logError("[popup]: Open settings failed:", err);
-  }
-  window.close();
+  await openExtensionPage("settings/settings.html", { query: { section } });
 }
 
 async function openStorePage() {
-  const url = browser.runtime.getURL(`activityLibrary/library.html`);
-  try {
-    const [existing] = await browser.tabs.query({ url });
-    if (existing) {
-      await browser.tabs.update(existing.id, { active: true });
-      await browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
-    } else {
-      await browser.tabs.create({ url });
-    }
-  } catch (err) {
-    logError("[popup]: Open store failed:", err);
-  }
-  window.close();
+  await openExtensionPage("activityLibrary/library.html");
 }
 
 async function openDashboardPage() {
@@ -93,7 +69,7 @@ function createSliderSection(labelText, min, max, step, value, unit, onChange) {
 function createBtn(text, id) {
   const btn = document.createElement("a");
   btn.textContent = text;
-  btn.className = "settings-btn";
+  btn.className = "btn settings-btn btn-action";
   btn.id = id;
   return btn;
 }

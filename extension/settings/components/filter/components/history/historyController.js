@@ -72,7 +72,7 @@ const HistoryActions = {
     const isBlocked = action === "block";
 
     document.querySelectorAll(`.history-entry[data-entry-key="${key}"]`).forEach((el) => {
-      const btn = el.querySelector(".block-btn");
+      const btn = el.querySelector(".history-action-btn[data-level-action='block']");
       if (!btn) return;
 
       btn.textContent = isBlocked ? i18n.t("common.unblock") : i18n.t("common.block");

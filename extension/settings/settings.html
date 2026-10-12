@@ -13,18 +13,18 @@
         <h3 data-i18n="settings.title">Web Presence - Settings</h3>
         <p class="header-desc" data-i18n="settings.desc">Manage your Web Presence settings!</p>
       </div>
-      <button id="btnToggleView" class="library-btn secondary" style="visibility: hidden">
+      <button id="btnToggleView" class="library-btn btn btn-secondary" style="visibility: hidden">
         <span id="btnToggleViewLabel"></span>
       </button>
     </div>
 
     <!-- Backup Section -->
     <div class="container" data-section="backup">
-      <div class="content backup">
+      <div class="content card card-md backup">
         <div class="buttons">
-          <button id="exportBtn" data-i18n="backup.export">Export Backup</button>
-          <button id="importBtn" data-i18n="backup.restore">Import Backup</button>
-          <button id="syncBtn" data-i18n="backup.syncBtn" style="display: none">Sync History Between App & Extension</button>
+          <button class="btn btn-secondary" id="exportBtn" data-i18n="backup.export">Export Backup</button>
+          <button class="btn btn-secondary" id="importBtn" data-i18n="backup.restore">Import Backup</button>
+          <button class="btn btn-secondary" id="syncBtn" data-i18n="backup.syncBtn" style="display: none">Sync History Between App & Extension</button>
         </div>
       </div>
     </div>
@@ -35,26 +35,26 @@
         <div id="filterTabsContainer"></div>
         <div>
           <button class="btn btn-primary" id="toggleFormBtn" data-i18n="filter.addNew">+ Add New Filter</button>
-          <button class="btn-open-history" id="openHistoryBtn" data-i18n="button.open_history">Open History</button>
+          <button class="btn btn-primary" id="openHistoryBtn" data-i18n="button.open_history">Open History</button>
           <button class="btn btn-primary" id="getSongInfoBtn">
             <span class="btn-text" data-i18n="filter.blockCurrent">Block Current Song</span>
           </button>
         </div>
       </div>
 
-      <div class="content filter">
+      <div class="content card card-md filter">
         <div class="form-container" id="formContainer">
           <div class="entries-container">
             <div id="filterModeContainer"></div>
             <div id="entriesList"></div>
-            <button class="btn-add-entry" id="addEntryBtn" data-i18n="filter.add">Add Entry</button>
-            <button class="btn-fill-current" id="fillFormBtn" data-i18n="filter.fillWithCurrent">Fill with Current Song</button>
+            <button class="btn btn-sm" id="addEntryBtn" data-i18n="filter.add">Add Entry</button>
+            <button class="btn btn-sm" id="fillFormBtn" data-i18n="filter.fillWithCurrent">Fill with Current Song</button>
             <div class="all-parsers-container" id="allParsersContainer"></div>
           </div>
           <div class="parser-list" id="parserList"></div>
           <div class="form-actions">
-            <button class="btn btn-save" id="saveFilterBtn" data-i18n="common.save">Save</button>
-            <button class="btn btn-cancel" id="cancelBtn" data-i18n="common.cancel">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="saveFilterBtn" data-i18n="common.save">Save</button>
+            <button class="btn btn-secondary btn-sm" id="cancelBtn" data-i18n="common.cancel">Cancel</button>
           </div>
         </div>
         <div class="filters-list">
@@ -65,28 +65,28 @@
 
     <!-- Debug Logs Section -->
     <div class="container" data-section="debug">
-      <div class="content debug-section">
+      <div class="content card card-md debug-section">
         <!-- Tab switcher -->
         <div class="debug-tab-bar">
-          <button class="debug-tab-btn active" data-tab="logs" data-i18n="debug.tab.logs">Logs</button>
-          <button class="debug-tab-btn" data-tab="activity" data-i18n="debug.tab.activity">Recent Activity</button>
+          <button class="btn debug-tab-btn active" data-tab="logs" data-i18n="debug.tab.logs">Logs</button>
+          <button class="btn debug-tab-btn" data-tab="activity" data-i18n="debug.tab.activity">Recent Activity</button>
         </div>
 
         <!-- Logs panel -->
         <div class="debug-panel" data-panel="logs">
           <div class="debug-toolbar">
             <div class="debug-filters">
-              <button class="debug-level-btn active" data-level="all" data-i18n="common.all">All</button>
-              <button class="debug-level-btn" data-level="info" data-i18n="debug.filter.info">Info</button>
-              <button class="debug-level-btn" data-level="warn" data-i18n="debug.filter.warn">Warn</button>
-              <button class="debug-level-btn" data-level="error" data-i18n="userscript.export.status.error">Error</button>
+              <button class="btn debug-filter-btn active" data-level="all" data-i18n="common.all">All</button>
+              <button class="btn debug-filter-btn" data-level="info" data-i18n="debug.filter.info">Info</button>
+              <button class="btn debug-filter-btn" data-level="warn" data-i18n="debug.filter.warn">Warn</button>
+              <button class="btn debug-filter-btn" data-level="error" data-i18n="userscript.export.status.error">Error</button>
             </div>
             <div class="debug-actions">
               <button class="btn btn-primary" id="debugRefreshBtn" data-i18n="debug.refresh">Refresh</button>
               <button class="btn btn-primary" id="debugExportBtn" data-i18n="userscript.listControls.export">Export Logs</button>
               <button class="btn btn-danger" id="debugClearBtn" data-i18n="debug.clear">Clear Debug Logs</button>
             </div>
-            <input class="debug-search" id="debugSearch" type="text" placeholder="Search logs…" data-i18n="debug.search.placeholder" />
+            <input class="debug-search input" id="debugSearch" type="text" placeholder="Search logs…" data-i18n="debug.search.placeholder" />
           </div>
 
           <div id="summaryErrorList" class="summary-error-list"></div>
@@ -107,15 +107,15 @@
         <div class="debug-panel" data-panel="activity" style="display: none">
           <div class="debug-toolbar">
             <div class="debug-filters">
-              <button class="debug-activity-level-btn active" data-level="all" data-i18n="common.all">All</button>
-              <button class="debug-activity-level-btn" data-level="info" data-i18n="debug.filter.info">Info</button>
-              <button class="debug-activity-level-btn" data-level="warn" data-i18n="debug.filter.warn">Warn</button>
-              <button class="debug-activity-level-btn" data-level="error" data-i18n="userscript.export.status.error">Error</button>
+              <button class="btn debug-filter-btn active" data-level="all" data-i18n="common.all">All</button>
+              <button class="btn debug-filter-btn" data-level="info" data-i18n="debug.filter.info">Info</button>
+              <button class="btn debug-filter-btn" data-level="warn" data-i18n="debug.filter.warn">Warn</button>
+              <button class="btn debug-filter-btn" data-level="error" data-i18n="userscript.export.status.error">Error</button>
             </div>
             <div class="debug-actions">
               <button class="btn btn-danger" id="activityClearBtn" data-i18n="debug.clear">Clear</button>
             </div>
-            <input class="debug-search" id="activitySearch" type="text" placeholder="Search activity…" data-i18n="debug.search.placeholder" />
+            <input class="debug-search input" id="activitySearch" type="text" placeholder="Search activity…" data-i18n="debug.search.placeholder" />
           </div>
 
           <div class="debug-stats" id="activityStats"></div>

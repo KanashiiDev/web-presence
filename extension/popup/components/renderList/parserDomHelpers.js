@@ -13,7 +13,7 @@ function createEmptyState(container, isSearch) {
 
     const btn = document.createElement("a");
     btn.textContent = i18n.t("setup.list.title");
-    btn.className = "button";
+    btn.className = "btn btn-action";
 
     btn.addEventListener("click", async () => {
       const url = browser.runtime.getURL("activityLibrary/library.html");
@@ -45,7 +45,7 @@ function createFavIconElement(domain, title, homepage, addListener) {
 }
 
 function createToggleSwitch(id, isEnabled, userAdd, userScript, addListener) {
-  const label = Object.assign(document.createElement("label"), { className: "switch-label" });
+  const label = Object.assign(document.createElement("label"), { className: "switch-label no-select" });
   const checkbox = Object.assign(document.createElement("input"), {
     type: "checkbox",
     checked: isEnabled,
@@ -155,9 +155,9 @@ function createCategoryTagsSection(category, tags) {
 }
 
 function createDeleteButton(id, title, domain, addListener, onDeleted) {
-  const btn = Object.assign(document.createElement("a"), {
+  const btn = createEl("a", {
     className: "del-user-parser",
-    title: i18n.t("common.delete"),
+    attrs: { title: i18n.t("common.delete") },
   });
   btn.appendChild(createSVG(svg_paths.trashIconPaths));
   Object.assign(btn.dataset, { parserId: id, parserTitle: title, parserDomain: domain });
@@ -200,34 +200,30 @@ function createDeleteButton(id, title, domain, addListener, onDeleted) {
 }
 
 function createEditParserButton(id, addListener) {
-  const btn = Object.assign(document.createElement("a"), {
+  const btn = createEl("a", {
     className: "edit-user-parser",
-    title: i18n.t("common.edit"),
+    attrs: { title: i18n.t("common.edit") },
   });
-  btn.appendChild(createSVG(svg_paths.gearIconPaths));
   btn.dataset.parserId = id;
-
+  btn.appendChild(createSVG(svg_paths.gearIconPaths));
   addListener(btn, "click", (e) => {
     e.stopPropagation();
     openselectorParserManager(e.currentTarget.dataset.parserId);
   });
-
   return btn;
 }
 
 function createEditScriptButton(id, addListener) {
-  const btn = Object.assign(document.createElement("a"), {
+  const btn = createEl("a", {
     className: "edit-user-script",
-    title: i18n.t("common.edit"),
+    attrs: { title: i18n.t("common.edit") },
   });
-  btn.appendChild(createSVG(svg_paths.gearIconPaths));
   btn.dataset.parserId = id;
-
+  btn.appendChild(createSVG(svg_paths.gearIconPaths));
   addListener(btn, "click", (e) => {
     e.stopPropagation();
     openUserScriptManager(e.currentTarget.dataset.parserId);
   });
-
   return btn;
 }
 

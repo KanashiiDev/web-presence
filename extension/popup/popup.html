@@ -56,16 +56,16 @@
           <div class="picker-inputs">
             <div>
               <label class="picker-label" data-i18n="date.start_date">Start Date</label>
-              <input type="text" id="customStartDate" class="picker-input flatpickr-input" readonly />
+              <input type="text" id="customStartDate" class="picker-input flatpickr-input input" readonly />
             </div>
             <div>
               <label class="picker-label" data-i18n="date.end_date">End Date</label>
-              <input type="text" id="customEndDate" class="picker-input flatpickr-input" readonly />
+              <input type="text" id="customEndDate" class="picker-input flatpickr-input input" readonly />
             </div>
           </div>
           <div class="picker-buttons">
-            <button id="applyCustomRange" class="picker-apply" data-i18n="common.apply">Apply</button>
-            <button id="clearCustomRange" class="picker-clear" data-i18n="common.close">Close</button>
+            <button id="applyCustomRange" class="btn btn-primary picker-apply" data-i18n="common.apply">Apply</button>
+            <button id="clearCustomRange" class="btn picker-clear" data-i18n="common.close">Close</button>
           </div>
         </div>
       </div>
@@ -85,12 +85,12 @@
 
     <div class="footer">
       <div id="historyFooter" style="display: none">
-        <a id="clearHistoryBtn" class="button" data-i18n="history.clearHistory">Clear History</a>
-        <a id="cancelCleanBtn" class="button" data-i18n="common.cancel" style="display: none">Cancel</a>
+        <a id="clearHistoryBtn" class="btn btn-action" data-i18n="history.clearHistory">Clear History</a>
+        <a id="cancelCleanBtn" class="btn btn-action" data-i18n="common.cancel" style="display: none">Cancel</a>
       </div>
       <div id="mainFooterButtons">
-        <a id="openSelector" data-i18n="button.add_site">Add Site</a>
-        <a id="openManager" data-i18n="button.open_script_manager">Open Script Manager</a>
+        <a id="openSelector" class="btn btn-action" data-i18n="button.add_site">Add Site</a>
+        <a id="openManager" class="btn btn-action" data-i18n="button.open_script_manager">Open Script Manager</a>
       </div>
     </div>
 

@@ -67,7 +67,7 @@ function showSelectorChooser(scoredOptions, field, shadowDoc) {
     scoredOptions.forEach(({ sel, score }) => {
       const btn = document.createElement("button");
       btn.id = "userRpc-selectorChooser-button";
-      btn.className = "userRpc-optionButtons";
+      btn.className = "userRpc-optionButtons btn";
 
       const wrapper = document.createElement("div");
       wrapper.className = "wrapper";
@@ -137,7 +137,7 @@ function showSelectorChooser(scoredOptions, field, shadowDoc) {
   } else {
     // Fallback Message
     const fallback = document.createElement("div");
-    fallback.style.color = "#999";
+    fallback.style.color = getComputedStyle(document.documentElement).getPropertyValue("--text-color-muted").trim();
     fallback.style.fontStyle = "italic";
     fallback.textContent = t("selector.select.noSuggestions");
     containerList.appendChild(fallback);
@@ -146,7 +146,7 @@ function showSelectorChooser(scoredOptions, field, shadowDoc) {
   // Cancel button
   const cancel = document.createElement("a");
   cancel.id = "userRpc-selectorChooser-cancel";
-  cancel.className = "userRpc-optionButtons";
+  cancel.className = "userRpc-optionButtons btn";
   cancel.textContent = scoredOptions.length ? t("common.cancel") : t("common.close");
   cancel.onclick = cleanup;
 

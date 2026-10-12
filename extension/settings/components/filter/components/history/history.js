@@ -20,11 +20,11 @@ function createHistoryDOM() {
   dom.searchBox.setAttribute("data-i18n", "history.search_history");
   dom.searchBox.setAttribute("i18n-attr", "placeholder");
   dom.searchBox.id = "historySearchBox";
-  dom.searchBox.className = "history-search-box";
+  dom.searchBox.className = "input history-search-box";
 
   dom.filterBtn = document.createElement("button");
   dom.filterBtn.id = "historyFilterBtn";
-  dom.filterBtn.className = "history-filter-btn";
+  dom.filterBtn.className = "btn btn-secondary btn-sm";
 
   dom.header.append(dom.searchBox, dom.filterBtn);
   dom.content.appendChild(dom.header);
@@ -53,7 +53,7 @@ function createHistoryDOM() {
 
   dom.closeBtn = document.createElement("button");
   dom.closeBtn.textContent = "Close";
-  dom.closeBtn.className = "history-modal-close";
+  dom.closeBtn.className = "history-modal-close btn";
   dom.closeBtn.setAttribute("data-i18n", "common.close");
 
   dom.footer.appendChild(dom.closeBtn);

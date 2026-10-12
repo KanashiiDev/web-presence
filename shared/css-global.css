@@ -228,8 +228,7 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 }
 
 .filter-select-wrapper .ts-dropdown,
-.parser-option .ts-dropdown,
-.setting-options .ts-dropdown {
+.parser-option .ts-dropdown {
   position: relative !important;
   top: 100%;
   left: auto;
@@ -293,7 +292,7 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 .settings-option .ts-control,
 .parser-option .ts-control {
   padding: 2px 20px 2px 5px;
-  background: var(--foreground-color-400);
+  background: var(--foreground-color-300);
 }
 
 .ts-control .item {
@@ -1025,4 +1024,65 @@ html.setup-dialog-open #mainFooterButtons {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/* ============= Utility Classes ============= */
+.d-flex {
+  display: flex;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.gap-sm {
+  gap: var(--space-sm);
+}
+
+.text-primary {
+  color: var(--text-color-primary);
+}
+
+.text-warning {
+  color: var(--yellow-color);
+}
+
+.text-danger {
+  color: var(--red-color);
+}
+
+.border {
+  border: 1px solid var(--border-color);
+}
+
+.border-top {
+  border-top: 1px solid var(--border-color);
+}
+
+.border-bottom {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.radius-sm {
+  border-radius: var(--radius-sm);
+}
+
+.radius-default {
+  border-radius: var(--radius-default);
+}
+
+.radius-md {
+  border-radius: var(--radius-md);
+}
+
+.radius-lg {
+  border-radius: var(--radius-lg);
+}
+
+.transition-normal {
+  transition: var(--transition-normal);
+}
+
+.transition-slow {
+  transition: var(--transition-slow);
 }

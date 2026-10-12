@@ -1,4 +1,3 @@
-const $ = (id) => document.getElementById(id);
 const msg = (action, data = {}) => browser.runtime.sendMessage({ action, ...data });
 
 // DOM element cache
@@ -7,9 +6,6 @@ const getElem = (id) => {
   domCache.has(id) || domCache.set(id, document.getElementById(id));
   return domCache.get(id);
 };
-
-/** SVG icons helper */
-const iconSVG = (key, size = 14) => createSVG(svg_paths[key], { width: size, height: size });
 
 // State
 const state = {
@@ -223,7 +219,7 @@ const injectHeaderIcons = () => {
   const exLink = getElem("exampleRepoLink");
   if (exLink) exLink.href = MAIN_REPO_URL;
 
-  const headerRight = document.querySelector(".library-header-right");
+  const headerRight = document.querySelector(".header-right");
   if (headerRight) {
     const createToggleItem = (wrapperClass, labelI18n, labelText, inputId) => {
       const wrapper = document.createElement("div");
@@ -254,7 +250,7 @@ const injectHeaderIcons = () => {
     menuContainer.style.position = "relative";
 
     const menuBtn = document.createElement("button");
-    menuBtn.className = "btn-toggle-menu library-btn secondary";
+    menuBtn.className = "btn-toggle-menu library-btn btn btn-secondary";
     menuBtn.id = "btnToggleMenu";
     menuBtn.appendChild(createSVG(svg_paths.gearIconPaths, 14));
 
@@ -750,7 +746,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
 
   if (repo.id === MAIN_REPO_ID) {
     const official = document.createElement("span");
-    official.className = "repo-badge official";
+    official.className = "repo-badge badge badge-sm badge-bold badge-primary";
     official.textContent = i18n.t("library.repo.official");
     header.appendChild(official);
   }
@@ -759,7 +755,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   badges.className = "repo-block-badges";
   if (updateCount > 0) {
     const b = document.createElement("span");
-    b.className = "repo-badge update";
+    b.className = "repo-badge badge badge-sm badge-bold badge-warning-dark";
     b.textContent = `↑ ${updateCount}`;
     badges.appendChild(b);
   }
@@ -769,7 +765,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
     const actions = document.createElement("div");
     actions.className = "repo-block-actions";
     const removeBtn = document.createElement("button");
-    removeBtn.className = "library-btn danger small";
+    removeBtn.className = "library-btn btn btn-danger btn-sm";
     removeBtn.dataset.action = "removeRepo";
     removeBtn.dataset.repoId = repo.id;
     removeBtn.title = i18n.t("library.repo.removeTitle");
@@ -792,7 +788,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
 
   const searchInput = document.createElement("input");
   searchInput.type = "text";
-  searchInput.className = "script-search";
+  searchInput.className = "script-search input";
   searchInput.dataset.repoId = repo.id;
   searchInput.placeholder = i18n.t("parserlist.search_site");
   filterBar.appendChild(searchInput);
@@ -897,7 +893,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
 
   for (const f of filters) {
     const chip = document.createElement("button");
-    chip.className = "filter-chip" + (f.key === "all" ? " active" : "");
+    chip.className = "filter-chip no-select" + (f.key === "all" ? " active" : "");
     chip.dataset.filter = f.key;
     chip.dataset.repoId = repo.id;
     chip.textContent = f.label;
@@ -924,7 +920,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
 
     if (state.storeNewScriptNotification && newInRepo.length > 0) {
       const newBanner = document.createElement("div");
-      newBanner.className = "repo-badge new";
+      newBanner.className = "repo-banner";
 
       const text = document.createElement("span");
       text.className = "repo-new-banner-text";
@@ -937,7 +933,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
       };
 
       const showBtn = document.createElement("button");
-      showBtn.className = "library-btn small show";
+      showBtn.className = "library-btn btn btn-sm show";
       showBtn.textContent = i18n.t("library.banner.showNew");
       showBtn.addEventListener("click", () => {
         const chip = block.querySelector(".filter-chip[data-filter='new']");
@@ -950,7 +946,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
       });
 
       const dismissBtn = document.createElement("button");
-      dismissBtn.className = "library-btn small close";
+      dismissBtn.className = "library-btn btn btn-sm close";
       dismissBtn.textContent = i18n.t("common.close");
       dismissBtn.addEventListener("click", dismissBanner);
 
@@ -1010,7 +1006,7 @@ const renderPagination = (block, repoId, totalVisible, currentPage) => {
 
   if (isFiltered) {
     const backBtn = document.createElement("button");
-    backBtn.className = "pagination-btn pagination-back";
+    backBtn.className = "pagination-btn pagination-back no-select";
     backBtn.textContent = i18n.t("library.filter.backToAll");
     backBtn.addEventListener("click", () => {
       block.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
@@ -1025,7 +1021,7 @@ const renderPagination = (block, repoId, totalVisible, currentPage) => {
   if (totalPages > 1) {
     for (let i = 1; i <= totalPages; i++) {
       const btn = document.createElement("button");
-      btn.className = "pagination-btn" + (i === currentPage ? " active" : "");
+      btn.className = "pagination-btn no-select" + (i === currentPage ? " active" : "");
       btn.textContent = i;
       btn.dataset.page = i;
       btn.addEventListener("click", () => {
@@ -1194,7 +1190,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     btnUpd.appendChild(iconSVG("refreshIconPaths", 14));
     row.classList.add("update-available");
     const updateBadge = document.createElement("span");
-    updateBadge.className = "script-category-badge update-available";
+    updateBadge.className = "script-category-badge badge badge-sm badge-warning-dark";
     updateBadge.textContent = i18n.t("library.action.update");
     row.querySelector(".script-status-badges").appendChild(updateBadge);
     const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("library.action.remove"), "remove-btn");
@@ -1209,7 +1205,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     btnOk.disabled = true;
     row.classList.add("installed");
     const installedBadge = document.createElement("span");
-    installedBadge.className = "script-category-badge installed";
+    installedBadge.className = "script-category-badge badge badge-sm badge-success-dark";
     installedBadge.textContent = i18n.t("library.filter.installed");
     row.querySelector(".script-status-badges").appendChild(installedBadge);
     btnOk.appendChild(iconSVG("checkIconPaths", 14));
@@ -1231,8 +1227,8 @@ const updateScriptRowInPlace = (row, meta, repoId, installedMap) => {
     versionEl.classList.toggle("outdated", !!hasUpdate);
   }
 
-  row.querySelector(".script-category-badge.installed")?.remove();
-  row.querySelector(".script-category-badge.update-available")?.remove();
+  row.querySelector(".script-category-badge.badge-success-dark")?.remove();
+  row.querySelector(".script-category-badge.badge-warning-dark")?.remove();
 
   const actionsEl = row.querySelector(".script-actions");
   if (actionsEl) {
@@ -1255,11 +1251,11 @@ const updateRepoBadgeInPlace = (repoId) => {
   const badges = block.querySelector(".repo-block-badges");
   if (!badges) return;
 
-  let badge = badges.querySelector(".repo-badge.update");
+  let badge = badges.querySelector(".repo-badge.badge-warning-dark");
   if (count > 0) {
     if (!badge) {
       badge = document.createElement("span");
-      badge.className = "repo-badge update";
+      badge.className = "repo-badge badge badge-sm badge-bold badge-warning-dark";
       badges.appendChild(badge);
     }
     badge.textContent = `↑ ${count}`;
@@ -1290,7 +1286,7 @@ const renderScriptRow = (meta, repoId, installedMap) => {
   const primaryDomain = (domain || "").replace(/^\*\./, "");
 
   const row = document.createElement("div");
-  row.className = "script-row";
+  row.className = "script-row card card-xs";
   row.dataset.scriptId = sid;
 
   const topDiv = document.createElement("div");
@@ -1432,13 +1428,13 @@ const renderScriptRow = (meta, repoId, installedMap) => {
   tagsEl.className = "script-tags";
   for (const c of Array.isArray(meta.category) ? meta.category : meta.category ? [meta.category] : []) {
     const cat = document.createElement("span");
-    cat.className = "script-tag script-category-tag";
+    cat.className = "script-tag script-category-tag badge badge-sm badge-ghost badge-pill badge-normal";
     cat.textContent = i18n.t(`parserFilters.category.${c}`);
     tagsEl.appendChild(cat);
   }
   for (const t of meta.tags ?? []) {
     const tag = document.createElement("span");
-    tag.className = "script-tag";
+    tag.className = "script-tag badge badge-sm badge-ghost badge-pill badge-normal";
     tag.textContent = t;
     tagsEl.appendChild(tag);
   }

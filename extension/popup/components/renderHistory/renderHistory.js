@@ -38,7 +38,7 @@ async function renderHistory({ reset = true, query = "" } = {}) {
     historyState.lastRenderedHeader = null;
     historyState.currentOffset = 0;
 
-    const spinner = Object.assign(document.createElement("div"), { className: "history-spinner spinner" });
+    const spinner = createSpinner("history-spinner");
     target.appendChild(spinner);
 
     const res = await sendAction("loadHistory");

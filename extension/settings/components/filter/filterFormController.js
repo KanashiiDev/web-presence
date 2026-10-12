@@ -87,7 +87,7 @@ const FormController = {
     filterItem.classList.add("editing");
 
     // Swap edit icon with close icon
-    const editBtn = filterItem.querySelector(".btn-edit");
+    const editBtn = filterItem.querySelector(".icon-btn");
     if (editBtn) {
       editBtn.innerHTML = "";
       editBtn.appendChild(createSVG(svg_paths.crossIconPaths));
@@ -140,7 +140,7 @@ const FormController = {
     document.querySelectorAll(".filter-item.editing").forEach((item) => {
       item.classList.remove("editing");
 
-      const editBtn = item.querySelector(".btn-edit");
+      const editBtn = item.querySelector(".icon-btn");
       if (editBtn) {
         editBtn.innerHTML = "";
         editBtn.appendChild(createSVG(svg_paths.penIconPaths));
@@ -338,7 +338,7 @@ const FormController = {
           { value: "replace", label: i18n.t("common.replace") },
         ].forEach((m) => {
           const btn = document.createElement("button");
-          btn.className = `mode-option${FilterState.form.mode === m.value ? " active" : ""}`;
+          btn.className = `mode-option segmented-option${FilterState.form.mode === m.value ? " active" : ""}`;
           btn.textContent = m.label;
           FilterEvents.add(btn, "click", () => {
             FilterState.form.mode = m.value;
@@ -432,7 +432,7 @@ const FormController = {
         // Remove button
         if (FilterState.form.entries.length > 1) {
           const removeBtn = document.createElement("button");
-          removeBtn.className = "btn-remove inline-remove";
+          removeBtn.className = "icon-btn icon-btn-danger inline-remove";
           removeBtn.appendChild(createSVG(svg_paths.crossIconPaths));
           FilterEvents.add(removeBtn, "click", () => {
             this.removeEntry(index).then(() => renderEntries());
@@ -448,13 +448,13 @@ const FormController = {
     fillAddWrapper.className = "fill-add-wrapper";
 
     const fillBtn = document.createElement("button");
-    fillBtn.className = "btn-fill-current";
+    fillBtn.className = "btn btn-sm fill";
     fillBtn.textContent = i18n.t("filter.fillWithCurrent");
     FilterEvents.add(fillBtn, "click", () => QuickActions.fillCurrent(renderEntries, fillBtn));
     fillAddWrapper.appendChild(fillBtn);
 
     const addBtn = document.createElement("button");
-    addBtn.className = "btn-add-entry inline-add-entry";
+    addBtn.className = "btn btn-sm add";
     addBtn.textContent = i18n.t("filter.add");
     FilterEvents.add(addBtn, "click", () => {
       FilterState.form.entries.push({ artist: "", title: "", replaceArtist: "", replaceTitle: "" });
@@ -577,12 +577,12 @@ const FormController = {
     footer.className = isNew ? "inline-editor-footer new-filter-footer" : "inline-editor-footer";
 
     const cancelBtn = document.createElement("button");
-    cancelBtn.className = "btn-cancel inline-cancel";
+    cancelBtn.className = "btn btn-secondary btn-sm";
     cancelBtn.textContent = i18n.t("common.cancel");
     FilterEvents.add(cancelBtn, "click", () => (isNew ? this.close() : this.exitEdit()));
 
     const saveBtn = document.createElement("button");
-    saveBtn.className = "btn-save inline-save";
+    saveBtn.className = "btn btn-primary btn-sm";
     saveBtn.textContent = i18n.t("common.save");
     FilterEvents.add(saveBtn, "click", () => this.save());
 
@@ -606,7 +606,7 @@ const FormController = {
     input.type = "text";
     input.placeholder = placeholder;
     input.value = value || "";
-    if (className) input.className = className;
+    if (className) input.className = `input ${className}`;
     FilterEvents.add(input, "input", onInput);
     return input;
   },

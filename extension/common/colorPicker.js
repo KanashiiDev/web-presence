@@ -55,14 +55,14 @@ function createPickerPopover() {
   colorCountLabel.textContent = i18n.t("colorPicker.colors");
 
   const btnRemoveColor = document.createElement("span");
-  btnRemoveColor.className = "gradient-color-btn button";
+  btnRemoveColor.className = "gradient-color-btn btn";
   btnRemoveColor.appendChild(createSVG(svg_paths.minusIconPaths));
 
   const colorCount = document.createElement("span");
 
   const btnAddColor = document.createElement("span");
   btnAddColor.appendChild(createSVG(svg_paths.plusIconPaths));
-  btnAddColor.className = "gradient-color-btn button";
+  btnAddColor.className = "gradient-color-btn btn";
 
   // Color List
   const colorListContainer = document.createElement("div");
@@ -98,11 +98,11 @@ function createPickerPopover() {
 
   // Blur Button
   const btnBlur = document.createElement("span");
-  btnBlur.className = "blur-btn button";
+  btnBlur.className = "blur-btn btn";
 
   // Gradient Button
   const btnGradient = document.createElement("span");
-  btnGradient.className = "gradient-btn button";
+  btnGradient.className = "gradient-btn btn";
 
   popoverWrapper.append(popoverInner, btnBlur, hexInputContainer, btnGradient);
   popover.append(popoverWrapper);
@@ -460,7 +460,7 @@ async function rebuildColorList() {
     if (globalPicker.colors.length > 2) {
       const deleteBtn = document.createElement("span");
       deleteBtn.appendChild(createSVG(svg_paths.crossIconPaths));
-      deleteBtn.className = "button";
+      deleteBtn.className = "btn btn-action";
       deleteBtn.title = "Remove color";
 
       deleteBtn.addEventListener("click", async (e) => {

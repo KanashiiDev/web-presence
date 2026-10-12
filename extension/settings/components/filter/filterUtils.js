@@ -138,7 +138,7 @@ const QuickActions = {
   blockTimeout: null,
 
   async fillCurrent(renderEntries, btn) {
-    if (!btn) btn = document.querySelector(".btn-fill-current");
+    if (!btn) btn = document.querySelector("#fillFormBtn");
     if (!btn) return;
 
     const originalText = btn.textContent;

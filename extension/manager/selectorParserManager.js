@@ -1,5 +1,3 @@
-const $ = (id) => document.getElementById(id);
-
 class UserParserUI {
   constructor() {
     this.editingId = null;
@@ -22,17 +20,17 @@ class UserParserUI {
   }
 
   bindEvents() {
-    $("btnNew").addEventListener("click", () => this.showEditor());
-    $("btnCancel").addEventListener("click", () => this.hideEditor());
-    $("btnSave").addEventListener("click", () => this.saveParser());
+    document.getElementById("btnNew").addEventListener("click", () => this.showEditor());
+    document.getElementById("btnCancel").addEventListener("click", () => this.hideEditor());
+    document.getElementById("btnSave").addEventListener("click", () => this.saveParser());
 
-    $("btnExport").addEventListener("click", (e) => this.exportMenuClick(e, null));
-    $("btnImport").addEventListener("click", () => $("fileInput").click());
-    $("fileInput").addEventListener("change", (e) => this.importData(e));
+    document.getElementById("btnExport").addEventListener("click", (e) => this.exportMenuClick(e, null));
+    document.getElementById("btnImport").addEventListener("click", () => document.getElementById("fileInput").click());
+    document.getElementById("fileInput").addEventListener("change", (e) => this.importData(e));
 
-    $("inMode").addEventListener("change", () => this.updateWatchAutoDetectVisibility());
+    document.getElementById("inMode").addEventListener("change", () => this.updateWatchAutoDetectVisibility());
 
-    $("parserList").addEventListener("click", (e) => this.handleListClick(e));
+    document.getElementById("parserList").addEventListener("click", (e) => this.handleListClick(e));
   }
 
   // List Actions
@@ -78,8 +76,8 @@ class UserParserUI {
 
   // Editor
   showEditor(parser = null, liElement = null) {
-    const editor = $("editor");
-    const list = $("parserList");
+    const editor = document.getElementById("editor");
+    const list = document.getElementById("parserList");
 
     const currentSection = parser?.id || "new";
     if (editor.getAttribute("current") === currentSection) {
@@ -101,37 +99,37 @@ class UserParserUI {
 
     editor.hidden = false;
 
-    $("inTitle").value = parser?.title || "";
-    $("inDomain").value = parser?.domain || "";
-    $("inUrlPatterns").value = (parser?.urlPatterns || [".*"]).join(", ");
-    $("inMode").value = parser?.selectors?.mode || "listen";
-    $("inWatchAutoDetect").value = parser?.selectors?.watchAutoDetect || "enable";
+    document.getElementById("inTitle").value = parser?.title || "";
+    document.getElementById("inDomain").value = parser?.domain || "";
+    document.getElementById("inUrlPatterns").value = (parser?.urlPatterns || [".*"]).join(", ");
+    document.getElementById("inMode").value = parser?.selectors?.mode || "listen";
+    document.getElementById("inWatchAutoDetect").value = parser?.selectors?.watchAutoDetect || "enable";
     this.updateWatchAutoDetectVisibility();
 
     const sel = parser?.selectors || {};
-    $("selTitle").value = sel.title || "";
-    $("selArtist").value = sel.artist || "";
-    $("selSource").value = sel.source || "";
-    $("selImage").value = sel.image || "";
-    $("selIsPlaying").value = sel.isPlaying || "";
-    $("selTimePassed").value = sel.timePassed || "";
-    $("selDuration").value = sel.duration || "";
-    $("selLink").value = sel.link || "";
-    $("selButtonLink").value = sel.buttonLink || "";
-    $("selButtonText").value = sel.buttonText || "";
-    $("selButtonLink2").value = sel.buttonLink2 || "";
-    $("selButtonText2").value = sel.buttonText2 || "";
+    document.getElementById("selTitle").value = sel.title || "";
+    document.getElementById("selArtist").value = sel.artist || "";
+    document.getElementById("selSource").value = sel.source || "";
+    document.getElementById("selImage").value = sel.image || "";
+    document.getElementById("selIsPlaying").value = sel.isPlaying || "";
+    document.getElementById("selTimePassed").value = sel.timePassed || "";
+    document.getElementById("selDuration").value = sel.duration || "";
+    document.getElementById("selLink").value = sel.link || "";
+    document.getElementById("selButtonLink").value = sel.buttonLink || "";
+    document.getElementById("selButtonText").value = sel.buttonText || "";
+    document.getElementById("selButtonLink2").value = sel.buttonLink2 || "";
+    document.getElementById("selButtonText2").value = sel.buttonText2 || "";
   }
 
   hideEditor() {
-    const editor = $("editor");
+    const editor = document.getElementById("editor");
     editor.hidden = true;
     document.body.appendChild(editor);
     this.editingId = null;
   }
 
   updateWatchAutoDetectVisibility() {
-    const isWatch = $("inMode").value === "watch";
+    const isWatch = document.getElementById("inMode").value === "watch";
     document.querySelector(".container.watchAutoDetect").style.display = isWatch ? "" : "none";
   }
 
@@ -171,7 +169,7 @@ class UserParserUI {
 
   renderList() {
     this.hideEditor();
-    const ul = $("parserList");
+    const ul = document.getElementById("parserList");
 
     while (ul.firstChild) ul.removeChild(ul.firstChild);
 
@@ -240,29 +238,7 @@ class UserParserUI {
       const actionsDiv = document.createElement("div");
       actionsDiv.className = "script-actions";
 
-      const btnToggle = document.createElement("button");
-      btnToggle.classList.add("btnToggle", isEnabled ? "btn-disable" : "btn-enable");
-      btnToggle.title = isEnabled ? i18n.t("common.disable") : i18n.t("common.enable");
-      btnToggle.setAttribute("data-id", parser.id);
-      btnToggle.appendChild(isEnabled ? createSVG(svg_paths.pauseIconPaths) : createSVG(svg_paths.startIconPaths));
-
-      const btnEdit = document.createElement("button");
-      btnEdit.className = "btnEdit";
-      btnEdit.title = i18n.t("common.edit");
-      btnEdit.setAttribute("data-id", parser.id);
-      btnEdit.appendChild(createSVG(svg_paths.penIconPaths));
-
-      const btnExport = document.createElement("button");
-      btnExport.className = "btnExport";
-      btnExport.title = i18n.t("userscript.listControls.export");
-      btnExport.setAttribute("data-id", parser.id);
-      btnExport.appendChild(createSVG(svg_paths.exportIconPaths, { strokeWidth: 1.5 }));
-
-      const btnDelete = document.createElement("button");
-      btnDelete.className = "btnDelete";
-      btnDelete.title = i18n.t("common.delete");
-      btnDelete.setAttribute("data-id", parser.id);
-      btnDelete.appendChild(createSVG(svg_paths.trashIconPaths));
+      const { btnToggle, btnEdit, btnExport, btnDelete } = createListActionButtons(parser.id, isEnabled);
 
       actionsDiv.append(btnToggle, btnEdit, btnExport, btnDelete);
 
@@ -283,12 +259,12 @@ class UserParserUI {
   };
 
   async saveParser() {
-    const title = $("inTitle").value.trim();
-    const selTitle = $("selTitle").value.trim();
-    const urlPatternsStr = $("inUrlPatterns").value.trim();
+    const title = document.getElementById("inTitle").value.trim();
+    const selTitle = document.getElementById("selTitle").value.trim();
+    const urlPatternsStr = document.getElementById("inUrlPatterns").value.trim();
 
     // Domain Cleanup
-    const domainRaw = $("inDomain").value.trim();
+    const domainRaw = document.getElementById("inDomain").value.trim();
     const domain = domainRaw.includes(",")
       ? domainRaw
           .split(",")
@@ -329,19 +305,19 @@ class UserParserUI {
       urlPatterns,
       userAdd: true,
       selectors: {
-        mode: $("inMode").value,
-        watchAutoDetect: $("inWatchAutoDetect").value,
+        mode: document.getElementById("inMode").value,
+        watchAutoDetect: document.getElementById("inWatchAutoDetect").value,
         title: selTitle,
-        artist: $("selArtist").value.trim() || undefined,
-        source: $("selSource").value.trim() || undefined,
-        image: $("selImage").value.trim() || undefined,
-        isPlaying: $("selIsPlaying").value.trim() || undefined,
-        timePassed: $("selTimePassed").value.trim() || undefined,
-        duration: $("selDuration").value.trim() || undefined,
-        buttonLink: $("selButtonLink").value.trim() || undefined,
-        buttonText: $("selButtonText").value.trim() || undefined,
-        buttonLink2: $("selButtonLink2").value.trim() || undefined,
-        buttonText2: $("selButtonText2").value.trim() || undefined,
+        artist: document.getElementById("selArtist").value.trim() || undefined,
+        source: document.getElementById("selSource").value.trim() || undefined,
+        image: document.getElementById("selImage").value.trim() || undefined,
+        isPlaying: document.getElementById("selIsPlaying").value.trim() || undefined,
+        timePassed: document.getElementById("selTimePassed").value.trim() || undefined,
+        duration: document.getElementById("selDuration").value.trim() || undefined,
+        buttonLink: document.getElementById("selButtonLink").value.trim() || undefined,
+        buttonText: document.getElementById("selButtonText").value.trim() || undefined,
+        buttonLink2: document.getElementById("selButtonLink2").value.trim() || undefined,
+        buttonText2: document.getElementById("selButtonText2").value.trim() || undefined,
       },
     };
 
@@ -397,13 +373,7 @@ class UserParserUI {
   }
 
   downloadFile(content, name, mime) {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(content, name, mime);
   }
 
   // Import
@@ -441,13 +411,7 @@ class UserParserUI {
 
   async showImportModalSelection(duplicates, newParsers, existing) {
     return new Promise((resolve) => {
-      const modal = document.createElement("div");
-      modal.className = "modal";
-      modal.style.display = "flex";
-
-      const content = document.createElement("div");
-      content.className = "modal-content";
-      modal.appendChild(content);
+      const { modal, content } = createModal();
 
       const titleEl = document.createElement("h2");
       titleEl.textContent = i18n.t("userparser.import.title");
@@ -527,14 +491,14 @@ class UserParserUI {
         importFinished = true;
         contentWrapper.remove();
       });
-      confirmBtn.className = "confirm-button";
+      confirmBtn.className = "btn confirm-button";
 
       const closeBtn = this.createButton(i18n.t("common.close"), () => {
         if (!importFinished) return;
         modal.remove();
         resolve({ duplicates, newParsers });
       });
-      closeBtn.className = "close-button";
+      closeBtn.className = "btn close-btn";
 
       const buttonContainer = document.createElement("div");
       buttonContainer.className = "button-group footer-buttons";
@@ -651,7 +615,7 @@ class UserParserUI {
   createButton(text, onClick) {
     const btn = document.createElement("button");
     btn.textContent = text;
-    btn.className = "button";
+    btn.className = "btn btn-action";
     if (onClick) btn.onclick = onClick;
     return btn;
   }
