@@ -29,6 +29,27 @@ function createInlineUtils(extensionDir, distDir) {
     return results;
   }
 
+  function concatDirectoryInto(targetRel, dirRel) {
+    const dirPath = path.join(distDir, dirRel);
+    const targetPath = path.join(distDir, targetRel);
+
+    const files = getJsFilesInDirectory(dirPath, dirRel)
+      .map((f) => f.split(path.sep).join("/"))
+      .sort();
+
+    const combined = files
+      .map((rel) => {
+        const code = fs.readFileSync(path.join(distDir, rel), "utf8");
+        return `// === BEGIN (${rel}) ===\n${code}\n// === END (${rel}) ===`;
+      })
+      .join("\n\n");
+
+    const original = fs.readFileSync(targetPath, "utf8");
+    fs.writeFileSync(targetPath, combined + "\n\n" + original, "utf8");
+
+    fs.removeSync(dirPath);
+  }
+
   function extractFunctionsFromFile(sourceFilePath, namesToInclude) {
     const code = fs.readFileSync(sourceFilePath, "utf8");
 
@@ -254,7 +275,7 @@ function createInlineUtils(extensionDir, distDir) {
     });
   }
 
-  return { inlineUtilsFunctions, buildInlineFunctions };
+  return { inlineUtilsFunctions, buildInlineFunctions, concatDirectoryInto };
 }
 
 module.exports = { createInlineUtils };

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Registers all inline utility function mappings.
  * Called from the build script after `inlineUtilsFunctions` is defined.
  *
@@ -21,7 +21,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions(["common/utils.js", "popup/selector/selector.js", "background.js"], "../shared/utils.js", ["truncate"]);
 
   // Logs
-  inlineUtilsFunctions(["background.js", "mainParser.js"], "common/utils.js", [
+  inlineUtilsFunctions("background.js", "common/utils.js", [
     "getDebugMode",
     "_writeDebugLog",
     "logInfo",
@@ -32,6 +32,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "delay",
     "DEFAULT_PARSER_OPTIONS",
     "parseUrlPattern",
+    "regexFromString",
   ]);
 
   // Background Utils
@@ -100,6 +101,17 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "normalizeHost",
     "getSafeText",
     "getSafeHref",
+    "getDebugMode",
+    "_writeDebugLog",
+    "logInfo",
+    "logWarn",
+    "errorFilter",
+    "shouldIgnore",
+    "logError",
+    "delay",
+    "DEFAULT_PARSER_OPTIONS",
+    "parseUrlPattern",
+    "regexFromString",
   ]);
 
   inlineUtilsFunctions(["mainParser.js", "common/utils.js"], "popup/selector/modules/selectorUtils.js", ["queryWithPartialClass"]);
@@ -152,6 +164,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
       "parseIgnoreSelector",
       "cloneWithoutIgnored",
       "generateParserKey",
+      "regexFromString",
     ],
     "_INLINE_UTILS",
   );

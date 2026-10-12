@@ -1,4 +1,4 @@
-const fs = require("fs-extra");
+﻿const fs = require("fs-extra");
 const path = require("path");
 
 const { prefixCssFiles } = require("./steps/prefixCss");
@@ -39,15 +39,29 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   bundleParsers(EXTENSION_DIR, DIST_DIR);
 
   // 6. Inline utilities
-  const { inlineUtilsFunctions, buildInlineFunctions } = createInlineUtils(EXTENSION_DIR, DIST_DIR);
+  const commonUtilsPath = path.join(DIST_DIR, "common", "utils.js");
+  fs.ensureDirSync(path.dirname(commonUtilsPath));
+  if (!fs.existsSync(commonUtilsPath)) {
+    fs.writeFileSync(commonUtilsPath, "// Auto-generated utils.js");
+  }
+  const { inlineUtilsFunctions, buildInlineFunctions, concatDirectoryInto } = createInlineUtils(EXTENSION_DIR, DIST_DIR);
+  concatDirectoryInto("common/utils.js", "common/utils");
   registerInlines(inlineUtilsFunctions);
   buildInlineFunctions();
 
   // 7. Apply CSS config
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-config.css", CSS_TARGETS);
+
+  // Shared CSS (global styles + components) injected to provide consistent cross-page styles
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-global.css", CSS_TARGETS, "/*CSS-GLOBAL*/");
 
-  // 8. Copy locales
+  // 8. Apply CSS components
+  applyCssConfig(SHARED_DIR, DIST_DIR, "css-components.css", CSS_TARGETS, "/*CSS-COMPONENTS*/");
+
+  // 9. Apply CSS utilities
+  applyCssConfig(SHARED_DIR, DIST_DIR, "css-utilities.css", CSS_TARGETS, "/*CSS-UTILITIES*/");
+
+  // 9. Copy locales
   checkMissingTranslations(LOCALES_DIR, ["extension"]);
   generateLanguages(LOCALES_DIR);
 

@@ -21,9 +21,20 @@ function getCssFiles(dir) {
   return results;
 }
 
+function filterVendorFiles(cssFiles, extensionDir) {
+  const vendorPath = path.join(extensionDir, "libs");
+  const vendorPathNormalized = vendorPath.split(path.sep).join("/");
+  return cssFiles.filter((file) => {
+    const normalized = file.split(path.sep).join("/");
+    return !normalized.startsWith(vendorPathNormalized);
+  });
+}
+
 async function prefixCssFiles(extensionDir) {
-  const prefixer = autoprefixer({ overrideBrowserslist: ["last 4 versions"] });
-  const cssFiles = getCssFiles(extensionDir);
+  const prefixer = autoprefixer({
+    overrideBrowserslist: ["last 10 Chrome versions", "last 10 Firefox versions"],
+  });
+  const cssFiles = filterVendorFiles(getCssFiles(extensionDir), extensionDir);
 
   for (const file of cssFiles) {
     const css = fs.readFileSync(file, "utf8");
@@ -36,4 +47,4 @@ async function prefixCssFiles(extensionDir) {
   }
 }
 
-module.exports = { prefixCssFiles };
+module.exports = { prefixCssFiles, getCssFiles, filterVendorFiles };
