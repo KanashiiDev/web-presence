@@ -16,6 +16,7 @@ const wnpClient = require("./services/wnpClient.js");
 const { createRpcRouter } = require("./routes/rpc.js");
 const { createHistoryRouter } = require("./routes/history.js");
 const { createSettingsRouter, readSettings } = require("./routes/settings.js");
+const crypto = require("crypto");
 
 // Singleton Guard
 if (global.__SERVER_INSTANCE_RUNNING__) {
@@ -33,6 +34,30 @@ const settingsFilePath = process.env.SETTINGS_FILE_PATH;
 const logFilePath = process.env.LOG_FILE_PATH;
 const historyFilePath = process.env.HISTORY_FILE_PATH;
 const settings = readSettings(settingsFilePath)?.settings?.server;
+
+// Proxy token - generated once per server start
+const PROXY_TOKEN = crypto.randomBytes(24).toString("hex");
+const MAX_PROXY_RESPONSE_SIZE = 10 * 1024 * 1024;
+const PROXY_REQUEST_TIMEOUT_MS = 10_000;
+
+// Token comparison using crypto.timingSafeEqual (lengths checked first to avoid throwing)
+function tokensMatch(a, b) {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Verify caller is our own dashboard (exact origin match, no startsWith)
+function isLocalOrigin(req) {
+  const src = req.get("Origin") || req.get("Referer") || "";
+  if (!src) return false;
+  try {
+    return new URL(src).origin === `http://localhost:${PORT}`;
+  } catch {
+    return false;
+  }
+}
 
 // WebNowPlaying Check
 const wnpAdapters = ["WNP_RAINMETER_SUPPORT", "WNP_OBS_SUPPORT"];
@@ -60,9 +85,31 @@ app.use((_req, res, next) => {
   res.set("Surrogate-Control", "no-store");
   next();
 });
-app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowedPrefixes = ["http://localhost:", "http://127.0.0.1:", "chrome-extension://", "moz-extension://"];
+    if (allowedPrefixes.some((prefix) => origin.startsWith(prefix))) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+};
+app.use(cors(corsOptions));
+
+// DNS rebinding protection - reject requests with an unexpected Host header
+app.use((req, res, next) => {
+  const host = req.get("Host") || "";
+  if (host !== `localhost:${PORT}` && host !== `127.0.0.1:${PORT}`) {
+    return res.status(400).send("Invalid Host");
+  }
+  next();
+});
+app.use("/sync-history", express.json({ limit: "50mb" }));
+app.use("/delete-history-entries", express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ limit: "2mb", extended: true }));
 
 // Routes
 app.use("/", createRpcRouter(historyFilePath));
@@ -102,41 +149,120 @@ app.get("/status", (_req, res) =>
   }),
 );
 
-app.get("/proxy", async (req, res) => {
-  try {
-    const rawUrl = req.query.url;
+// Strip CORS headers so other origins cannot read our responses.
+// The dashboard is same-origin (http://localhost:PORT), so no CORS header is needed.
+function stripCors(res) {
+  res.removeHeader("Access-Control-Allow-Origin");
+  res.removeHeader("Access-Control-Allow-Credentials");
+}
 
-    if (!rawUrl) {
-      return res.status(400).send("Missing url");
-    }
-
-    let targetUrl;
-    try {
-      targetUrl = new URL(rawUrl);
-    } catch {
-      return res.status(400).send("Invalid url");
-    }
-
-    // Only allow safe, external HTTP(S) URLs
-    if (!["http:", "https:"].includes(targetUrl.protocol)) {
-      return res.status(400).send("Only HTTP/HTTPS URLs are allowed");
-    }
-
-    const response = await fetch(targetUrl.toString());
-
-    if (!response.ok) {
-      return res.status(response.status).send("Failed to fetch resource");
-    }
-
-    res.set("Content-Type", response.headers.get("content-type") || "application/octet-stream");
-    res.set("Access-Control-Allow-Origin", "*");
-
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Proxy error");
+// GET /proxy-token - returns the runtime token for the same-origin dashboard
+app.get("/proxy-token", (req, res) => {
+  stripCors(res);
+  if (!isLocalOrigin(req)) {
+    return res.status(403).send("Forbidden");
   }
+  res.set("Cache-Control", "no-store");
+  res.json({ token: PROXY_TOKEN });
+});
+
+// GET /proxy/:token - image proxy for html2canvas (token in path, html2canvas appends ?url=)
+app.get("/proxy/:token", async (req, res) => {
+  stripCors(res);
+
+  // Origin check - only our own dashboard may call this
+  if (!isLocalOrigin(req)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  // Token check - constant-time comparison
+  if (!tokensMatch(req.params.token, PROXY_TOKEN)) {
+    return res.status(403).send("Forbidden");
+  }
+
+  const rawUrl = req.query.url;
+  if (!rawUrl) {
+    return res.status(400).send("Missing url");
+  }
+
+  // Parse and validate the target URL
+  let target;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    return res.status(400).send("Invalid URL");
+  }
+
+  // Only HTTPS
+  if (target.protocol !== "https:") {
+    return res.status(403).send("Forbidden");
+  }
+
+  // No embedded credentials
+  if (target.username || target.password) {
+    return res.status(403).send("Forbidden");
+  }
+
+  // Cheap host checks - reject localhost, *.local, IPv4 literals, IPv6 literals
+  const hostname = target.hostname;
+  if (hostname === "localhost" || hostname.endsWith(".local")) {
+    return res.status(403).send("Forbidden");
+  }
+  if (/^[\d.]+$/.test(hostname)) {
+    return res.status(403).send("Forbidden");
+  }
+  if (hostname.includes(":")) {
+    // contains ":" → IPv6 literal (or bracketed form)
+    return res.status(403).send("Forbidden");
+  }
+
+  // Fetch - redirect: "error" rejects any redirect, removing the need for a manual redirect loop
+  let response;
+  try {
+    response = await fetch(target, {
+      redirect: "error",
+      signal: AbortSignal.timeout(PROXY_REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.error("[PROXY]", err.message);
+    return res.status(502).send("Bad gateway");
+  }
+
+  if (!response.ok) {
+    console.error("[PROXY] Upstream status:", response.status);
+    return res.status(502).send("Bad gateway");
+  }
+
+  // Content-type check - image only, no SVG
+  const contentType = response.headers.get("content-type") || "";
+  if (!/^image\/(png|jpe?g|gif|webp|avif)(;|$)/i.test(contentType)) {
+    return res.status(415).send("Unsupported media type");
+  }
+
+  // Size check via content-length header (early rejection)
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_PROXY_RESPONSE_SIZE) {
+    return res.status(413).send("Payload too large");
+  }
+
+  // Read full body and verify actual size
+  let buffer;
+  try {
+    buffer = Buffer.from(await response.arrayBuffer());
+  } catch (err) {
+    console.error("[PROXY]", err.message);
+    return res.status(502).send("Bad gateway");
+  }
+
+  if (buffer.length > MAX_PROXY_RESPONSE_SIZE) {
+    return res.status(413).send("Payload too large");
+  }
+
+  res.set("Content-Type", contentType);
+  res.set("Content-Length", String(buffer.length));
+  res.set("Cache-Control", "no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.send(buffer);
 });
 
 // Shutdown
@@ -258,8 +384,9 @@ if (IS_ELECTRON) {
 }
 
 // Start Server
-state.serverInstance = app.listen(PORT, () => {
-  console.log(`[SERVER] Running on http://localhost:${PORT}`);
+const HOST = "127.0.0.1";
+state.serverInstance = app.listen(PORT, HOST, () => {
+  console.log(`[SERVER] Running on http://${HOST}:${PORT}`);
   sendReady();
 
   // Bridge WebSocket - For Discord Web
@@ -269,7 +396,13 @@ state.serverInstance = app.listen(PORT, () => {
 
     bridgeWss.on("connection", (ws) => {
       ws.on("message", async (data) => {
-        const msg = JSON.parse(data.toString());
+        let msg;
+        try {
+          msg = JSON.parse(data.toString());
+        } catch (err) {
+          console.warn("[BRIDGE] Malformed message received:", err.message);
+          return;
+        }
 
         if (msg.type === "INIT_BRIDGE" && msg.origin === "https://discord.com") {
           console.log("[BRIDGE] Discord Web connected");

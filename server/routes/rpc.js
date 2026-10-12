@@ -7,15 +7,17 @@ const { buildActivity, setRpcActivity, clearRpcActivity, resetActivityState, han
 
 function createRpcRouter(historyFilePath) {
   const router = Router();
+  const RATE_LIMIT_MS = 2000;
 
   // POST /update-rpc
   router.post("/update-rpc", async (req, res) => {
     const now = Date.now();
 
     // Rate-limit: 2s between updates
-    if (state.lastUpdateAt && now - state.lastUpdateAt < 2000) {
+    if (state.lastUpdateAt && now - state.lastUpdateAt < RATE_LIMIT_MS) {
       return res.status(429).json({ error: "Too many updates" });
     }
+    state.lastUpdateAt = now;
 
     try {
       const { data, clientId } = req.body ?? {};
@@ -55,7 +57,6 @@ function createRpcRouter(historyFilePath) {
           }
         }
         resetActivityState(historyFilePath);
-        state.lastUpdateAt = now;
         state.lastActivitySeenAt = now;
         return res.json({ success: true, action: "cleared" });
       }
@@ -83,7 +84,6 @@ function createRpcRouter(historyFilePath) {
         }
       }
 
-      state.lastUpdateAt = now;
       state.lastActivitySeenAt = now;
       return res.json({ success: true, action: isSame ? "unchanged" : "updated" });
     } catch (err) {

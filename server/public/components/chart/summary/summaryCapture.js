@@ -12,6 +12,64 @@ let _onCapture = null;
 let _onRowCountChange = null;
 let _outsideListenerActive = false;
 
+// Proxy token - fetched once from /proxy-token and cached for the session.
+// If the server restarts, the token changes; on a 403 we re-fetch and retry.
+let _proxyToken = null;
+let _proxyTokenPromise = null;
+
+async function getProxyToken() {
+  if (_proxyToken) return _proxyToken;
+  if (_proxyTokenPromise) return _proxyTokenPromise;
+  _proxyTokenPromise = fetch("/proxy-token")
+    .then((res) => {
+      if (!res.ok) throw new Error("Failed to fetch proxy token");
+      return res.json();
+    })
+    .then((data) => {
+      _proxyToken = data.token;
+      return _proxyToken;
+    });
+  try {
+    return await _proxyTokenPromise;
+  } finally {
+    _proxyTokenPromise = null;
+  }
+}
+
+function _buildCaptureOptions(token, activeWidth, layout, preset, panelElement) {
+  return {
+    backgroundColor: null,
+    width: activeWidth,
+    scale: 1,
+    useCORS: false,
+    logging: false,
+    proxy: `${location.origin}/proxy/${token}`,
+
+    ignoreElements: (e) => e.classList.contains("summary-capture") || e.classList.contains("summary-back-btn") || e.id === "captureMenu",
+
+    onclone: (doc) => {
+      const clonedPanel = doc.getElementById(panelElement.id);
+      if (!clonedPanel) return;
+
+      clonedPanel.querySelector(".summary-two-column-layout")?.style.setProperty("display", layout === "tall" ? "block" : "");
+      clonedPanel.querySelector(".summary-two-column-layout")?.classList.toggle("capture-grid", layout === "wide");
+
+      const maxLength = layout === "tall" ? preset.maxLengthTall : preset.maxLengthWide;
+      for (const el of clonedPanel.querySelectorAll(".summary-title")) {
+        const text = el.textContent?.trim() ?? "";
+        if (text.length > maxLength) {
+          el.textContent = text.slice(0, maxLength) + "…";
+        }
+      }
+
+      const wrapper = doc.createElement("div");
+      wrapper.style.width = activeWidth + "px";
+      clonedPanel.parentNode.insertBefore(wrapper, clonedPanel);
+      wrapper.appendChild(clonedPanel);
+    },
+  };
+}
+
 export function initCaptureMenu({ onCapture, onRowCountChange } = {}) {
   _onCapture = onCapture ?? null;
   _onRowCountChange = onRowCountChange ?? null;
@@ -231,38 +289,21 @@ export async function captureSummaryPanel(panelElement, { layout = "wide", prese
 
   try {
     const activeWidth = _getActiveWidth(preset, layout);
+    const token = await getProxyToken();
 
-    const canvas = await html2canvas(panelElement, {
-      backgroundColor: "null",
-      width: activeWidth,
-      scale: 1,
-      useCORS: false,
-      logging: false,
-      proxy: `${location.origin}/proxy`,
-
-      ignoreElements: (e) => e.classList.contains("summary-capture") || e.classList.contains("summary-back-btn") || e.id === "captureMenu",
-
-      onclone: (doc) => {
-        const clonedPanel = doc.getElementById(panelElement.id);
-        if (!clonedPanel) return;
-
-        clonedPanel.querySelector(".summary-two-column-layout")?.style.setProperty("display", layout === "tall" ? "block" : "");
-        clonedPanel.querySelector(".summary-two-column-layout")?.classList.toggle("capture-grid", layout === "wide");
-
-        const maxLength = layout === "tall" ? preset.maxLengthTall : preset.maxLengthWide;
-        for (const el of clonedPanel.querySelectorAll(".summary-title")) {
-          const text = el.textContent?.trim() ?? "";
-          if (text.length > maxLength) {
-            el.textContent = text.slice(0, maxLength) + "…";
-          }
-        }
-
-        const wrapper = doc.createElement("div");
-        wrapper.style.width = activeWidth + "px";
-        clonedPanel.parentNode.insertBefore(wrapper, clonedPanel);
-        wrapper.appendChild(clonedPanel);
-      },
-    });
+    let canvas;
+    try {
+      canvas = await html2canvas(panelElement, _buildCaptureOptions(token, activeWidth, layout, preset, panelElement));
+    } catch (err) {
+      const errStr = err?.message ?? String(err);
+      if (/403|forbidden|proxy/i.test(errStr)) {
+        _proxyToken = null;
+        const newToken = await getProxyToken();
+        canvas = await html2canvas(panelElement, _buildCaptureOptions(newToken, activeWidth, layout, preset, panelElement));
+      } else {
+        throw err;
+      }
+    }
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve));
     if (!blob) return;
