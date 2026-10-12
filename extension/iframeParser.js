@@ -2,13 +2,21 @@
 // Looks at window.iframeParsers defined by compiledIframeParsers.js,
 // runs the matching parser, and sends the data to the main frame via the background.
 
+function safeSendMessage(msg) {
+  try {
+    return browser.runtime.sendMessage(msg).catch(() => {});
+  } catch {
+    return Promise.resolve();
+  }
+}
+
 if (window.top !== window) {
-  browser.runtime.sendMessage({ type: "IFRAME_REGISTER" }).catch(() => {});
+  safeSendMessage({ type: "IFRAME_REGISTER" });
 
   window.addEventListener(
     "pagehide",
     () => {
-      browser.runtime.sendMessage({ type: "IFRAME_UNREGISTER" }).catch(() => {});
+      safeSendMessage({ type: "IFRAME_UNREGISTER" });
     },
     { once: true },
   );
@@ -851,15 +859,13 @@ browser.runtime.onMessage.addListener(async (msg) => {
     }
     const data = await entry.fn();
     if (data == null) return;
-    browser.runtime
-      .sendMessage({
-        type: "IFRAME_DATA",
-        key,
-        origin: iframeHostname,
-        href: location.href,
-        data,
-      })
-      .catch(() => {});
+    safeSendMessage({
+      type: "IFRAME_DATA",
+      key,
+      origin: iframeHostname,
+      href: location.href,
+      data,
+    });
     return;
   }
 
@@ -867,28 +873,24 @@ browser.runtime.onMessage.addListener(async (msg) => {
   if (msg.iframeSelectors) {
     const data = resolveIframeSelectors(msg.iframeSelectors, iframeHostname);
     if (data == null) return;
-    browser.runtime
-      .sendMessage({
-        type: "IFRAME_DATA",
-        key,
-        origin: iframeHostname,
-        href: location.href,
-        data,
-      })
-      .catch(() => {});
+    safeSendMessage({
+      type: "IFRAME_DATA",
+      key,
+      origin: iframeHostname,
+      href: location.href,
+      data,
+    });
     return;
   }
 
   // userAdd / userScript / watchAutoDetect
   const data = getVideoInfo();
   if (data == null) return;
-  browser.runtime
-    .sendMessage({
-      type: "IFRAME_DATA",
-      key,
-      origin: iframeHostname,
-      href: location.href,
-      data,
-    })
-    .catch(() => {});
+  safeSendMessage({
+    type: "IFRAME_DATA",
+    key,
+    origin: iframeHostname,
+    href: location.href,
+    data,
+  });
 });
