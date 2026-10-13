@@ -55,28 +55,23 @@ function maybeReconnect(reason) {
 }
 
 async function tick(historyFilePath) {
-  if (state.isShuttingDown || isReconnecting()) return;
-
-  if (isBridgeConnected() || state.bridgeTakeover) {
-    state.deadSince = null;
-    return;
-  }
+  if (state.isShuttingDown) return;
 
   try {
     const now = Date.now();
 
-    // Auto-clear stale activity - skip entirely if bridge is active
+    // Auto-clear stale activity - runs regardless of bridge state
     if (state.currentActivity !== null && state.lastActivitySeenAt && now - state.lastActivitySeenAt > AUTO_CLEAR_TIMEOUT) {
-      if (isBridgeConnected()) return;
       await safeClear();
       resetActivityState(historyFilePath);
-      maybeReconnect("health: dead after stale clear");
+      if (!clientLooksAlive()) {
+        maybeReconnect("health: dead after stale clear");
+      }
       return;
     }
 
-    // Client ownership timeout - skip entirely if bridge is active
+    // Client ownership timeout - runs regardless of bridge state
     if (state.lastActiveClient?.timestamp && now - state.lastActiveClient.timestamp > CLIENT_TIMEOUT) {
-      if (isBridgeConnected()) return;
       await safeClear();
       resetActivityState(historyFilePath);
       if (!clientLooksAlive()) {
@@ -85,14 +80,20 @@ async function tick(historyFilePath) {
       return;
     }
 
-    // Client gone: check with the grace period
-    if (!clientLooksAlive() && !state.isConnecting && !reconnectState.isReconnecting && !reconnectState.scheduled) {
+    // Bridge-connected: no need for dead-client reconnect logic (bridge handles Discord connectivity)
+    if (isBridgeConnected() || state.bridgeTakeover) {
+      state.deadSince = null;
+      return;
+    }
+
+    // Only schedule a reconnect when not already in progress and client is dead
+    if (!isReconnecting() && !clientLooksAlive()) {
       maybeReconnect("health: client dead");
       return;
     }
   } catch (err) {
     console.error("[HEALTH] error:", err.message);
-    if (!isReconnecting() && !state.isConnecting) scheduleReconnect(3000, "health: exception");
+    if (!isReconnecting()) scheduleReconnect(3000, "health: exception");
   }
 }
 

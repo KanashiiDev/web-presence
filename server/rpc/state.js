@@ -91,6 +91,7 @@ const state = {
   },
   bridgeClients: new Set(),
   bridgeServer: null,
+  bridgeHeartbeat: null,
   deadSince: null,
   bridgeTakeover: false, // true while bridge is active owner; blocks RPC reconnect loop
 };

@@ -1,7 +1,7 @@
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
-const { WebSocketServer } = require("ws");
+const { WebSocketServer, WebSocket } = require("ws");
 
 const { detectElectronMode, notifyRpcStatus } = require("./utils.js");
 const IS_ELECTRON = detectElectronMode();
@@ -280,6 +280,10 @@ async function shutdown() {
         state.bridgeServer = null;
         state.bridgeClients.clear();
       }
+      if (state.bridgeHeartbeat) {
+        clearInterval(state.bridgeHeartbeat);
+        state.bridgeHeartbeat = null;
+      }
 
       cancelReconnect();
       stopHealthCheckTimer();
@@ -395,6 +399,11 @@ state.serverInstance = app.listen(PORT, HOST, () => {
     state.bridgeServer = bridgeWss;
 
     bridgeWss.on("connection", (ws) => {
+      ws.isAlive = true;
+      ws.on("pong", () => {
+        ws.isAlive = true;
+      });
+
       ws.on("message", async (data) => {
         let msg;
         try {
@@ -448,6 +457,19 @@ state.serverInstance = app.listen(PORT, HOST, () => {
     });
 
     console.log(`[BRIDGE] Web bridge listening on ws://127.0.0.1:${settings?.DISCORD_WEB_PORT?.value || 1337}`);
+
+    state.bridgeHeartbeat = setInterval(() => {
+      bridgeWss.clients.forEach((ws) => {
+        if (!ws.isAlive) {
+          ws.terminate();
+          return;
+        }
+        ws.isAlive = false;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.ping();
+        }
+      });
+    }, 15000);
   }
   connectRPC().catch(() => {});
 
