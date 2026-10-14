@@ -17,22 +17,10 @@ const SIMPLE_PATTERNS = [
 ];
 
 const ATTR_BLOCKLIST_PATTERNS = [
-  // General
-  /class/i,
-  /id/i,
-  /style/i,
-  /src/i,
-  /href/i,
-  /label/i,
-  /title/i,
-  /desc(ription)?/i,
-  /tooltip/i,
-  /hint/i,
-  /placeholder/i,
-  /^alt$/i,
-  /^aria-(label|description|valuetext|placeholder)$/i,
-  /content/i,
-  /text$/i,
+  // General - anchored to whole attribute name or a whole hyphen segment.
+  // (unanchored /id/ used to block data-testid, data-video, data-hidden ...)
+  /(^|-)(class|id|style|src|srcset|href|label|title|desc|description|tooltip|hint|placeholder|alt|content|text|innertext)(-|$)/i,
+  /^aria-(label|labelledby|describedby|description|valuetext|placeholder)$/i,
 
   // Unique identifiers
   /^\[data-(id|key|guid|uuid|pk|ref|index)\]$/i,
@@ -137,8 +125,8 @@ const CLASS_BLOCKLIST_PATTERNS = [
   /^offset-([a-z]{2,4})-\d{1,2}$/i,
   /^order-([a-z]{2,4}-)?\d{1,2}$/i,
 
-  // Spacing utilities (m-4, pt-8, -mt-4, vb.)
-  /^-?(m|p)(t|r|b|l|x|y|s|e)?-(\d{1,3}|auto|px)$/i,
+  // Spacing utilities (m-4, pt-8, -mt-4, m-0.5, p-1.5, vb.)
+  /^-?(m|p)(t|r|b|l|x|y|s|e)?-(\d{1,3}(?:\.\d+)?|auto|px)$/i,
 
   // Layout utilities
   /^(d-(block|flex|grid|none|inline(-block|-flex)?)|container(-fluid|-sm|-md|-lg|-xl|-xxl)?|row|col)$/i,
@@ -168,18 +156,18 @@ const CLASS_BLOCKLIST_PATTERNS = [
   /^-?(top|right|bottom|left|inset)(-(\d{1,3}|px|auto|full))?$/i,
   /^(inset|inset-x|inset-y)(-(\d{1,3}|px|auto))?$/i,
 
-  // Colors (background, text, border)
-  /^(bg|text|border|ring|fill|stroke)-(transparent|current|inherit|black|white|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(\d{2,3}|50)$/i,
+  // Colors (background, text, border) - with or without shade numbers
+  /^(bg|text|border|ring|fill|stroke)-(transparent|current|inherit|black|white|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(-(\d{2,3}|50))?$/i,
 
   // Border utilities
   /^border(-([trbl]|[xy]))?(-(\d|none))?$/i,
-  /^(rounded|border-radius)(-([trbl]|[tblr]{2}))?-(none|sm|md|lg|xl|2xl|3xl|full)?$/i,
+  /^rounded(-([trbl]|[tblr]{2}))?(-(none|sm|md|lg|xl|2xl|3xl|full))?$/i,
   /^(divide-[xy])(-(\d|reverse))?$/i,
 
   // Shadow, opacity, blur
-  /^shadow(-([sm|md|lg|xl|2xl]|inner|none))?$/i,
+  /^shadow(-(sm|md|lg|xl|2xl|inner|none))?$/i,
   /^opacity-(\d{1,3})$/i,
-  /^blur(-([sm|md|lg|xl|2xl|3xl]|none))?$/i,
+  /^blur(-(sm|md|lg|xl|2xl|3xl|none))?$/i,
   /^backdrop-(blur|brightness|contrast|grayscale|hue-rotate|invert|opacity|saturate|sepia)(-[a-z0-9-]+)?$/i,
 
   // Transitions and animations
@@ -250,6 +238,15 @@ const CLASS_BLOCKLIST_PATTERNS = [
   /^e[a-z]{2,4}\d[a-z0-9]{2,8}$/i,
   /^[a-z]{3,6}\d[a-z]{2,4}\d{1,4}$/i,
 
+  // Short hash prefixes (c-3meqib, x-abc123, s-xyz789, etc.) - common in CSS-in-JS
+  /^[a-z]-(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{4,12}$/i, // mixed letters+digits only (c-3meqib); c-title / a-link stay valid
+
+  // Numbered index/placeholder classes (sc-artwork-placeholder-0, avatar-3, thumb_12)
+  /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*[-_]\d{1,2}$/i,
+
+  // Animation/transition helper classes (g-opacity-transition, fade-in, is-animating)
+  /(^|[-_])(transition|animat\w*|fade\w*)([-_]|$)/i,
+
   // Bootstrap legacy
   /^(pull|float)-(left|right|none)$/i,
   /^show$/i,
@@ -260,3 +257,43 @@ const CLASS_BLOCKLIST_PATTERNS = [
   // Prose utilities (Tailwind Typography)
   /^(prose|not-prose)(-[a-z]+)?$/i,
 ];
+
+// State/transient classes - filter at generation time to avoid noisy variants.
+// Does NOT block semantic classes like current-song, playing-track, active-user.
+const STATE_CLASS_PATTERNS = [
+  /^(active|selected|open|closed|expanded|collapsed|focus|hover|disabled|loading|pending|error|success|visible|hidden|show|hide|enter|leave|current|playing|paused|muted|fullscreen|lazyloaded|lazyload|lazy)$/i,
+  /^(is|has|are|was|will|can|should)[-_][a-z0-9][a-z0-9_-]*$/i, // is-active, has-error
+  /^(is|has)[A-Z][A-Za-z0-9]*$/, // isPlaying, hasFocus
+  /--[a-z0-9][a-z0-9-]*$/i, // BEM modifiers (block--modifier): variant/state, not identity
+];
+
+// Utility/responsive classes - unstable, viewport-dependent, not semantic
+// These should NOT contribute to class chain bonus
+const UTILITY_CLASS_PATTERNS = [
+  // Bootstrap responsive visibility
+  /^visible-(xs|sm|md|lg|xl|xxl|print)$/i,
+  /^hidden-(xs|sm|md|lg|xl|xxl|print)$/i,
+  /^invisible$/i,
+  // Bootstrap display utilities
+  /^d-(none|inline|inline-block|block|table|table-cell|table-row|flex|inline-flex|grid|inline-grid)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  // Bootstrap flex utilities
+  /^flex-(row|column|row-reverse|column-reverse|wrap|nowrap|grow|shrink|fill|initial|auto)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  /^justify-content-(start|end|center|between|around|evenly)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  /^align-(items|self|content)-(start|end|center|baseline|stretch)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  // Bootstrap spacing utilities
+  /^m[xytrblsae]?-[0-9]+(\.[0-9]+)?$/i,
+  /^p[xytrblsae]?-[0-9]+(\.[0-9]+)?$/i,
+  // Bootstrap float utilities
+  /^float-(left|right|none)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  // Bootstrap text utilities
+  /^text-(left|right|center|justify|start|end|lowercase|uppercase|capitalize|wrap|nowrap|truncate|break|monospace|reset|decoration-none|body|primary|secondary|success|danger|warning|info|light|dark|white|muted)(-(xs|sm|md|lg|xl|xxl))?$/i,
+  // Bootstrap position utilities
+  /^position-(static|relative|absolute|fixed|sticky)$/i,
+  /^(top|bottom|start|end)-[0-9]+$/i,
+  // Tailwind-style utilities
+  /^(w|h|min-w|max-w|min-h|max-h)-(full|screen|auto|[0-9]+(\.[0-9]+)?)$/i,
+  /^(block|inline|inline-block|flex|inline-flex|grid|inline-grid|hidden|visible)$/i,
+];
+
+// Hash-like suffix: MUST contain a digit, so BEM elements (__avatar, __full, __elements) are not mistaken for hashes
+const HASH_SUFFIX_PATTERN = /_(?=[a-z0-9]*\d)[a-z0-9]{4,12}(?:_\d+)?$/i;

@@ -107,7 +107,7 @@ function startSelectorMode(field, shadowDoc) {
     moveHighlightThrottled.lastY = e.clientY;
 
     updateHighlight(e, overlay, highlight, shadowDoc);
-  }, 25);
+  }, 50);
   const clickHandler = (e) => handleElementClick(e, field, shadowDoc, cleanup);
   const escHandler = (e) => handleEscapeKey(e, cleanup, shadowDoc);
 

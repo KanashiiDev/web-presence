@@ -490,6 +490,7 @@
   "selector.editor.warn.invalidFields": "Invalid or not found selector(s):",
   "selector.editor.saved": "Saved! Please refresh the page.",
   "selector.warn.forbiddenArea": "This area cannot be selected. Please click a valid element.",
+  "selector.warn.flutter": "Flutter page not supported. Flutter renders to canvas, no DOM elements.",
   "selector.warn.notValid": "Selected element is not valid or visible.\nPlease choose another element.",
   "selector.warn.noImage": "No image element found. Please click on an image.",
   "selector.warn.noLink": "No link element found. Please click on a link.",

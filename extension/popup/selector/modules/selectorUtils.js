@@ -1,12 +1,44 @@
 /* ───────────────────────────────────── */
 /*      Core Safe Utility Functions      */
 /* ───────────────────────────────────── */
+// Deep query roots, in the SAME order querySelectorDeep visits them:
+// document first, then every open shadow root depth-first. Uniqueness / first-match must be
+// judged across all of them, because the consumer resolves selectors through querySelectorDeep.
+let __roots = null;
+
+function collectQueryRoots(start = document) {
+  const roots = [];
+  const walk = (root) => {
+    roots.push(root);
+    for (const el of root.querySelectorAll("*")) {
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(start);
+  return roots;
+}
+
+function getQueryRoots() {
+  return __roots || [document];
+}
+
+function withDeepQuery(fn) {
+  const prev = __roots;
+  __roots = collectQueryRoots(document); // one DOM pass per generation
+  partialQueryCache.clear(); // cached node lists are only valid for one DOM snapshot
+  try {
+    return fn();
+  } finally {
+    __roots = prev;
+  }
+}
+
 function safeQuery(selector) {
   if (typeof selector !== "string" || selector.length > SELECTOR_CONSTANTS.MATCH_LIMITS.MAX_SELECTOR_LENGTH) {
     return [];
   }
   try {
-    return Array.from(document.querySelectorAll(selector));
+    return getQueryRoots().flatMap((root) => Array.from(root.querySelectorAll(selector)));
   } catch {
     return [];
   }
@@ -22,21 +54,24 @@ function safeGetComputedStyle(el) {
 
 function safeElementsFromPoint(x, y, root = document) {
   try {
+    let elements = [];
     if (root.elementsFromPoint) {
-      return Array.from(root.elementsFromPoint(x, y) || []);
+      elements = Array.from(root.elementsFromPoint(x, y) || []);
+    } else {
+      const element = root.elementFromPoint?.(x, y) || document.elementFromPoint(x, y);
+      if (element) elements = [element];
     }
 
-    // Fallback: start with elementFromPoint and add the parents
-    const element = root.elementFromPoint?.(x, y) || document.elementFromPoint(x, y);
-    if (!element) return [];
-
-    const elements = [element];
-    let parent = element.parentElement;
-    while (parent && parent !== document.body) {
-      elements.push(parent);
-      parent = parent.parentElement;
+    // Also check shadow roots
+    const allElements = [...elements];
+    for (const el of elements) {
+      if (el.shadowRoot) {
+        const shadowElements = safeElementsFromPoint(x, y, el.shadowRoot);
+        allElements.push(...shadowElements);
+      }
     }
-    return elements;
+
+    return allElements;
   } catch {
     return [];
   }
@@ -170,6 +205,37 @@ function isElementVisible(el) {
   return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0" && el.offsetWidth > 0 && el.offsetHeight > 0;
 }
 
+/* ────────────────────────────────────── */
+/*      Flutter Canvas Detection          */
+/* ────────────────────────────────────── */
+function isFlutterCanvas(el) {
+  if (!el) return false;
+  // Check for Flutter-specific indicators
+  if (el.closest("flt-canvas-container")) return true;
+  if (el.closest("flutter-view")) return true;
+  if (document.querySelector("flt-glass-pane")) return true;
+
+  return false;
+}
+
+function getFlutterCanvasAtPoint(x, y) {
+  const canvas = document.elementFromPoint(x, y);
+  if (isFlutterCanvas(canvas)) return canvas;
+
+  // Check if we're in a Flutter app by looking for flutter-view ancestor
+  const flutterView = document.querySelector("flutter-view");
+  if (flutterView) {
+    const canvasEl = flutterView.querySelector("canvas[aria-hidden='true']");
+    if (canvasEl) return canvasEl;
+  }
+
+  return null;
+}
+
+function isFlutterPage() {
+  return !!document.querySelector("flutter-view, flt-glass-pane, flt-canvas-container > canvas[aria-hidden='true']");
+}
+
 /* ──────────────────────────── */
 /*      Element Validation      */
 /* ──────────────────────────── */
@@ -237,32 +303,48 @@ function isElementVisibleAndAtPoint(el, x, y) {
 function isFullScreenOverlay(el) {
   if (!el || el === document.body || el === document.documentElement) return false;
 
-  const rect = el.getBoundingClientRect();
-  const style = getComputedStyle(el);
+  // Recursion guard
+  if (isFullScreenOverlay._depth > 5) return false;
+  isFullScreenOverlay._depth = (isFullScreenOverlay._depth || 0) + 1;
 
-  const coversViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
-  const isPositioned = style.position === "fixed" || style.position === "absolute";
-  const hasNoContent = el.children.length === 0 && el.textContent.trim().length === 0;
-  const isTransparent = style.backgroundColor === "rgba(0, 0, 0, 0)" || style.backgroundColor === "transparent";
-  return coversViewport && isPositioned && (hasNoContent || isTransparent);
+  try {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+
+    const coversViewport = rect.width >= window.innerWidth * 0.9 && rect.height >= window.innerHeight * 0.9;
+    const isPositioned = style.position === "fixed" || style.position === "absolute";
+    const hasNoContent = el.children.length === 0 && el.textContent.trim().length === 0;
+    const isTransparent = style.backgroundColor === "rgba(0, 0, 0, 0)" || style.backgroundColor === "transparent";
+    return coversViewport && isPositioned && (hasNoContent || isTransparent);
+  } finally {
+    isFullScreenOverlay._depth--;
+  }
 }
 
 function deepElementsFromPoint(x, y, root = document) {
   return safeElementsFromPoint(x, y, root);
 }
 
-function deepElementFromPoint(x, y) {
+function deepElementFromPoint(x, y, root = document) {
   const hidden = [];
 
-  let el = document.elementFromPoint(x, y);
+  let el = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y);
+  let iterations = 0;
+  const MAX_ITERATIONS = 10;
 
-  while (el && isFullScreenOverlay(el)) {
+  while (el && isFullScreenOverlay(el) && iterations < MAX_ITERATIONS) {
     hidden.push(el);
     el.style.pointerEvents = "none";
-    el = document.elementFromPoint(x, y);
+    el = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y);
+    iterations++;
   }
 
   hidden.forEach((e) => (e.style.pointerEvents = ""));
+
+  if (el && el.shadowRoot) {
+    const shadowEl = deepElementFromPoint(x, y, el.shadowRoot);
+    if (shadowEl) return shadowEl;
+  }
 
   return el;
 }
@@ -271,7 +353,8 @@ function findDeepestValidElementInTree(root, x, y, depth = 0) {
   if (depth > SELECTOR_CONSTANTS.MATCH_LIMITS.MAX_DEPTH_SAFETY) return root;
 
   let deepest = root;
-  for (const child of root.children || []) {
+  const children = [...(root.children || []), ...(root.shadowRoot ? root.shadowRoot.children || [] : [])];
+  for (const child of children) {
     if (!isElementVisibleAndAtPoint(child, x, y)) continue;
     if (isValidElement(child)) {
       const deeper = findDeepestValidElementInTree(child, x, y, depth + 1);
@@ -298,22 +381,80 @@ function isIframeElement(el) {
 
 function isPointOnBlockedElement(x, y) {
   const deepEl = deepElementFromPoint(x, y);
-  if (deepEl && (SELECTOR_CONSTANTS.BLOCKED_IDS.includes(deepEl.id) || safeClosest(deepEl, SELECTOR_CONSTANTS.BLOCKED_SELECTORS[0]) || isIframeElement(deepEl))) {
+  return isPointOnBlockedElementFromEl(deepEl);
+}
+
+function isPointOnBlockedElementFromEl(el) {
+  if (!el) return false;
+  if (SELECTOR_CONSTANTS.BLOCKED_IDS.includes(el.id) || safeClosest(el, SELECTOR_CONSTANTS.BLOCKED_SELECTORS[0]) || isIframeElement(el)) {
     return true;
   }
-  return safeElementsFromPoint(x, y).some(isIframeElement);
+  // Check if any element at the same point is an iframe
+  // We can't easily do this without coordinates, so we skip the elementsFromPoint check for performance
+  return false;
 }
 
 /* ───────────────────────── */
 /*      Class Utilities      */
 /* ───────────────────────── */
+// A token that looks machine-generated (hash / atomic-css id): mixed letters+digits, or a long vowel-less run.
+function looksRandomToken(t) {
+  if (!t || t.length < 5) return false;
+  const hasDigit = /\d/.test(t);
+  const hasLetter = /[a-z]/i.test(t);
+  if (hasDigit && hasLetter) return true;
+  if (!hasDigit && t.length >= 6 && !/[aeiouy]/i.test(t)) return true;
+  return false;
+}
+
+function looksHashedClass(cls) {
+  return cls.split(/[-_]+/).some(looksRandomToken);
+}
+
+/**
+ * Class tiers:
+ *  "stable" - semantic enough to build selectors from
+ *  "weak"   - utility / layout / state / numbered / variant classes. Only used by the last-resort fallback
+ *  "hash"   - machine-generated. Never used verbatim; only their stable prefix is used (partial-class variants)
+ */
+function classifyClass(cls) {
+  if (!cls || cls.length < 2) return "weak";
+  if (looksHashedClass(cls)) return "hash";
+  if (isStateClass(cls)) return "weak";
+  if (CLASS_BLOCKLIST_PATTERNS.some((p) => p.test(cls))) return "weak";
+  return "stable";
+}
+
 function isGenericClass(cls) {
-  if (!cls || cls.length < 2) return true;
-  return CLASS_BLOCKLIST_PATTERNS.some((p) => p.test(cls));
+  return classifyClass(cls) !== "stable";
 }
 
 function filterNonGenericClasses(classes) {
-  return Array.from(classes || []).filter((cls) => !isGenericClass(cls));
+  return Array.from(classes || []).filter((cls) => classifyClass(cls) === "stable");
+}
+
+function filterWeakClasses(classes) {
+  return Array.from(classes || []).filter((cls) => classifyClass(cls) === "weak");
+}
+
+// Source classes for prefix extraction: stable + hash (weak classes have no meaningful prefix)
+function filterPartialSourceClasses(classes) {
+  return Array.from(classes || []).filter((cls) => classifyClass(cls) !== "weak");
+}
+
+/* ───────────────────────────── */
+/*      Attribute name checks    */
+/* ───────────────────────────── */
+function isStableAttrName(name) {
+  return STABLE_DATA_ATTRS.some((p) => p.test(`[${name}]`));
+}
+
+// ATTR_BLOCKLIST_PATTERNS mixes raw-name patterns and "[attr]"-form patterns; test both forms.
+function isBlockedAttrName(name) {
+  if (!name) return true;
+  if (isStableAttrName(name)) return false;
+  const bracketed = `[${name}]`;
+  return ATTR_BLOCKLIST_PATTERNS.some((p) => p.test(name) || p.test(bracketed));
 }
 /* ─────────────────────────────────────── */
 /*      Partial-Class Query Utilities      */
@@ -352,6 +493,25 @@ function queryWithPartialClass(selector, root = document) {
 
     // Must contain at least tag or class
     if (!tag && classTokens.length === 0) return false;
+
+    // Check pseudo-classes (nth-child, nth-of-type)
+    const nthChildMatch = segment.match(/:nth-child\((\d+)\)/);
+    if (nthChildMatch) {
+      const index = parseInt(nthChildMatch[1], 10);
+      const parent = el.parentElement;
+      if (!parent) return false;
+      const siblings = Array.from(parent.children);
+      if (siblings.indexOf(el) + 1 !== index) return false;
+    }
+
+    const nthOfTypeMatch = segment.match(/:nth-of-type\((\d+)\)/);
+    if (nthOfTypeMatch) {
+      const index = parseInt(nthOfTypeMatch[1], 10);
+      const parent = el.parentElement;
+      if (!parent) return false;
+      const siblings = Array.from(parent.children).filter((s) => s.tagName === el.tagName);
+      if (siblings.indexOf(el) + 1 !== index) return false;
+    }
 
     if (classTokens.length === 0) return true;
 
@@ -412,24 +572,78 @@ function queryWithPartialClass(selector, root = document) {
 function safeQueryPartial(selector) {
   if (typeof selector !== "string") return [];
   try {
-    return queryWithPartialClass(selector, document);
+    return getQueryRoots().flatMap((root) => queryWithPartialClass(selector, root));
   } catch {
     return [];
   }
 }
 
 function getPartialClassPrefix(cls) {
-  const cssModulesRe = /^(.*?[_-])([a-zA-Z0-9]{4,16})(?:_\d+)?$/;
-  const m = cls.match(cssModulesRe);
-  if (!m) return null;
+  if (!cls || typeof cls !== "string") return null;
 
-  const prefix = m[1];
-  const hashSeg = m[2];
+  // Multiple patterns for different CSS-in-JS libraries
+  const patterns = [
+    // CSS Modules: Component_button__a1b2c3, component_button_a1b2c3, Component_button_a1b2c3_1
+    /^(.*?[_-])([a-zA-Z0-9]{4,16})(?:_\d+)?$/,
+    // emotion: emotion-abc123def, emotion-abc123
+    /^([a-z]+)-([a-z0-9]{6,})$/i,
+    // styled-components: sc-abc123def, sc-abc123
+    /^([a-z]{2,})-([a-z0-9]{6,})$/i,
+    // styled: styled.abc123def
+    /^([a-z]+)\.([a-z0-9]{6,})$/i,
+  ];
 
-  const isMixed = /[a-zA-Z]/.test(hashSeg) && /\d/.test(hashSeg);
-  if (!isMixed) return null;
+  for (const pattern of patterns) {
+    const m = cls.match(pattern);
+    if (!m) continue;
 
-  if (prefix.replace(/[_-]/g, "").length < 2) return null;
+    const prefix = m[1];
+    const hashSeg = m[2];
 
-  return prefix;
+    // Validate hash segment: must be mixed alphanumeric (indicates generated hash)
+    const isMixed = /[a-zA-Z]/.test(hashSeg) && /\d/.test(hashSeg);
+    if (!isMixed) continue;
+
+    // Validate prefix stability: not too short, not generic
+    if (!isStablePrefix(prefix)) continue;
+
+    return prefix;
+  }
+
+  return null;
+}
+
+function isStablePrefix(prefix) {
+  if (!prefix) return false;
+  const clean = prefix.replace(/[_-]+$/, "");
+  // Must be at least 3 chars after removing trailing separators
+  if (clean.length < 3) return false;
+  // Reject known generic prefixes
+  if (/^(c|x|z|css|styles?|class|module|comp|ui|app|style|sheet)$/i.test(clean)) return false;
+  // Reject prefixes that are just numbers or single letters
+  if (/^[a-z0-9]{1,2}$/i.test(clean)) return false;
+  return true;
+}
+
+// Memoized partial query to avoid repeated DOM traversal
+const partialQueryCache = new Map();
+const MAX_PARTIAL_CACHE = 200;
+
+function safeQueryPartialMemo(selector) {
+  if (partialQueryCache.has(selector)) {
+    return partialQueryCache.get(selector);
+  }
+  const result = safeQueryPartial(selector);
+  // LRU-style eviction
+  if (partialQueryCache.size >= MAX_PARTIAL_CACHE) {
+    const firstKey = partialQueryCache.keys().next().value;
+    partialQueryCache.delete(firstKey);
+  }
+  partialQueryCache.set(selector, result);
+  return result;
+}
+
+function isStateClass(cls) {
+  if (!cls || typeof cls !== "string") return false;
+  return STATE_CLASS_PATTERNS.some((p) => p.test(cls));
 }

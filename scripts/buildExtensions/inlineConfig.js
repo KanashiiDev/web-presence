@@ -86,15 +86,19 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "formatTime",
     "getTimestamps",
     "processPlaybackInfo",
+    "extractText",
     "getText",
     "getTextAll",
     "isValidSelectorUrl",
     "getImage",
     "getImageAll",
+    "isPartialClassSelector",
     "querySelectorDeep",
     "applyStrip",
     "parseIgnoreSelector",
     "cloneWithoutIgnored",
+    "resolveTarget",
+    "imageFromElement",
     "generateParserKey",
     "getPlainText",
     "isValidUrl",
@@ -122,7 +126,6 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "throttle",
     "normalizeTitleAndArtist",
     "formatLabel",
-    "querySelectorDeep",
     "queryWithPartialClass",
     "getPlainText",
     "getIconAsDataUrl",
@@ -157,20 +160,24 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
       "getText",
       "getTextAll",
       "isValidSelectorUrl",
+      "extractText",
       "getImage",
       "getImageAll",
       "queryWithPartialClass",
+      "isPartialClassSelector",
       "querySelectorDeep",
       "applyStrip",
       "parseIgnoreSelector",
       "cloneWithoutIgnored",
+      "resolveTarget",
+      "imageFromElement",
       "generateParserKey",
       "regexFromString",
     ],
     "_INLINE_UTILS",
   );
   inlineUtilsFunctions("background.js", ["manager/userScriptWorker.js"], []);
-  inlineUtilsFunctions("iframeParser.js", ["common/utils.js"], ["querySelectorDeep", "queryWithPartialClass"], "start");
+  inlineUtilsFunctions("iframeParser.js", ["common/utils.js"], ["isPartialClassSelector", "querySelectorDeep", "queryWithPartialClass"], "start");
 
   // Background Listeners
   inlineUtilsFunctions("background.js", [], [], "start", true, { dir: "background" });

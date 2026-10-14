@@ -490,6 +490,7 @@
   "selector.editor.warn.invalidFields": "Sélecteur(s) non valide ou introuvable:",
   "selector.editor.saved": "Enregistré ! Veuillez actualiser la page.",
   "selector.warn.forbiddenArea": "Cette zone ne peut pas être sélectionnée. Veuillez cliquer sur un élément valide.",
+  "selector.warn.flutter": "Page Flutter non prise en charge. Flutter rend sur canvas, pas d'éléments DOM.",
   "selector.warn.notValid": "L’élément sélectionné n’est pas valide ou visible.\nVeuillez choisir un autre élément.",
   "selector.warn.noImage": "Aucun élément image trouvé. Veuillez cliquer sur une image.",
   "selector.warn.noLink": "Aucun élément de lien trouvé. Veuillez cliquer sur un lien.",

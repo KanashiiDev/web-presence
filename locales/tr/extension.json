@@ -490,6 +490,7 @@
   "selector.editor.warn.invalidFields": "Geçersiz veya bulunamayan seçici(ler):",
   "selector.editor.saved": "Kaydedildi! Lütfen sayfayı yenileyin.",
   "selector.warn.forbiddenArea": "Bu alan seçilemez. Lütfen geçerli bir öğeye tıklayın.",
+  "selector.warn.flutter": "Flutter sayfası desteklenmiyor. Flutter canvas'e render eder, DOM öğeleri yok.",
   "selector.warn.notValid": "Seçilen öğe geçerli veya görünür değil.\nLütfen başka bir öğe seçin.",
   "selector.warn.noImage": "Görsel öğesi bulunamadı. Lütfen bir görsele tıklayın.",
   "selector.warn.noLink": "Bağlantı öğesi bulunamadı. Lütfen bir bağlantıya tıklayın.",

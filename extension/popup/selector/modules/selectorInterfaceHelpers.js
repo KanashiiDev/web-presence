@@ -732,13 +732,13 @@ function createOverlay(id) {
       background: "rgba(0, 0, 0, 0.1)",
       cursor: "crosshair",
       zIndex: "2147483646",
-      pointerEvents: "auto",
+      pointerEvents: "none",
     });
   } else if (id === "userRpc-selectorHighlight") {
     Object.assign(el.style, {
       position: "absolute",
       zIndex: "2147483647",
-      pointerEvents: "auto",
+      pointerEvents: "none",
     });
   }
 
@@ -749,7 +749,7 @@ let lastHighlightedElement = null;
 // Selector Element Highlight Box
 function updateHighlight(e, overlay, highlight, shadowDoc) {
   const el = deepElementFromPoint(e.clientX, e.clientY);
-  const isBlocked = isPointOnBlockedElement(e.clientX, e.clientY, shadowDoc);
+  const isBlocked = isPointOnBlockedElementFromEl(el);
 
   // Check the overlay and highlight
   if (!el || el === overlay || el === highlight || el === document.body || el === document.documentElement) {
@@ -791,8 +791,14 @@ function handleElementClick(e, field, shadowDoc, cleanup) {
   e.stopPropagation();
   e.stopImmediatePropagation();
 
+  // Check if page is a Flutter app (renders to canvas)
+  if (isFlutterPage()) {
+    showStatusMsg(t("selector.warn.flutter"), 1, 1, shadowDoc);
+    return;
+  }
+
   const el = deepElementFromPoint(e.clientX, e.clientY);
-  const isBlocked = isPointOnBlockedElement(e.clientX, e.clientY, shadowDoc);
+  const isBlocked = isPointOnBlockedElementFromEl(el);
 
   if (isBlocked || !el) {
     showStatusMsg(t("selector.warn.forbiddenArea"), 1, 1, shadowDoc);

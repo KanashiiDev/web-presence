@@ -27,51 +27,31 @@ function cloneWithoutIgnored(elem, ignoreSelector) {
   return clone;
 }
 
-/**
- *Selects the element, takes the desired Attribute (or TextContent), then applies optional operations.
- * @param {string} selector - CSS selector
- * @param {object} options - Optional Parameters
- *    - attr: String, Element Attribute Name (eg "href", "title", "src")
- *    - transform: Function, function that will be processed on the string received
- *    - root: Element or Document, Search Root (default: document)
- * @returns {string} - processed string or empty string
- */
-function getText(selector, options = {}) {
-  if (!selector) return "";
-  const { attr = null, transform = null, root = document } = options;
-  const { cleanSelector, ignoreSelector, onlySelector, stripPattern, parentLevel } = parseIgnoreSelector(selector);
-
-  let elem = null;
-  try {
-    elem = querySelectorDeep(cleanSelector, root);
-  } catch (_) {}
-  if (!elem) elem = queryWithPartialClass(cleanSelector, root)[0] ?? null;
-  if (!elem) return "";
-
-  // Parent selector
+// Climbs [parent] levels, then narrows with [only]. Returns null when the parent chain runs out.
+function resolveTarget(elem, { onlySelector, parentLevel }) {
+  let el = elem;
   if (parentLevel) {
-    let p = elem;
-    for (let i = 0; i < parentLevel; i++) p = p?.parentElement;
-    if (!p) return "";
-    elem = p;
+    for (let i = 0; i < parentLevel; i++) el = el?.parentElement;
+    if (!el) return null;
   }
-
-  // Only selector
   if (onlySelector) {
-    const onlyEl = elem.querySelector(onlySelector);
-    if (onlyEl) elem = onlyEl;
+    const onlyEl = el.querySelector(onlySelector);
+    if (onlyEl) el = onlyEl;
   }
+  return el;
+}
 
-  // Ignore selector
-  let target = elem;
-  if (ignoreSelector && !attr) {
-    target = cloneWithoutIgnored(elem, ignoreSelector);
-  }
+// Reads text / attribute from one element and applies [ignore], [strip] and transform.
+function extractText(elem, parsed, { attr = null, transform = null } = {}) {
+  const el = resolveTarget(elem, parsed);
+  if (!el) return "";
 
-  let val = attr ? elem.getAttribute(attr) : target.textContent;
+  const target = parsed.ignoreSelector && !attr ? cloneWithoutIgnored(el, parsed.ignoreSelector) : el;
+
+  let val = attr ? el.getAttribute(attr) : target.textContent;
   if (!val) return "";
 
-  val = applyStrip(val.trim(), stripPattern);
+  val = applyStrip(val.trim(), parsed.stripPattern);
   if (!val) return "";
 
   if (transform) {
@@ -87,24 +67,59 @@ function getText(selector, options = {}) {
 }
 
 /**
- * Gets text/attributes from ALL matching elements
+ * Selects the element, takes the desired Attribute (or TextContent), then applies optional operations.
+ * @param {string} selector - CSS selector (supports [ignore], [only], [strip], [parent] extensions)
+ * @param {object} options - Optional Parameters
+ *    - attr: String, Element Attribute Name (eg "href", "title", "src")
+ *    - transform: Function, function that will be processed on the string received
+ *    - root: Element or Document, Search Root (default: document)
+ * @returns {string} - processed string or empty string
+ */
+function getText(selector, options = {}) {
+  if (!selector) return "";
+  const { attr = null, transform = null, root = document } = options;
+  const parsed = parseIgnoreSelector(selector);
+
+  let elem = null;
+  try {
+    elem = querySelectorDeep(parsed.cleanSelector, root);
+  } catch (_) {}
+  if (!elem) return "";
+
+  return extractText(elem, parsed, { attr, transform });
+}
+
+/**
+ * Gets text/attributes from ALL matching elements (same selector syntax and options as getText)
  * @param {string} selector - CSS selector
  * @param {object} options - Same as getText options
  * @returns {string[]} - Array of processed strings
  */
 function getTextAll(selector, options = {}) {
-  const { root = document, ...rest } = options;
-  const elements = root.querySelectorAll(selector);
+  if (!selector) return [];
+  const { attr = null, transform = null, root = document } = options;
+  const parsed = parseIgnoreSelector(selector);
 
-  return Array.from(elements)
-    .map((el) => extractValue(el, rest))
-    .filter((val) => val !== "");
+  let elems = [];
+  try {
+    elems = querySelectorDeep(parsed.cleanSelector, root, true);
+  } catch (_) {}
+
+  return elems.map((el) => extractText(el, parsed, { attr, transform })).filter((val) => val !== "");
 }
 
 function isValidSelectorUrl(input) {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
+
+  // Reject strings that are valid CSS selectors.
+  // CSS selectors like "img.song-image" or "div.song .lazyloaded"
+  // can be misparsed as URLs (e.g. https://img.song-image/).
+  try {
+    document.querySelector(trimmed);
+    return null;
+  } catch (_) {}
 
   const hasProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://");
   const candidate = hasProtocol ? trimmed : "https://" + trimmed;
@@ -127,42 +142,8 @@ function isValidSelectorUrl(input) {
   }
 }
 
-/**
- * Retrieves image URL from element matching selector.
- *
- * @param {string} selector - CSS selector to find the image element.
- * @param {Document|Element} [root=document] - Root element for querySelector.
- * @returns {string|null} Image URL or null if not found.
- */
-function getImage(selector, root = document) {
-  if (!selector) return null;
-
-  // If a plain URL is entered, return it directly
-  const directUrl = isValidSelectorUrl(selector);
-  if (directUrl) return directUrl;
-
-  const { cleanSelector, ignoreSelector, onlySelector, parentLevel } = parseIgnoreSelector(selector);
-
-  let elem = null;
-  try {
-    elem = querySelectorDeep(cleanSelector, root);
-  } catch (_) {}
-  if (!elem) return null;
-
-  // Parent selector
-  if (parentLevel) {
-    let p = elem;
-    for (let i = 0; i < parentLevel; i++) p = p?.parentElement;
-    if (!p) return null;
-    elem = p;
-  }
-
-  // Only selector
-  if (onlySelector) {
-    const onlyEl = elem.querySelector(onlySelector);
-    if (onlyEl) elem = onlyEl;
-  }
-
+// Finds the image URL of one element: <img> itself, then background-image, then the first child <img>.
+function imageFromElement(elem, ignoreSelector = null) {
   // Priority: element directly <img>
   if (elem.tagName.toLowerCase() === "img" && elem.src) return elem.src;
 
@@ -180,48 +161,91 @@ function getImage(selector, root = document) {
 }
 
 /**
+ * Retrieves image URL from element matching selector.
+ *
+ * @param {string} selector - CSS selector to find the image element.
+ * @param {Document|Element} [root=document] - Root element for querySelector.
+ * @returns {string|null} Image URL or null if not found.
+ */
+function getImage(selector, root = document) {
+  if (!selector) return null;
+
+  // If a plain URL is entered, return it directly
+  const directUrl = isValidSelectorUrl(selector);
+  if (directUrl) return directUrl;
+
+  const parsed = parseIgnoreSelector(selector);
+
+  let elem = null;
+  try {
+    elem = querySelectorDeep(parsed.cleanSelector, root);
+  } catch (_) {}
+  if (!elem) return null;
+
+  const target = resolveTarget(elem, parsed);
+  if (!target) return null;
+
+  return imageFromElement(target, parsed.ignoreSelector);
+}
+
+/**
  * Gets image URLs from ALL matching elements
  * @param {string} selector - CSS selector
  * @param {Document|Element} root - Search root
  * @returns {string[]} - Array of image URLs
  */
 function getImageAll(selector, root = document) {
-  const elements = root.querySelectorAll(selector);
+  if (!selector) return [];
 
-  return Array.from(elements)
-    .map((el) => getImage(el.tagName === "IMG" ? el : selector, el.parentElement))
-    .filter((url) => url !== null);
+  const directUrl = isValidSelectorUrl(selector);
+  if (directUrl) return [directUrl];
+
+  const parsed = parseIgnoreSelector(selector);
+
+  let elems = [];
+  try {
+    elems = querySelectorDeep(parsed.cleanSelector, root, true);
+  } catch (_) {}
+
+  return elems
+    .map((el) => resolveTarget(el, parsed))
+    .filter(Boolean)
+    .map((el) => imageFromElement(el, parsed.ignoreSelector))
+    .filter(Boolean);
+}
+
+/**
+ * Returns true if selector contains a class token that ends with "_" or "-".
+ * Indicates a CSS Modules–style prefix class.
+ */
+function isPartialClassSelector(selector) {
+  // Match ".class_" or ".class-" followed by a selector boundary or end
+  return /\.([^\s.#\[>~+:]+[_-])(?=[\s>~+\[:#.)]|$)/.test(selector);
 }
 
 // Deep query selector that traverses shadow DOMs
 function querySelectorDeep(selector, root = document, all = false) {
-  const results = [];
-
-  try {
-    if (all) {
-      results.push(...root.querySelectorAll(selector));
-    } else {
-      let el = root.querySelector(selector);
-
-      if (!el) {
-        el = queryWithPartialClass(selector, root)[0] ?? null;
-      }
-
-      if (el) return el;
+  const walk = (r, matcher) => {
+    const acc = [];
+    let hit = [];
+    try {
+      hit = matcher(r);
+    } catch (_) {}
+    if (hit.length) {
+      if (!all) return [hit[0]];
+      acc.push(...hit);
     }
-  } catch (_) {}
-
-  const elemsWithShadow = root.querySelectorAll("*");
-  for (const elem of elemsWithShadow) {
-    if (elem.shadowRoot) {
-      const found = querySelectorDeep(selector, elem.shadowRoot, all);
-      if (all) {
-        results.push(...found);
-      } else if (found) {
-        return found;
+    for (const el of r.querySelectorAll("*")) {
+      if (!el.shadowRoot) continue;
+      const sub = walk(el.shadowRoot, matcher);
+      if (sub.length) {
+        if (!all) return [sub[0]];
+        acc.push(...sub);
       }
     }
-  }
-
-  return all ? results : null;
+    return acc;
+  };
+  let found = walk(root, (r) => Array.from(r.querySelectorAll(selector)));
+  if (!found.length && isPartialClassSelector(selector)) found = walk(root, (r) => queryWithPartialClass(selector, r));
+  return all ? found : (found[0] ?? null);
 }
