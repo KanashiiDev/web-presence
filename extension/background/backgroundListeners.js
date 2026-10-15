@@ -1,3 +1,99 @@
+// UserScript Memo Store (setMemo / getMemo): tab-scoped, memory-only
+const MEMO_LIMITS = { scripts: 20, scopes: 10, keys: 50, valueLength: 8192 };
+const MEMO_FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
+const memoStore = new Map(); // tabId -> { host, scripts: Map<scriptId, Map<scope, bucket>> }
+
+const memoHostOf = (url) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+const memoScopeOf = (scope) => {
+  let s = null;
+  if (typeof scope === "number") s = Number.isFinite(scope) ? String(scope) : null;
+  else if (typeof scope === "string") s = scope.trim() || null;
+  if (!s || s.length > 128 || MEMO_FORBIDDEN.has(s)) return null;
+  return s;
+};
+
+const memoIdOf = (id) => (typeof id === "string" && id.length > 0 && id.length <= 128 && !MEMO_FORBIDDEN.has(id) ? id : null);
+
+// Returns the tab's memo entry. A host change drops the old entry. Only the top frame may use memo.
+const memoEntryFor = (sender, create) => {
+  const tabId = sender?.tab?.id;
+  const host = memoHostOf(sender?.tab?.url || sender?.url);
+  if (sender?.frameId !== 0 || typeof tabId !== "number" || tabId < 0 || !host) return null;
+
+  let entry = memoStore.get(tabId);
+  if (entry && entry.host !== host) {
+    memoStore.delete(tabId);
+    entry = undefined;
+  }
+  if (!entry && create) {
+    entry = { host, scripts: new Map() };
+    memoStore.set(tabId, entry);
+  }
+  return entry || null;
+};
+
+const memoSet = (sender, req) => {
+  const scriptId = memoIdOf(req.scriptId);
+  const scope = memoScopeOf(req.scope);
+  const data = req.data;
+  if (!scriptId || !scope || !data || typeof data !== "object" || Array.isArray(data)) return { ok: false };
+
+  const entry = memoEntryFor(sender, true);
+  if (!entry) return { ok: false };
+
+  let scopes = entry.scripts.get(scriptId);
+  if (!scopes) {
+    if (entry.scripts.size >= MEMO_LIMITS.scripts) entry.scripts.delete(entry.scripts.keys().next().value);
+    scopes = new Map();
+    entry.scripts.set(scriptId, scopes);
+  }
+
+  // LRU: the scope used last moves to the end
+  let bucket = scopes.get(scope);
+  if (bucket) {
+    scopes.delete(scope);
+  } else {
+    if (scopes.size >= MEMO_LIMITS.scopes) scopes.delete(scopes.keys().next().value);
+    bucket = Object.create(null);
+  }
+  scopes.set(scope, bucket);
+
+  for (const [key, value] of Object.entries(data)) {
+    if (!key || key.length > 128 || MEMO_FORBIDDEN.has(key)) continue;
+    if (value === null || value === undefined) {
+      delete bucket[key];
+      continue;
+    }
+    let length;
+    try {
+      length = JSON.stringify(value).length;
+    } catch {
+      continue;
+    }
+    if (length > MEMO_LIMITS.valueLength) continue;
+    if (!(key in bucket) && Object.keys(bucket).length >= MEMO_LIMITS.keys) continue;
+    bucket[key] = value;
+  }
+  return { ok: true };
+};
+
+const memoGet = (sender, req) => {
+  const out = {};
+  const scriptId = memoIdOf(req.scriptId);
+  const scopes = scriptId ? memoEntryFor(sender, false)?.scripts.get(scriptId) : null;
+  if (scopes) {
+    for (const [scope, bucket] of scopes) out[scope] = { ...bucket };
+  }
+  return { ok: true, data: out };
+};
+
 // UserScript Actions
 const handleListUserScripts = async (req) => {
   const { showStoreParsers, showOnlyStore } = req;
@@ -1084,6 +1180,8 @@ const setupListeners = () => {
 
   browser.runtime.onMessage.addListener(async (req, sender) => {
     try {
+      if (req.type === "MEMO_SET") return memoSet(sender, req);
+      if (req.type === "MEMO_GET") return memoGet(sender, req);
       if (req.type === "REQUEST_FRESH_PARSER_LIST") {
         await loadParserListOnce(req.force);
         return { ok: true, data: state.parserList || [] };
@@ -1882,6 +1980,9 @@ const setupListeners = () => {
   browser.tabs.onRemoved.addListener(async (tabId) => {
     if (typeof tabId !== "number" || tabId <= 0) return;
 
+    // Clear memo
+    memoStore.delete(tabId);
+
     // Cancel pending network operations
     const controller = state.pendingFetches.get(tabId);
     if (controller) controller.abort();
@@ -1903,6 +2004,12 @@ const setupListeners = () => {
 
   // onUpdated
   browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    // Clear memo when the tab navigates to another host
+    if (changeInfo.url) {
+      const memoEntry = memoStore.get(tabId);
+      if (memoEntry && memoEntry.host !== memoHostOf(changeInfo.url)) memoStore.delete(tabId);
+    }
+
     // Clear iframe registry
     if (changeInfo.status === "loading" && changeInfo.url) {
       tabFrames.delete(tabId);

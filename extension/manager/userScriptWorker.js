@@ -99,6 +99,8 @@ class UserScriptManager {
 
   buildTrackDataScript(script) {
     const { normalizedList } = PatternValidator.processPatterns(script.urlPatterns);
+    // setMemo is used by this script -> run a silent first pass right away (see startScriptExecution)
+    const usesSetMemo = /\bsetMemo\s*\(/.test(script.code || "");
 
     return `
     // AUTO-GENERATED-UTILS
@@ -237,6 +239,104 @@ class UserScriptManager {
         }
         function __ClearSignal() {}
         __ClearSignal.prototype = Object.create(Error.prototype);
+        // MEMO (setMemo / getMemo): tab-scoped, memory-only data shared between pages of the same host
+        const __memoCache = Object.create(null);
+        let __dryRun = false;
+        let __memoLoaded = false;
+        function __memoWarn(msg) {
+          if (${script.debug}) console.warn("[Web Presence - Memo] " + msg);
+        }
+        function __memoScope(scope) {
+          let s = null;
+          if (typeof scope === "number") s = Number.isFinite(scope) ? String(scope) : null;
+          else if (typeof scope === "string") s = scope.trim() || null;
+          if (s === "__proto__" || s === "constructor" || s === "prototype") return null;
+          return s;
+        }
+        function __memoRequest(type) {
+          return new Promise((resolve) => {
+            const requestId = "memo_" + Date.now() + "_" + Math.random();
+
+            const cleanup = () => {
+              clearTimeout(timeoutId);
+              window.removeEventListener("message", handleResponse);
+            };
+
+            const timeoutId = setTimeout(() => {
+              cleanup();
+              resolve(null);
+            }, 3000);
+
+            function handleResponse(event) {
+              if (event.source !== window) return;
+              const msg = event.data;
+              if (!msg || msg.type !== "USER_SCRIPT_MEMO_RESPONSE" || msg.requestId !== requestId) return;
+
+              cleanup();
+              resolve(msg.data || null);
+            }
+
+            window.addEventListener("message", handleResponse);
+            window.postMessage({ type, requestId, id: "${script.id}" }, "*");
+          });
+        }
+        // Loads the tab's memo from the background once; retried until it succeeds
+        async function __refreshMemo() {
+          if (__memoLoaded) return;
+          const data = await __memoRequest("USER_SCRIPT_MEMO_GET");
+          if (!data || typeof data !== "object") return; // no answer, try again next iteration
+          for (const scope of Object.keys(data)) {
+            if (!__memoScope(scope) || !data[scope] || typeof data[scope] !== "object") continue;
+            const bucket = __memoCache[scope] || (__memoCache[scope] = Object.create(null));
+            for (const key of Object.keys(data[scope])) {
+              if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+              if (!(key in bucket)) bucket[key] = data[scope][key]; // local setMemo writes win
+            }
+          }
+          __memoLoaded = true;
+        }
+        function setMemo(obj, scope) {
+          const s = __memoScope(scope);
+          if (s === null) {
+            __memoWarn("setMemo: scope is empty or invalid, memo was not saved.");
+            return;
+          }
+          if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+            __memoWarn("setMemo: first argument must be a plain object.");
+            return;
+          }
+          const data = normalizeTrackData(obj);
+          if (!data || typeof data !== "object") return;
+
+          const bucket = __memoCache[s] || (__memoCache[s] = Object.create(null));
+          const changed = {};
+          let hasChange = false;
+          for (const key of Object.keys(data)) {
+            if (!key || key === "__proto__" || key === "constructor" || key === "prototype") continue;
+            const value = data[key];
+            if (JSON.stringify(bucket[key] ?? null) === JSON.stringify(value)) continue;
+            if (value === null) delete bucket[key];
+            else bucket[key] = value;
+            changed[key] = value;
+            hasChange = true;
+          }
+          if (!hasChange) return;
+          window.postMessage({ type: "USER_SCRIPT_MEMO_SET", id: "${script.id}", scope: s, data: changed }, "*");
+        }
+        function getMemo(key, scope) {
+          if (typeof key !== "string" || !key) {
+            __memoWarn("getMemo: key must be a non-empty string.");
+            return null;
+          }
+          const s = __memoScope(scope);
+          if (s === null) {
+            __memoWarn("getMemo: scope is empty or invalid.");
+            return null;
+          }
+          const bucket = __memoCache[s];
+          const value = bucket ? bucket[key] : undefined;
+          return value === undefined ? null : value;
+        }
         function getIframeData() {
           return new Promise((resolve) => {
             const requestId = \`iframeData_\${Date.now()}_\${Math.random()}\`;
@@ -274,9 +374,11 @@ class UserScriptManager {
         async function updateTrackData() {
           try {
             __clearCalled = false;
+            await __refreshMemo();
             // UserScript
             ${script.code || ""}
 
+            if (__dryRun) return;
             if (__clearCalled) {
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
@@ -339,7 +441,7 @@ class UserScriptManager {
               console.log("%cSong Information:", "color: #8be9fd; font-weight: bold; font-size: 13px;");
               console.log("  • Title:      ", song.title || "Unknown");
               console.log("  • Artist:     ", song.artist || "Unknown");
-              console.log("  • Source:     ", song.source || "Unknown");
+              console.log("  • Source:     ", song.source || trackData.title || "Unknown");
               console.log("  • Song URL:   ", song.link || "N/A");
               console.log("  • Image:      ", song.image || "Default Image");
               console.log("  • Duration:   ", "${script.watchAutoDetect}" === "enable" ? "Auto-Detect" : song.duration ?? "N/A");
@@ -351,6 +453,7 @@ class UserScriptManager {
 
             window.postMessage({ type: "USER_SCRIPT_TRACK_DATA", data: { ...trackData, iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},}}, "*");
           } catch (error) {
+            if (__dryRun) return;
             if (error instanceof __ClearSignal) {
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
@@ -374,6 +477,14 @@ class UserScriptManager {
           }
         }
       async function startScriptExecution() {
+        if (${usesSetMemo}) {
+          // silent first pass: only the setMemo side effects run, nothing is sent to the parser
+          __dryRun = true;
+          try {
+            await updateTrackData();
+          } catch {}
+          __dryRun = false;
+        }
         await waitForParserReady();
         const INTERVAL_DELAY = 4000;
         async function loop() {

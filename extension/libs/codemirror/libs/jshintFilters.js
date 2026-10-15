@@ -7,6 +7,8 @@ const lintOptions = {
   browser: true, // It recognizes global variables such as window/document.
   devel: true, // Allows console.log and alert
   predef: [
+    "setMemo",
+    "getMemo",
     "useSetting",
     "getText",
     "getTextAll",

@@ -382,6 +382,7 @@ window.registerParser = async function ({
     const existingUserScript = window.parsers[d]?.find((p) => p.id === id && p.userScript === userScript);
     if (existingUserScript) {
       existingUserScript.parse = fn;
+      if (title) existingUserScript.title = title;
       Object.assign(existingUserScript, rest);
       continue;
     }
@@ -391,6 +392,7 @@ window.registerParser = async function ({
 
     window.parsers[d].push({
       id,
+      title,
       patterns: patternRegexes,
       authors,
       authorsLinks,
@@ -483,7 +485,7 @@ window.registerParser = async function ({
             mode,
             title: cleanTitle,
             artist: cleanArtist,
-            source: rest.artist === rest.source ? cleanTitle : rest.source,
+            source: !rest.source ? title : rest.artist === rest.source ? cleanTitle : rest.source,
             timePassed: pos,
             position: pos,
             duration: rawDuration,
@@ -557,7 +559,7 @@ window.registerParser = async function ({
           mode,
           title: cleanTitle,
           artist: cleanArtist,
-          source: rest.artist === rest.source ? cleanTitle : rest.source,
+          source: !rest.source ? title : rest.artist === rest.source ? cleanTitle : rest.source,
           timePassed: finalPos ?? 0,
           position: finalPos ?? 0,
           duration: finalDur ?? 0,
@@ -694,7 +696,7 @@ window.getSongInfo = async function () {
 
               dataTitle = truncate(dataTitle, 128, { fallback: "_Unknown Title_" });
               dataArtist = truncate(dataArtist, 128, { fallback: "-1" });
-              dataSource = truncate(dataSource, 32, { fallback: "_Unknown Source_" });
+              dataSource = truncate(dataSource || parser.title || "", 32, { fallback: "_Unknown Source_" });
 
               if (dataTitle === "_Unknown Title_") return null;
 
@@ -971,6 +973,21 @@ window.addEventListener("message", async (event) => {
       );
     }
   }
+  if (msg?.type === "USER_SCRIPT_MEMO_SET") {
+    const { id, scope, data } = msg;
+    browser.runtime.sendMessage({ type: "MEMO_SET", scriptId: id, scope, data }).catch(() => {});
+  }
+
+  if (msg?.type === "USER_SCRIPT_MEMO_GET") {
+    const { id, requestId } = msg;
+    let data = null;
+    try {
+      const res = await browser.runtime.sendMessage({ type: "MEMO_GET", scriptId: id });
+      data = res?.ok ? res.data : null;
+    } catch {}
+    window.postMessage({ type: "USER_SCRIPT_MEMO_RESPONSE", requestId, data }, "*");
+  }
+
   if (msg?.type === "USER_SCRIPT_CLEAR_ACTIVITY") {
     const domain = msg.domain || location.host;
     const hadData = window.latestUserScriptData[domain] && !window.latestUserScriptData[domain].__clear;
@@ -1114,7 +1131,7 @@ async function loadAllSavedUserParsers() {
             title,
             artist,
             image,
-            source: artist === source ? data.title : source || location.hostname.replace(/^www\./i, ""),
+            source: !source || artist === source ? data.title || hostname : source,
             link,
             timePassed: currentTime || getText(data.selectors["timePassed"]) || "",
             duration: duration || getText(data.selectors["duration"]) || "",
