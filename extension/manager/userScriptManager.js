@@ -940,6 +940,17 @@ class UserScriptUI {
     }
   }
 
+  /**
+   * Serializes a value into a safe JavaScript double-quoted string literal.
+   * JSON.stringify output is valid JS double-quoted string syntax for the
+   * characters that matter here (quotes, backslashes, control chars, line
+   * terminators). Backticks and ${} are harmless inside double quotes and
+   * need no escaping.
+   */
+  _jsString(value) {
+    return JSON.stringify(String(value ?? ""));
+  }
+
   exportToRegisterParser(scripts) {
     return scripts
       .map((script) => {
@@ -949,26 +960,27 @@ class UserScriptUI {
           .map((line) => (line ? "    " + line : ""))
           .join("\n");
         const domains = [script.domain].flat().filter(Boolean);
-        const domainStr = domains.length === 1 ? `"${domains[0]}"` : `["${domains.join('", "')}"]`;
+        const domainStr = domains.length === 1 ? this._jsString(domains[0]) : `[${domains.map((d) => this._jsString(d)).join(", ")}]`;
         const urlPatterns = (script.urlPatterns || []).map((p) => (p.startsWith("/") ? p : `/${p}/`)).join(", ");
         const authorsStr = [script.authors].flat().filter(Boolean).join(",");
         const authorsLinksStr = [script.authorsLinks].flat().filter(Boolean).join(",");
         const iframeSelectorsStr = script.iframeSelectors ? `\n  iframeSelectors: ${JSON.stringify(script.iframeSelectors, null, 2).split("\n").join("\n  ")},` : "";
-        const tagsStr = Array.isArray(script.tags) && script.tags.length ? `\n  tags: ["${script.tags.join('", "')}"],` : "";
-        const categoryStr = script.category ? `\n  category: "${script.category}",` : "";
-        const homepageStr = script.homepage ? `\n  homepage: "${script.homepage}",` : "";
+        const tags = Array.isArray(script.tags) && script.tags.length ? script.tags : [];
+        const tagsStr = tags.length ? `\n  tags: [${tags.map((t) => this._jsString(t)).join(", ")}],` : "";
+        const categoryStr = script.category ? `\n  category: ${this._jsString(script.category)},` : "";
+        const homepageStr = script.homepage ? `\n  homepage: ${this._jsString(script.homepage)},` : "";
 
         return `registerParser({
-  id: "${script.id}",
+  id: ${this._jsString(script.id)},
   domain: ${domainStr},
-  authors: "${authorsStr}",
-  authorsLinks: "${authorsLinksStr}",
-  title: "${script.title}",
-  version: "${script.version || "1.0.0"}",
-  description: "${script.description || ""}",
-  lastUpdated: "${script.lastUpdated || ""}",
-  mode: "${script.mode || "listen"}",
-  watchAutoDetect: "${script.watchAutoDetect || "disable"}",${homepageStr}${categoryStr}${tagsStr}
+  authors: ${this._jsString(authorsStr)},
+  authorsLinks: ${this._jsString(authorsLinksStr)},
+  title: ${this._jsString(script.title)},
+  version: ${this._jsString(script.version || "1.0.0")},
+  description: ${this._jsString(script.description || "")},
+  lastUpdated: ${this._jsString(script.lastUpdated || "")},
+  mode: ${this._jsString(script.mode || "listen")},
+  watchAutoDetect: ${this._jsString(script.watchAutoDetect || "disable")},${homepageStr}${categoryStr}${tagsStr}
   urlPatterns: [${urlPatterns}],${iframeSelectorsStr}
   fn: async function () {
 ${codeIndented}
