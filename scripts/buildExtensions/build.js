@@ -2,7 +2,7 @@
 const path = require("path");
 
 const { prefixCssFiles } = require("./steps/prefixCss");
-const { copyExtensionFiles, buildManifest, writeManifest, patchFirefoxBackground } = require("./steps/copyAndManifest");
+const { copyExtensionFiles, buildManifest, writeManifest } = require("./steps/copyAndManifest");
 const { bundleParsers } = require("./steps/bundleParsers");
 const { createInlineUtils } = require("./steps/inlineUtils");
 const { applyCssConfig } = require("./steps/applyCssConfig");
@@ -33,7 +33,6 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
 
   // 4. Build and write manifest
   const manifest = buildManifest(EXTENSION_DIR, TARGET, pkgVersion);
-  if (TARGET === "firefox") patchFirefoxBackground(DIST_DIR);
 
   // 5. Bundle all parsers into compiledParsers.js
   bundleParsers(EXTENSION_DIR, DIST_DIR);

@@ -5,7 +5,8 @@
   "homepage_url": "https://github.com/KanashiiDev/web-presence",
 
   "background": {
-    "scripts": ["libs/browser-polyfill.js", "libs/pako.js", "background.js"]
+    "scripts": ["background.js"],
+    "type": "module"
   },
 
   "permissions": ["tabs", "storage", "contextMenus", "scripting", "alarms"],

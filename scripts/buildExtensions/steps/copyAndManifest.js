@@ -78,14 +78,4 @@ function writeManifest(distDir, manifest) {
   fs.writeJsonSync(path.join(distDir, "manifest.json"), manifest, { spaces: 2 });
 }
 
-function patchFirefoxBackground(distDir) {
-  const backgroundPath = path.join(distDir, "background.js");
-  if (fs.existsSync(backgroundPath)) {
-    let content = fs.readFileSync(backgroundPath, "utf8");
-    content = content.replace(/import\s+["']\.\/libs\/browser-polyfill\.js["'];?\s*/g, "");
-    content = content.replace(/import\s+["']\.\/libs\/pako\.js["'];?\s*/g, "");
-    fs.writeFileSync(backgroundPath, content);
-  }
-}
-
-module.exports = { copyExtensionFiles, buildManifest, writeManifest, patchFirefoxBackground };
+module.exports = { copyExtensionFiles, buildManifest, writeManifest };
