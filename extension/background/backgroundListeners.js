@@ -2207,7 +2207,8 @@ const setupListeners = () => {
         return new Promise((resolve, reject) => {
           browser.contextMenus.create(options, () => {
             if (browser.runtime.lastError) {
-              if (browser.runtime.lastError.message?.includes("already exists")) {
+              const msg = browser.runtime.lastError.message || "";
+              if (msg.includes("already exists") || msg.includes("duplicate id")) {
                 resolve();
               } else {
                 reject(new Error(browser.runtime.lastError.message));
