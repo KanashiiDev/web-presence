@@ -50,7 +50,7 @@ function createInlineUtils(extensionDir, distDir) {
     fs.removeSync(dirPath);
   }
 
-  function extractFunctionsFromFile(sourceFilePath, namesToInclude) {
+  function extractFunctionsFromFile(sourceFilePath, namesToInclude, inlineTargets = "targets") {
     const code = fs.readFileSync(sourceFilePath, "utf8");
 
     const ast = acorn.parse(code, {
@@ -126,6 +126,23 @@ function createInlineUtils(extensionDir, distDir) {
           extracted.push(code.slice(node.start, node.end));
         }
         continue;
+      }
+    }
+
+    // Guard: top level statements that are not declarations/IIFE/commonjs-exports are
+    // silently dropped from every bundle this file is inlined into. That hid module
+    // initialization code before, so make it loud instead of silent.
+    for (const node of ast.body) {
+      if (node.type === "ExpressionStatement" && node.expression.type === "AssignmentExpression") continue; // commonjs exports
+      if (node.type === "ExpressionStatement" && node.expression.type === "CallExpression") {
+        const callee = node.expression.callee;
+        if (callee.type === "FunctionExpression") continue; // IIFE: kept
+        if (callee.type === "Identifier" && callee.name === "require") continue;
+        const statement = code.slice(node.start, node.end).replace(/\s+/g, " ").slice(0, 80);
+        console.warn(
+          `[build] inlineUtils: "${sourceFilePath.replace(/\\/g, "/")}" is inlined into ${inlineTargets}, ` +
+            `but its top level statement is not a declaration and will be DROPPED: ${statement}`,
+        );
       }
     }
 
@@ -226,7 +243,7 @@ function createInlineUtils(extensionDir, distDir) {
         // If there is a processed version in dist, use that; otherwise, read it from extensionDir
         const sourcePath = fs.existsSync(path.join(distDir, sourceFile)) ? path.join(distDir, sourceFile) : path.join(extensionDir, sourceFile);
 
-        const extractedFunctions = extractFunctionsFromFile(sourcePath, functionsToInclude);
+        const extractedFunctions = extractFunctionsFromFile(sourcePath, functionsToInclude, targetFile);
         let joinedFunctions = extractedFunctions.join("\n\n");
 
         // If the position is not 'start' or 'end', it is a special placeholder (e.g., _INLINE_UTILS).
