@@ -34,7 +34,6 @@ body {
 #listControls {
   display: flex;
   gap: 10px;
-
   flex-wrap: wrap;
 }
 
@@ -445,6 +444,16 @@ small > code {
   color: var(--text-color-btn);
 }
 
+.code-notes.useSettings,
+.code-notes.iframeSelectors,
+#editor-container > div.editor-right > div.container.code-notes {
+  border: 1px solid var(--border-color);
+}
+
+#editor-container > div.editor-right > div.container.code-notes input[type="text"] {
+  background: var(--foreground-color-400);
+}
+
 .modal-content-wrapper,
 #importResultList {
   max-height: 382px;
@@ -540,6 +549,52 @@ small > code {
   position: relative;
 }
 
+/* Search controls */
+#searchControls {
+  margin: 10px 40px 8px auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+  position: relative;
+}
+
+#scriptSearch {
+  width: 100%;
+  max-width: 320px;
+  min-width: 240px;
+  height: 30px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--foreground-color-300);
+  color: var(--text-color-primary);
+  font-size: var(--font-lg);
+  box-sizing: border-box;
+}
+
+#scriptSearchResetBtn {
+  display: none;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  padding: 4px;
+}
+
+#scriptSearchResetBtn.filter-active {
+  display: block;
+  color: var(--accent-color);
+}
+
+#scriptSearch:focus {
+  border-color: var(--accent-color-border);
+  outline: 0;
+  box-shadow: 0 0 3px var(--shadow-color);
+  background: var(--foreground-color-400);
+}
+
 /* Use Settings */
 .use-settings-builder[activemode] {
   padding: 6px;
@@ -613,6 +668,10 @@ small > code {
 .useSetting-item label {
   display: block;
   margin: 4px;
+}
+
+.use-settings-builder > .build-content input[type="text"] {
+  height: 35px;
 }
 
 .useSetting-item h4 {

@@ -443,6 +443,8 @@
   "userscript.tabs.repoScripts": "Установленные из репозитория",
   "userscript.list.empty.my": "Пользовательских скриптов пока нет. Создайте скрипт или импортируйте его из файла.",
   "userscript.list.empty.repo": "Скрипты из репозитория пока не установлены.",
+  "userscript.search.placeholder": "Поиск скриптов...",
+  "userscript.list.noResults": "Скрипты, соответствующие поиску, не найдены.",
   "selector.editor.addNew": "Добавить новый сайт",
   "selector.editor.domain.label": "Домен",
   "selector.editor.domain.desc": "Домен, на котором будет выполняться активность",

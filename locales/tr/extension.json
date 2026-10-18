@@ -443,6 +443,8 @@
   "userscript.tabs.repoScripts": "Depodan Yüklenenler",
   "userscript.list.empty.my": "Henüz özel betik yok. Bir tane oluşturun veya dosyadan içe aktarın.",
   "userscript.list.empty.repo": "Henüz depodan yüklenmiş betik yok.",
+  "userscript.search.placeholder": "Betiklerde ara...",
+  "userscript.list.noResults": "Aramanıza uygun betik bulunamadı.",
   "selector.editor.addNew": "Yeni Site Ekle",
   "selector.editor.domain.label": "Alan Adı",
   "selector.editor.domain.desc": "Aktivitenin çalışacağı alan adı",

@@ -443,6 +443,8 @@
   "userscript.tabs.repoScripts": "Installés depuis le dépôt",
   "userscript.list.empty.my": "Aucun script personnalisé pour le moment. Créez-en un ou importez-le depuis un fichier.",
   "userscript.list.empty.repo": "Aucun script installé depuis le dépôt pour le moment.",
+  "userscript.search.placeholder": "Rechercher des scripts...",
+  "userscript.list.noResults": "Aucun script ne correspond à votre recherche.",
   "selector.editor.addNew": "Ajouter un nouveau site",
   "selector.editor.domain.label": "Domaine",
   "selector.editor.domain.desc": "Le domaine sur lequel l'activité sera exécutée",

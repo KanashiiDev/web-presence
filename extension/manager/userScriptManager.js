@@ -4,6 +4,7 @@ class UserScriptUI {
   constructor() {
     this.editingId = null;
     this.activeTab = "my"; // "my" | "repo"
+    this.searchQuery = "";
     this.init();
   }
 
@@ -77,6 +78,24 @@ class UserScriptUI {
 
     // List events
     document.getElementById("scriptList").addEventListener("click", (e) => this.handleListClick(e));
+
+    // Search input - filter list client-side without refetching
+    const scriptSearchEl = document.getElementById("scriptSearch");
+    const scriptSearchResetBtn = document.getElementById("scriptSearchResetBtn");
+    const debouncedRefreshList = debounce(() => this.refreshList(), 300);
+    scriptSearchEl.addEventListener("input", (e) => {
+      this.searchQuery = e.target.value.toLowerCase();
+      scriptSearchResetBtn?.classList.toggle("filter-active", this.searchQuery.length > 0);
+      debouncedRefreshList();
+    });
+
+    scriptSearchResetBtn?.appendChild(createSVG(svg_paths.closeIconPaths ?? svg_paths.crossIconPaths));
+    scriptSearchResetBtn?.addEventListener("click", () => {
+      scriptSearchEl.value = "";
+      this.searchQuery = "";
+      scriptSearchResetBtn?.classList.remove("filter-active");
+      this.refreshList();
+    });
 
     // GitHub Contribute settings
     document.getElementById("btnGithubSettings").addEventListener("click", () => this.onGithubSettingsClick());
@@ -350,7 +369,8 @@ class UserScriptUI {
       return;
     }
 
-    this.renderList(listResp.list || []);
+    const filteredList = this.filterList(listResp.list || []);
+    this.renderList(filteredList);
     await this.restoreContext();
   }
 
@@ -376,7 +396,11 @@ class UserScriptUI {
     if (!list.length) {
       const emptyMsg = document.createElement("li");
       emptyMsg.className = "script-empty-message";
-      emptyMsg.textContent = this.activeTab === "repo" ? i18n.t("userscript.list.empty.repo") : i18n.t("userscript.list.empty.my");
+      if (this.searchQuery) {
+        emptyMsg.textContent = i18n.t("userscript.list.noResults");
+      } else {
+        emptyMsg.textContent = this.activeTab === "repo" ? i18n.t("userscript.list.empty.repo") : i18n.t("userscript.list.empty.my");
+      }
       ul.appendChild(emptyMsg);
       return;
     }
@@ -507,6 +531,17 @@ class UserScriptUI {
       return patterns.map((p) => p.replace(/^\/|\/$/g, "")).join(", ");
     }
     return String(patterns);
+  }
+
+  filterList(list) {
+    if (!this.searchQuery) return list;
+    const query = this.searchQuery;
+    return list.filter((script) => {
+      const title = (script.title || "").toLowerCase();
+      const domain = Array.isArray(script.domain) ? script.domain.join(" ") : script.domain || "";
+      const description = (script.description || "").toLowerCase();
+      return title.includes(query) || domain.toLowerCase().includes(query) || description.includes(query);
+    });
   }
 
   handleListClick(e) {
@@ -655,7 +690,9 @@ class UserScriptUI {
   }
 
   hideEditor(btn) {
-    document.getElementById("editor").hidden = true;
+    const editor = document.getElementById("editor");
+    editor.hidden = true;
+    editor.setAttribute("current", "0");
     document.getElementById("editorMsg").classList = "";
     this.editingId = null;
     const params = new URLSearchParams(window.location.search);
