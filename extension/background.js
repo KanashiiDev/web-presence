@@ -487,7 +487,7 @@ const updateRpc = async (data, tabId) => {
       const webOnlyActivity = formatForWebConnection(rawActivity);
       await sendToWebOnlyBridge({ activity: webOnlyActivity });
     } else {
-      await fetchWithTimeout(
+      const response = await fetchWithTimeout(
         `http://localhost:${state.serverPort}/update-rpc`,
         {
           method: "POST",
@@ -497,6 +497,7 @@ const updateRpc = async (data, tabId) => {
         },
         CONFIG.requestTimeout,
       );
+      await response.text();
     }
   } catch (err) {
     if (err.name !== "AbortError") {
@@ -539,7 +540,7 @@ const scheduleRpcUpdate = (data, tabId) => {
     }
 
     state.pendingUpdates.delete(tabId);
-    updateRpc(data, tabId).catch((err) => logError("[background:updateRpc]", err));
+    updateRpc(data, tabId).catch(() => {});
   }, 500);
 
   state.pendingUpdates.set(tabId, { timeout, data });
@@ -575,7 +576,7 @@ const processTab = async (tabId, tabData) => {
   if (!res || typeof res !== "object") {
     if (!tabData.lastUpdated || now - tabData.lastUpdated > CONFIG.stuckThreshold) {
       logInfo(`[background:processTab]: Tab ${tabId} did not respond, clearing RPC`);
-      await clearRpcForTab(tabId, "tab did not respond").catch((err) => logError("[background:clearRpcForTab]", err));
+      await clearRpcForTab(tabId, "tab did not respond");
     }
     return;
   }
