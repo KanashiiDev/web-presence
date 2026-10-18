@@ -202,6 +202,8 @@
   "filter.noAdded": "No filter has been added yet",
   "filter.notFound": "Filter not found",
   "filter.notFoundTab": "No {tab} filters found",
+  "filter.search": "Search filters…",
+  "filter.searchNoResults": "No results found",
   "filter.warn.noneSelectedSites": "None of the selected sites exist anymore. Please select at least one active site before saving.",
   "filter.warn.removedSelectedSites": "{count} of the selected site no longer exist and will be removed on save. Do you want to continue?",
   "filter.warn.exists": "All entries already exist in this filter",

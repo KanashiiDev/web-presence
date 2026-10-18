@@ -202,6 +202,8 @@
   "filter.noAdded": "Henüz filtre eklenmedi",
   "filter.notFound": "Filtre bulunamadı",
   "filter.notFoundTab": "Bu sekmede {tab} filtresi bulunamadı",
+  "filter.search": "Filtreleri ara…",
+  "filter.searchNoResults": "Sonuç bulunamadı",
   "filter.warn.noneSelectedSites": "Seçilen sitelerin hiçbiri artık mevcut değil. Kaydetmeden önce en az bir aktif site seçin.",
   "filter.warn.removedSelectedSites": "Seçilen sitelerden {count} tanesi artık mevcut değil ve kaydedildiğinde kaldırılacak. Devam etmek istiyor musunuz?",
   "filter.warn.exists": "Tüm girişler bu filtrede zaten mevcut",

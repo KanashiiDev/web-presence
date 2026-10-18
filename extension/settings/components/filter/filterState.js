@@ -21,6 +21,7 @@ const FilterState = {
   // UI state
   ui: {
     activeTab: "all", // 'all' | 'block' | 'replace'
+    searchQuery: "",
   },
 };
 

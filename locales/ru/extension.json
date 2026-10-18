@@ -202,6 +202,8 @@
   "filter.noAdded": "Фильтры ещё не добавлены",
   "filter.notFound": "Фильтр не найден",
   "filter.notFoundTab": "Во вкладке {tab} фильтр не найден",
+  "filter.search": "Поиск фильтров…",
+  "filter.searchNoResults": "Результаты не найдены",
   "filter.warn.noneSelectedSites": "Ни один из выбранных сайтов больше недоступен. Перед сохранением выберите хотя бы один активный сайт.",
   "filter.warn.removedSelectedSites": "{count} выбранных сайтов больше недоступно и будут удалены при сохранении. Продолжить?",
   "filter.warn.exists": "Все записи уже присутствуют в этом фильтре",

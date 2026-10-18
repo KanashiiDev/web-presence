@@ -202,6 +202,8 @@
   "filter.noAdded": "Aucun filtre n’a encore été ajouté",
   "filter.notFound": "Filtre introuvable",
   "filter.notFoundTab": "Aucun filtre {tab} trouvé",
+  "filter.search": "Rechercher des filtres…",
+  "filter.searchNoResults": "Aucun résultat trouvé",
   "filter.warn.noneSelectedSites": "Aucun des sites sélectionnés n’existe encore. Veuillez sélectionner au moins un site actif avant d’enregistrer.",
   "filter.warn.removedSelectedSites": "{count} des sites sélectionnés n’existent plus et seront supprimés lors de l’enregistrement. Voulez-vous continuer ?",
   "filter.warn.exists": "Toutes les entrées existent déjà dans ce filtre",

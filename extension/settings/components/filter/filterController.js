@@ -40,17 +40,36 @@ const FilterTabsController = {
 // FILTER LIST CONTROLLER
 const FilterListController = {
   getFiltered() {
-    const { activeTab } = FilterState.ui;
+    const { activeTab, searchQuery } = FilterState.ui;
+
+    let list = FilterState.parserFilters;
 
     if (activeTab === "block") {
-      return FilterState.parserFilters.filter((f) => !FilterUtils.isReplaceFilter(f));
+      list = list.filter((f) => !FilterUtils.isReplaceFilter(f));
+    } else if (activeTab === "replace") {
+      list = list.filter((f) => FilterUtils.isReplaceFilter(f));
     }
 
-    if (activeTab === "replace") {
-      return FilterState.parserFilters.filter((f) => FilterUtils.isReplaceFilter(f));
+    if (searchQuery) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((f) => {
+        if (f.entries.some((e) => (e.artist || "").toLowerCase().includes(q) || (e.title || "").toLowerCase().includes(q))) {
+          return true;
+        }
+
+        if (f.parsers[0] === "*") {
+          return i18n.t("filter.websites.all").toLowerCase().includes(q);
+        }
+
+        return f.parsers.some((id) => {
+          const parser = FilterState.parserList.find((p) => p.id === id);
+          const name = (parser ? parser.title || parser.domain : id).toLowerCase();
+          return name.includes(q);
+        });
+      });
     }
 
-    return FilterState.parserFilters;
+    return list;
   },
 
   async delete(filterId) {
@@ -96,11 +115,13 @@ const FilterListController = {
     const container = document.getElementById("filtersList");
     if (!container) return;
 
-    // Clear old
-    container.querySelectorAll(".filter-item").forEach((el) => {
+    this.renderSearchBar();
+
+    // Clear old filter items and empty state
+    container.querySelectorAll(".filter-item, .empty-state").forEach((el) => {
       FilterEvents.removeFrom(el);
+      el.remove();
     });
-    container.innerHTML = "";
 
     const filtered = this.getFiltered();
 
@@ -110,23 +131,69 @@ const FilterListController = {
       empty.className = "empty-state";
 
       const p = document.createElement("p");
-      p.textContent = FilterState.ui.activeTab === "all" ? i18n.t("filter.noAdded") : i18n.t("filter.notFoundTab", { tab: FilterState.ui.activeTab });
+      if (FilterState.ui.searchQuery) {
+        p.textContent = i18n.t("filter.searchNoResults");
+      } else {
+        p.textContent = FilterState.ui.activeTab === "all" ? i18n.t("filter.noAdded") : i18n.t("filter.notFoundTab", { tab: FilterState.ui.activeTab });
+      }
 
       empty.appendChild(p);
       container.appendChild(empty);
       return;
     }
 
+    // Render filters
     filtered.sort((a, b) => {
       const getKey = (filter) => (filter.parsers[0] === "*" ? "All Websites" : filter.parsers.join(","));
 
       return getKey(a).localeCompare(getKey(b));
     });
 
-    // Render filters
     filtered.forEach((filter) => {
       container.appendChild(this.createFilterItem(filter));
     });
+  },
+
+  renderSearchBar() {
+    const searchContainer = document.getElementById("filterSearchContainer");
+    if (!searchContainer) return;
+
+    let searchBar = searchContainer.querySelector(".filter-search-bar");
+    if (!searchBar) {
+      searchBar = document.createElement("div");
+      searchBar.className = "filter-search-bar";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "input filter-search-input";
+      input.placeholder = i18n.t("filter.search");
+      input.value = FilterState.ui.searchQuery;
+
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "filter-search-reset";
+      resetBtn.title = i18n.t("common.reset");
+      resetBtn.style.display = FilterState.ui.searchQuery ? "" : "none";
+      resetBtn.appendChild(createSVG(svg_paths.closeIconPaths ?? svg_paths.crossIconPaths));
+
+      const debouncedRender = debounce(() => this.render(), 300);
+
+      FilterEvents.add(input, "input", (e) => {
+        FilterState.ui.searchQuery = e.target.value;
+        resetBtn.style.display = e.target.value ? "" : "none";
+        debouncedRender();
+      });
+
+      FilterEvents.add(resetBtn, "click", (e) => {
+        e.stopPropagation();
+        input.value = "";
+        FilterState.ui.searchQuery = "";
+        resetBtn.style.display = "none";
+        this.render();
+      });
+
+      searchBar.append(input, resetBtn);
+      searchContainer.appendChild(searchBar);
+    }
   },
 
   createFilterItem(filter) {
