@@ -13,6 +13,7 @@ const state = {
   lastBlockedLog: null,
   isFirstUpdate: true,
   lastPrintedLogs: {},
+  hostMatch: false,
 };
 
 const CONSTANTS = {
@@ -64,7 +65,9 @@ function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, reason = "") {
   }
 
   if (state.updateTimer) {
-    logOnce(`[main:scheduleNextUpdate]: update timer rescheduling - reason: ${reason || "reschedule"}`, "updateTimer");
+    if (!state.hostMatch === false) {
+      logOnce(`[main:scheduleNextUpdate]: update timer rescheduling - reason: ${reason || "reschedule"}`, "updateTimer");
+    }
     clearTimeout(state.updateTimer);
     state.updateTimer = null;
   }
@@ -427,7 +430,7 @@ async function processRPCUpdate(song, progress) {
       logInfo("[main]: RPC waiting (tab not audible yet)");
       return false;
     } else {
-      logInfo("[main]: unexpected response state:", res);
+      logInfo("[main]: unexpected response state:", res?.ok !== undefined ? `ok=${res.ok}, waiting=${res.waiting}` : String(res).slice(0, 200));
       return false;
     }
   } catch (e) {
@@ -500,18 +503,21 @@ async function waitForHostname() {
       });
 
       if (res?.ok) {
+        state.hostMatch = res?.match !== false;
         logOnce(res?.match || "[main]: Hostname Match!", "hostmatch");
         return true;
       }
 
+      state.hostMatch = false;
       logOnce(`${res?.error?.message || "[main]: Hostname mismatch"}`, "hostmatch");
       return false;
     } catch (e) {
       if (e?.message?.includes("Extension context invalidated")) {
+        logError("[main]: waitForHostname extension context invalidated, stopping");
         return false;
       }
 
-      logError("[main]: waitForHostname error:", e);
+      logOnce(`[main]: waitForHostname error: ${String(e?.message).slice(0, 160)}`, "waitForHostname");
       await delay(CONSTANTS.ACTIVE_INTERVAL);
     }
   }
