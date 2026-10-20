@@ -383,7 +383,15 @@ class GitHubContributeService {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (!response.ok) return null;
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        // Auth (401/403), rate-limit (429), and server (5xx) errors must not be
+        // masked as "script not found." Surface them so the caller can show an
+        // actionable error (re-auth / retry) instead of silently proceeding.
+        const err = new Error(`Upstream index fetch failed: HTTP ${response.status}`);
+        err.status = response.status;
+        throw err;
+      }
 
       let jsonText;
       if (typeof DecompressionStream !== "undefined") {
@@ -449,42 +457,37 @@ class GitHubContributeService {
     const branchName = `contribute/${fileBaseName.slice(0, 60)}`;
 
     // 1: Open PR check
-    try {
-      const existingPrs = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?head=${forkOwner}:${branchName}&state=open`, {}, token);
-      if (existingPrs.length > 0) {
-        const remoteFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token).catch(() => null);
+    const existingPrs = await this._req(`/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?head=${forkOwner}:${branchName}&state=open`, {}, token);
+    if (existingPrs.length > 0) {
+      const remoteFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token).catch(() => null);
 
-        if (remoteFile?.content) {
-          const _b64pr = remoteFile.content.replace(/\s/g, "");
-          const remoteContent = new TextDecoder().decode(Uint8Array.from(atob(_b64pr), (c) => c.charCodeAt(0)));
+      if (remoteFile?.content) {
+        const _b64pr = remoteFile.content.replace(/\s/g, "");
+        const remoteContent = new TextDecoder().decode(Uint8Array.from(atob(_b64pr), (c) => c.charCodeAt(0)));
 
-          // Content is the same → skip
-          if (remoteContent.trim() === fileContent.trim()) {
-            return { prUrl: existingPrs[0].html_url, isUpdate: !!upstreamInfo, skipped: true };
+        // Content is the same → skip
+        if (remoteContent.trim() === fileContent.trim()) {
+          return { prUrl: existingPrs[0].html_url, isUpdate: !!upstreamInfo, skipped: true };
+        }
+
+        // Content is different → parse the version in the branch, compare with local
+        const branchVersion = this._parseVersionFromContent(remoteContent);
+        if (branchVersion) {
+          const cmp = this._compareVersions(branchVersion, script.version);
+          if (cmp > 0) {
+            // Open PR already has a newer version than what we're submitting
+            const err = new Error("VERSION_OUTDATED");
+            err.branchVersion = branchVersion;
+            throw err;
           }
-
-          // Content is different → parse the version in the branch, compare with local
-          const branchVersion = this._parseVersionFromContent(remoteContent);
-          if (branchVersion) {
-            const cmp = this._compareVersions(branchVersion, script.version);
-            if (cmp > 0) {
-              // Open PR already has a newer version than what we're submitting
-              const err = new Error("VERSION_OUTDATED");
-              err.branchVersion = branchVersion;
-              throw err;
-            }
-            if (cmp === 0) {
-              // Same version, different content (e.g. author list changed) - treat as same
-              const err = new Error("VERSION_SAME");
-              err.branchVersion = branchVersion;
-              throw err;
-            }
+          if (cmp === 0) {
+            // Same version, different content (e.g. author list changed) - treat as same
+            const err = new Error("VERSION_SAME");
+            err.branchVersion = branchVersion;
+            throw err;
           }
         }
       }
-    } catch (e) {
-      // Propagate known sentinel errors; swallow only transient/network failures
-      if (e.message === "VERSION_SAME" || e.message === "VERSION_OUTDATED") throw e;
     }
 
     // 2: Upstream index control (repo scripts)
@@ -564,8 +567,10 @@ class GitHubContributeService {
       // which causes GitHub to return 409/422 on the PUT request.
       const forkFile = await this._req(`/repos/${forkOwner}/${UPSTREAM_REPO}/contents/${filePath}?ref=${branchName}`, {}, token);
       existingFileSha = forkFile.sha;
-    } catch (_) {
-      // File doesn't exist on the branch yet -> create without SHA
+    } catch (e) {
+      // Only a 404 means "file does not exist on this branch yet" -> create without SHA.
+      // Propagate 401/403/429/5xx/network failures so the caller can surface them.
+      if (e.status !== 404) throw e;
     }
 
     onStatus("pushing");
