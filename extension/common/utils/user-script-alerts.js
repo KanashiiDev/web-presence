@@ -135,9 +135,25 @@ async function checkUserScriptsPermission() {
   const manifest = browser.runtime.getManifest();
   if (manifest.manifest_version !== 3) return false;
 
-  if (!browser.userScripts) {
+  let userScriptsAvailable = false;
+  try {
+    await browser.userScripts.register([
+      {
+        id: "wp_permission_probe",
+        matches: ["<all_urls>"],
+        js: [{ code: "" }],
+        world: browser.userScripts.ExecutionWorld.MAIN,
+      },
+    ]);
+    userScriptsAvailable = true;
+    try {
+      await browser.userScripts.unregister({ ids: ["wp_permission_probe"] });
+    } catch {}
+  } catch {}
+
+  if (!userScriptsAvailable) {
     const browserType = detectBrowser();
-    const config = BROWSER_CONFIG[browserType];
+    const config = BROWSER_CONFIG[browserType] ?? BROWSER_CONFIG.chrome;
     if (document.getElementById("mv3Alert")) return false;
     document.body.appendChild(createMv3PermissionAlert(config));
     return false;
