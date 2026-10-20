@@ -173,8 +173,8 @@
       const sharedBase = this._isExtension() ? browser.runtime.getURL("locales") : "/locales";
 
       const fetchWithFallback = async (base, file) => {
-        let data = await this._fetch(`${base}/${lang}/${file}`);
-        if (data == null && shortLang !== lang) data = await this._fetch(`${base}/${shortLang}/${file}`);
+        let data = await this._fetch(`${base}/${shortLang}/${file}`);
+        if (data == null && shortLang !== lang) data = await this._fetch(`${base}/${lang}/${file}`);
         return data;
       };
 
@@ -184,7 +184,7 @@
         fetchWithFallback(base, `${ns}.json`),
       ]);
 
-      this.lang = lang;
+      this.lang = shortLang;
       let main = fetchedMain;
 
       if (main == null) {
