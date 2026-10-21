@@ -110,6 +110,8 @@ function createPreviewSection(root) {
 // Start preview loop
 let previewInterval = null;
 function startPreviewLoop(shadow, editMode) {
+  // Cancel any previous preview loop so re-initialization cannot orphan a timer.
+  if (previewInterval) clearInterval(previewInterval);
   updatePreview(shadow, editMode);
   previewInterval = setInterval(() => {
     updatePreview(shadow, editMode);

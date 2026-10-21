@@ -694,6 +694,10 @@ function setupEventListeners(shadow) {
   // Close User Add RPC
   shadow.getElementById("closeSelectorUI").addEventListener("click", () => {
     clearInterval(previewInterval);
+    if (shadow._previewRefreshInterval != null) {
+      clearInterval(shadow._previewRefreshInterval);
+      shadow._previewRefreshInterval = null;
+    }
     shadow.host.remove();
   });
 

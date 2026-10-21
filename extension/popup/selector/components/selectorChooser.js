@@ -7,6 +7,8 @@ function showSelectorChooser(scoredOptions, field, shadowDoc) {
 
   const cleanup = () => {
     clearInterval(previewRefreshInterval);
+    previewRefreshInterval = null;
+    shadowDoc._previewRefreshInterval = null;
     container.remove();
   };
 
@@ -134,6 +136,9 @@ function showSelectorChooser(scoredOptions, field, shadowDoc) {
         pc.appendChild(node);
       });
     }, 2000);
+
+    // Expose the refresh interval so an external selector close can stop it.
+    shadowDoc._previewRefreshInterval = previewRefreshInterval;
   } else {
     // Fallback Message
     const fallback = document.createElement("div");
