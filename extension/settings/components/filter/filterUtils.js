@@ -216,7 +216,12 @@ const QuickActions = {
 
     if (!songData) {
       songInfoBtn.textContent = i18n.t("filter.blockCurrent.empty");
-      this.blockTimeout = setTimeout(resetWithParent, 2000);
+      const originalBg = parentBtn.style.backgroundColor;
+      parentBtn.style.backgroundColor = "var(--red-color-dark)";
+      this.blockTimeout = setTimeout(() => {
+        parentBtn.style.backgroundColor = originalBg;
+        resetWithParent();
+      }, 2000);
       return;
     }
 

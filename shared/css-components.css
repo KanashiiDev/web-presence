@@ -338,11 +338,12 @@ input[type="range"]::-moz-range-thumb {
 .btn-primary {
   background: var(--accent-color);
   color: var(--text-color-btn);
-  border: var(--accent-color-border);
+  border-color: transparent;
 }
 
 .btn-primary:hover {
   background: var(--accent-color-bright);
+  border-color: transparent;
 }
 
 .btn-secondary {

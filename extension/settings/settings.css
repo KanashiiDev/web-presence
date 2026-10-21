@@ -95,7 +95,7 @@ label {
 
 #listControls {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -540,6 +540,14 @@ label {
   gap: 10px;
 }
 
+#filtersList.grid .empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
 #btnToggleView {
   max-height: 38px;
   max-width: 38px;
@@ -634,11 +642,11 @@ label {
 }
 
 .filter-card-body {
-  padding: 8px 12px 10px;
+  padding: 0 12px 10px;
 }
 
 .filter-entries-wrapper {
-  display: flex;
+  display: block;
   flex-direction: column;
   gap: 0;
   max-height: 10em;
@@ -651,8 +659,7 @@ label {
 }
 
 .filter-entry.filter-entry-block {
-  display: flex;
-  align-items: center;
+  display: block;
   padding: 5px 0;
   font-size: 12px;
   color: var(--text-color-secondary);
@@ -660,6 +667,10 @@ label {
   background: transparent;
   border-radius: 0;
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .filter-entry.filter-entry-block:last-child {

@@ -270,15 +270,18 @@ const FilterListController = {
       if (isReplace) {
         const original = document.createElement("span");
         original.className = "original";
+        original.title = `${entry.artist || "*"} - ${entry.title || "*"}`;
         original.textContent = `${entry.artist || "*"} - ${entry.title || "*"}`;
         const arrow = document.createElement("span");
         arrow.className = "filter-entry-arrow";
         arrow.appendChild(createSVG(svg_paths.forwardIconPaths, { width: "12px", height: "12px" }));
         const replace = document.createElement("span");
         replace.className = "replace";
+        replace.title = `${entry.replaceArtist || "*"} - ${entry.replaceTitle || "*"}`;
         replace.textContent = `${entry.replaceArtist || "*"} - ${entry.replaceTitle || "*"}`;
         entryDiv.append(original, arrow, replace);
       } else {
+        entryDiv.title = `${entry.artist || "*"} - ${entry.title || "*"}`;
         entryDiv.textContent = `${entry.artist || "*"} - ${entry.title || "*"}`;
       }
 
