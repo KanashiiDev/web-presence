@@ -1,5 +1,5 @@
 function _createPanelState() {
-  return { entries: [], levelFilter: "all", searchQuery: "" };
+  return { entries: [], levelFilter: "all", searchQuery: "", tabIdFilter: "", hostnameFilter: "" };
 }
 
 const _debugState = _createPanelState();
@@ -34,6 +34,14 @@ function _fmtTime(ts) {
   );
 }
 
+function _makeColGrip(col) {
+  const grip = document.createElement("span");
+  grip.className = "debug-col-grip";
+  grip.dataset.col = col;
+  grip.textContent = "";
+  return grip;
+}
+
 function _buildRow(entry, lineNum) {
   const row = document.createElement("div");
   row.className = `debug-log-row level-${entry.level}`;
@@ -53,6 +61,18 @@ function _buildRow(entry, lineNum) {
   const source = document.createElement("span");
   source.className = "debug-log-source";
   source.textContent = entry.source ?? "";
+
+  const meta = document.createElement("span");
+  meta.className = "debug-log-meta";
+  const metaParts = [];
+  if (entry.tabId != null) metaParts.push(`tab:${entry.tabId}`);
+  if (entry.hostname != null) metaParts.push(`host:${entry.hostname}`);
+  meta.textContent = metaParts.join("  |  ");
+
+  time.appendChild(_makeColGrip("time"));
+  level.appendChild(_makeColGrip("level"));
+  source.appendChild(_makeColGrip("source"));
+  meta.appendChild(_makeColGrip("meta"));
 
   const msg = document.createElement("span");
   msg.className = "debug-log-msg";
@@ -107,15 +127,105 @@ function _buildRow(entry, lineNum) {
     if (msg.textContent === "[background:init]: Extension initializing") row.classList.add("init");
   }
 
-  row.append(line, time, level, source, msg);
+  row.append(line, time, level, source, meta, msg);
   return row;
 }
 
+const _colMinWidth = { time: 60, level: 24, source: 40, meta: 60 };
+
+async function _initColResize(listId) {
+  const list = document.getElementById(listId);
+  if (!list || list.dataset.wpColResize === "1") return;
+  list.dataset.wpColResize = "1";
+
+  const container = list.closest(".debug-log-container");
+  const stored = await browser.storage.local.get("debugLogColWidths");
+  const saved = stored.debugLogColWidths;
+  if (saved) {
+    for (const col of Object.keys(_colMinWidth)) {
+      if (saved[col] != null) {
+        container.style.setProperty(`--wp-log-col-${col}`, `${saved[col]}px`);
+      }
+    }
+  }
+
+  let active = null;
+  let rafId = null;
+
+  const _applyWidth = (col, width, container) => {
+    container.style.setProperty(`--wp-log-col-${col}`, `${width}px`);
+  };
+
+  const _saveColWidths = debounce(() => {
+    const computed = getComputedStyle(container);
+    const widths = {};
+    for (const col of Object.keys(_colMinWidth)) {
+      const raw = computed.getPropertyValue(`--wp-log-col-${col}`).trim();
+      if (raw) widths[col] = parseFloat(raw);
+    }
+    browser.storage.local.set({ debugLogColWidths: widths }).catch(() => {});
+  }, 300);
+
+  const begin = (grip) => {
+    const col = grip.dataset.col;
+    if (!_colMinWidth[col]) return null;
+    const container = grip.closest(".debug-log-container");
+    const computed = getComputedStyle(container);
+    const raw = computed.getPropertyValue(`--wp-log-col-${col}`).trim();
+    const startWidth = raw ? parseFloat(raw) : _colMinWidth[col];
+    return { col, startX: null, startWidth, container };
+  };
+
+  list.addEventListener("mousedown", (e) => {
+    const grip = e.target.closest(".debug-col-grip");
+    if (!grip) return;
+    const state = begin(grip);
+    if (!state) return;
+    e.preventDefault();
+    state.startX = e.clientX;
+    active = state;
+    grip.classList.add("dragging");
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!active || active.startX === null) return;
+    let width = active.startWidth + (e.clientX - active.startX);
+    width = Math.max(_colMinWidth[active.col], width);
+    active.pendingWidth = width;
+    if (!rafId) {
+      rafId = requestAnimationFrame(() => {
+        _applyWidth(active.col, active.pendingWidth, active.container);
+        rafId = null;
+      });
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!active) return;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+      if (active.pendingWidth != null) _applyWidth(active.col, active.pendingWidth, active.container);
+    }
+    document.querySelector(".debug-col-grip.dragging")?.classList.remove("dragging");
+    active = null;
+    _saveColWidths();
+  });
+}
+
 // Shared filter/stats/render helpers
-function _filterEntries(entries, levelFilter, searchQuery) {
+function _filterEntries(entries, levelFilter, searchQuery, tabIdFilter, hostnameFilter) {
   const q = searchQuery.trim().toLowerCase();
+  const tabId = tabIdFilter.trim();
+  const hostname = hostnameFilter.trim().toLowerCase();
   return entries.filter((e) => {
     if (levelFilter !== "all" && e.level !== levelFilter) return false;
+    if (tabId && String(e.tabId ?? "") !== tabId) return false;
+    if (hostname) {
+      const entryHostname = String(e.hostname ?? "").toLowerCase();
+      if (!entryHostname) return false;
+      if (entryHostname !== hostname && !entryHostname.endsWith("." + hostname)) return false;
+    }
     if (q) {
       const msgText = e.msg && typeof e.msg === "object" ? `${e.msg.title ?? ""} ${e.msg.artist ?? ""}` : (e.msg ?? "");
       if (![e.source, e.level, msgText].join(" ").toLowerCase().includes(q)) return false;
@@ -186,8 +296,8 @@ async function _renderPanel(name) {
     const stats = document.getElementById(cfg.elements.stats);
     if (!list) return;
 
-    const { entries, levelFilter, searchQuery } = cfg.state;
-    const filtered = _filterEntries(entries, levelFilter, searchQuery);
+    const { entries, levelFilter, searchQuery, tabIdFilter, hostnameFilter } = cfg.state;
+    const filtered = _filterEntries(entries, levelFilter, searchQuery, tabIdFilter, hostnameFilter);
     const counts = _countLevels(entries);
 
     stats.innerHTML = "";
@@ -347,11 +457,21 @@ async function _exportLogs() {
 
 // Refresh
 async function _refreshActivity() {
-  // Skip refresh while the user has text selected to avoid disrupting copy actions
   if (document.getSelection()?.toString().length > 0) return;
 
   try {
-    _activityState.entries = await _readMemoryLogs();
+    const entries = await _readMemoryLogs();
+
+    if (entries.length > DEBUG_MAX_ENTRIES) entries.splice(0, entries.length - DEBUG_MAX_ENTRIES);
+
+    const latest = entries[entries.length - 1];
+    const latestTs = latest?.ts ?? 0;
+
+    if (entries.length === _lastActivityCount && latestTs === _lastActivityLatestTs) return;
+
+    _lastActivityCount = entries.length;
+    _lastActivityLatestTs = latestTs;
+    _activityState.entries = entries;
     await _renderActivity();
   } catch (err) {
     console.error("[debug] activity refresh failed:", err);
@@ -360,7 +480,18 @@ async function _refreshActivity() {
 
 async function _refreshLogs() {
   if (document.getSelection()?.toString().length > 0) return;
-  _debugState.entries = await _readLogs();
+  const entries = await _readLogs();
+
+  if (entries.length > DEBUG_MAX_ENTRIES) entries.splice(0, entries.length - DEBUG_MAX_ENTRIES);
+
+  const latest = entries[entries.length - 1];
+  const latestTs = latest?.ts ?? 0;
+
+  if (entries.length === _lastLogCount && latestTs === _lastLogLatestTs) return;
+
+  _lastLogCount = entries.length;
+  _lastLogLatestTs = latestTs;
+  _debugState.entries = entries;
   _renderLogs();
 }
 
@@ -368,6 +499,11 @@ async function _refreshLogs() {
 let _debugAutoRefreshTimer = null;
 let _activityAutoRefreshTimer = null;
 const DEBUG_REFRESH_INTERVAL_MS = 3000;
+
+let _lastLogCount = 0;
+let _lastLogLatestTs = 0;
+let _lastActivityCount = 0;
+let _lastActivityLatestTs = 0;
 
 function _startAutoRefresh() {
   if (!_debugAutoRefreshTimer) {
@@ -377,13 +513,14 @@ function _startAutoRefresh() {
 
   if (!_activityAutoRefreshTimer) {
     _refreshActivity();
-    _activityAutoRefreshTimer = true;
+    _activityAutoRefreshTimer = setInterval(_refreshActivity, DEBUG_REFRESH_INTERVAL_MS);
   }
 }
 
 function _stopAutoRefresh() {
   clearInterval(_debugAutoRefreshTimer);
   _debugAutoRefreshTimer = null;
+  clearInterval(_activityAutoRefreshTimer);
   _activityAutoRefreshTimer = null;
 }
 
@@ -405,6 +542,16 @@ function _wireSearchInput(elementId, state, renderFn) {
     "input",
     debounce((e) => {
       state.searchQuery = e.target.value;
+      renderFn();
+    }, 150),
+  );
+}
+
+function _wireFilterInput(elementId, state, key, renderFn) {
+  document.getElementById(elementId)?.addEventListener(
+    "input",
+    debounce((e) => {
+      state[key] = e.target.value;
       renderFn();
     }, 150),
   );
@@ -435,6 +582,96 @@ function initDebug() {
   _wireSearchInput("activitySearch", _activityState, _renderActivity);
   _wireSearchInput("debugSearch", _debugState, _renderLogs);
 
+  // Resizable log columns
+  _initColResize("debugLogList");
+  _initColResize("activityLogList");
+
+  // Metadata filter inputs (logs panel)
+  _wireFilterInput("debugTabIdFilter", _debugState, "tabIdFilter", _renderLogs);
+  _wireFilterInput("debugHostnameFilter", _debugState, "hostnameFilter", _renderLogs);
+
+  // Metadata filter toggle
+  document.getElementById("debugFiltersToggleBtn")?.addEventListener("click", () => {
+    const tabIdEl = document.getElementById("debugTabIdFilter");
+    const hostnameEl = document.getElementById("debugHostnameFilter");
+    const hidden = tabIdEl.style.display === "none";
+    tabIdEl.style.display = hidden ? "" : "none";
+    hostnameEl.style.display = hidden ? "" : "none";
+  });
+
+  // Append icons to toggle and reset buttons
+  const toggleBtn = document.getElementById("debugFiltersToggleBtn");
+  if (toggleBtn && !toggleBtn.querySelector("svg")) toggleBtn.appendChild(createSVG(svg_paths.filterIconPaths));
+  ["debugSearchResetBtn", "debugTabIdResetBtn", "debugHostnameResetBtn", "activitySearchResetBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn && !btn.querySelector("svg")) btn.appendChild(createSVG(svg_paths.crossIconPaths));
+  });
+
+  // Metadata filter clear (search + tab id + hostname)
+  document.getElementById("debugSearchResetBtn")?.addEventListener("click", () => {
+    const searchEl = document.getElementById("debugSearch");
+    const tabIdEl = document.getElementById("debugTabIdFilter");
+    const hostnameEl = document.getElementById("debugHostnameFilter");
+    if (searchEl) searchEl.value = "";
+    if (tabIdEl) tabIdEl.value = "";
+    if (hostnameEl) hostnameEl.value = "";
+    _debugState.searchQuery = "";
+    _debugState.tabIdFilter = "";
+    _debugState.hostnameFilter = "";
+    document.getElementById("debugSearchResetBtn")?.classList.remove("filter-active");
+    document.getElementById("debugTabIdResetBtn")?.classList.remove("filter-active");
+    document.getElementById("debugHostnameResetBtn")?.classList.remove("filter-active");
+    _renderLogs();
+  });
+
+  // Show/hide search reset button based on input content
+  document.getElementById("debugSearch")?.addEventListener("input", () => {
+    const resetBtn = document.getElementById("debugSearchResetBtn");
+    if (resetBtn) resetBtn.classList.toggle("filter-active", document.getElementById("debugSearch").value.trim().length > 0);
+  });
+
+  // Tab ID filter clear
+  document.getElementById("debugTabIdResetBtn")?.addEventListener("click", () => {
+    const tabIdEl = document.getElementById("debugTabIdFilter");
+    if (tabIdEl) tabIdEl.value = "";
+    _debugState.tabIdFilter = "";
+    document.getElementById("debugTabIdResetBtn")?.classList.remove("filter-active");
+    _renderLogs();
+  });
+
+  document.getElementById("debugTabIdFilter")?.addEventListener("input", () => {
+    const resetBtn = document.getElementById("debugTabIdResetBtn");
+    if (resetBtn) resetBtn.classList.toggle("filter-active", document.getElementById("debugTabIdFilter").value.trim().length > 0);
+  });
+
+  // Hostname filter clear
+  document.getElementById("debugHostnameResetBtn")?.addEventListener("click", () => {
+    const hostnameEl = document.getElementById("debugHostnameFilter");
+    if (hostnameEl) hostnameEl.value = "";
+    _debugState.hostnameFilter = "";
+    document.getElementById("debugHostnameResetBtn")?.classList.remove("filter-active");
+    _renderLogs();
+  });
+
+  document.getElementById("debugHostnameFilter")?.addEventListener("input", () => {
+    const resetBtn = document.getElementById("debugHostnameResetBtn");
+    if (resetBtn) resetBtn.classList.toggle("filter-active", document.getElementById("debugHostnameFilter").value.trim().length > 0);
+  });
+
+  // Activity search clear
+  document.getElementById("activitySearchResetBtn")?.addEventListener("click", () => {
+    const activitySearchEl = document.getElementById("activitySearch");
+    if (activitySearchEl) activitySearchEl.value = "";
+    _activityState.searchQuery = "";
+    document.getElementById("activitySearchResetBtn")?.classList.remove("filter-active");
+    _renderActivity();
+  });
+
+  document.getElementById("activitySearch")?.addEventListener("input", () => {
+    const resetBtn = document.getElementById("activitySearchResetBtn");
+    if (resetBtn) resetBtn.classList.toggle("filter-active", document.getElementById("activitySearch").value.trim().length > 0);
+  });
+
   // Activity clear
   document.getElementById("activityClearBtn")?.addEventListener("click", async () => {
     await _clearMemoryLogs();
@@ -456,13 +693,21 @@ function initDebug() {
 
   // Auto-refresh tied to section visibility
   const section = document.querySelector('[data-section="debug"]');
+  let observer = null;
   if (section) {
-    new MutationObserver(() => {
+    observer = new MutationObserver(() => {
       section.style.display !== "none" ? _startAutoRefresh() : _stopAutoRefresh();
-    }).observe(section, { attributes: true, attributeFilter: ["style"] });
+    });
+    observer.observe(section, { attributes: true, attributeFilter: ["style"] });
 
     if (section.style.display !== "none") _startAutoRefresh();
   }
+
+  window.addEventListener("beforeunload", () => {
+    _stopAutoRefresh();
+    if (observer) observer.disconnect();
+    browser.runtime.onMessage.removeListener(_onMemoryLogsUpdated);
+  });
 }
 
 let _activityRenderDebounce = null;
@@ -473,7 +718,7 @@ function _isMergeableDuplicate(prev, next) {
   return prev.msg === next.msg && prev.source === next.source && prev.level === next.level;
 }
 
-browser.runtime.onMessage.addListener((message) => {
+function _onMemoryLogsUpdated(message) {
   if (message.action !== "MEMORY_LOGS_UPDATED" || !message.newEntries) return;
 
   for (const entry of message.newEntries) {
@@ -489,4 +734,6 @@ browser.runtime.onMessage.addListener((message) => {
 
   clearTimeout(_activityRenderDebounce);
   _activityRenderDebounce = setTimeout(_renderActivity, 100);
-});
+}
+
+browser.runtime.onMessage.addListener(_onMemoryLogsUpdated);

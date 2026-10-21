@@ -1008,6 +1008,85 @@ button.history-modal-close {
   flex-wrap: wrap;
 }
 
+.debug-filter-input {
+  flex-shrink: 0;
+  width: 150px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--foreground-color-300);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-color-primary);
+}
+
+.debug-filter-input::placeholder {
+  color: var(--text-color-muted);
+}
+
+.debug-filter-input:focus {
+  outline: none;
+  border-color: var(--accent-color-border);
+}
+
+.debug-search {
+  padding-right: 26px;
+}
+
+.debug-toolbar-bottom {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.debug-search-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.debug-search-wrapper.main {
+  flex: 1;
+}
+
+.debug-search-wrapper.activity {
+  width: 100%;
+}
+
+.debug-search-wrapper:has(> input[style*="display: none"]) {
+  display: none;
+}
+
+#debugSearchResetBtn.filter-active,
+#debugTabIdResetBtn.filter-active,
+#debugHostnameResetBtn.filter-active,
+#activitySearchResetBtn.filter-active {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-normal) ease;
+  height: 16px;
+  width: 16px;
+  display: block !important;
+}
+
+#debugSearchResetBtn.filter-active:hover,
+#debugTabIdResetBtn.filter-active:hover,
+#debugHostnameResetBtn.filter-active:hover,
+#activitySearchResetBtn.filter-active:hover {
+  opacity: 1;
+}
+
+#debugFiltersToggleBtn {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-normal) ease;
+}
+
 .btn-danger {
   background: var(--red-color-dark);
   border: 1px solid var(--red-color-dark);
@@ -1061,15 +1140,59 @@ button.history-modal-close {
 
 .debug-log-row {
   display: grid;
-  grid-template-columns: auto 130px 44px 80px 1fr;
-  align-items: flex-start;
-  align-items: baseline;
-  gap: 0 8px;
-  padding: 4px 8px;
+  grid-template-columns:
+    auto minmax(0, var(--wp-log-col-time, 130px)) minmax(0, var(--wp-log-col-level, 44px)) minmax(0, var(--wp-log-col-source, 80px)) minmax(
+      0,
+      var(--wp-log-col-meta, 180px)
+    )
+    1fr;
+  align-items: start;
+  gap: 0 10px;
+  padding: 6px 10px;
+  min-width: 0;
   border-bottom: 1px solid var(--foreground-color-200);
-  line-height: 1.5;
+  line-height: 1.6;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   transition: background var(--transition-reduced-fast);
+}
+
+.debug-log-container {
+  --wp-log-col-time: 130px;
+  --wp-log-col-level: 44px;
+  --wp-log-col-source: 80px;
+  --wp-log-col-meta: 180px;
+}
+
+.debug-log-time,
+.debug-log-level,
+.debug-log-source,
+.debug-log-meta {
+  position: relative;
+  min-height: 20px;
+}
+
+.debug-col-grip {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+  opacity: 0.4;
+  transition:
+    opacity 0.12s,
+    width 0.12s,
+    background 0.12s;
+  background: var(--border-color);
+}
+
+.debug-col-grip:hover,
+.debug-col-grip.dragging {
+  opacity: 1;
+  width: 6px;
+  background: var(--accent-color);
 }
 
 .debug-log-line {
@@ -1121,9 +1244,12 @@ button.history-modal-close {
 
 .debug-log-time {
   color: var(--text-color-muted);
-  white-space: nowrap;
   font-size: 10px;
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .debug-log-level {
@@ -1132,6 +1258,10 @@ button.history-modal-close {
   font-size: 9.5px;
   letter-spacing: 0.04em;
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .level-info .debug-log-level {
@@ -1151,11 +1281,23 @@ button.history-modal-close {
   text-overflow: ellipsis;
   font-size: 10px;
   user-select: none;
+  min-width: 0;
+}
+
+.debug-log-meta {
+  color: var(--text-color-muted);
+  font-size: 10px;
+  user-select: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .debug-log-msg {
   color: var(--text-color-primary);
-  word-break: break-word;
+  min-width: 0;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -1180,6 +1322,7 @@ button.history-modal-close {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .activity-pills {
@@ -1198,6 +1341,8 @@ button.history-modal-close {
   font-size: 10px;
   color: var(--text-color-muted);
   font-family: "SFMono-Regular", Consolas, monospace;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .activity-decision {
