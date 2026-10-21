@@ -19,9 +19,8 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist) {
   let artist = typeof inputArtist === "string" ? inputArtist : "";
 
   if (!title) return { title, artist };
-  if (!window._NORMALIZATION_STATUS_) window._NORMALIZATION_STATUS_ = await browser.storage.local.get("normalization");
 
-  const { normalization } = window._NORMALIZATION_STATUS_ || (await browser.storage.local.get("normalization"));
+  const { normalization } = await browser.storage.local.get("normalization");
   const defaultValue = [true, false];
   const map = {
     enable: defaultValue,
@@ -38,12 +37,12 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist) {
   const canonical = (s) =>
     (s || "")
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "")
+      .replace(/[^\p{L}\p{N}]+/gu, "")
       .trim();
 
   const splitArtists = (str) =>
     (str || "")
-      .split(/\s*(?:,|&|\+|x|×|feat\.?|featuring|ft\.?|with)\s*/i)
+      .split(/\s*(?:,|&|\+|×)\s*|\s*(?<!\S)(?:x|feat\.?|featuring|ft\.?|with)(?=\s)\s*/i)
       .map((s) => s.trim())
       .filter(Boolean);
 
@@ -61,16 +60,29 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist) {
     const left = dashMatch[1].trim();
     const right = dashMatch[2].trim() + (parenPart ? " " + parenPart : "");
 
+    // If artist duplicates the title, treat it as redundant ("A - B" in both).
+    // The actual artist is the left part of the title, so the artist field adds no information.
+    const artistEchoesTitle = !!canonical(artist) && canonical(artist) === canonical(title);
+
     // stripDashPrefix: remove the left part of the dash
     if (stripDashPrefix) {
       title = right;
+      if (artistEchoesTitle) artist = left;
       return { title, artist };
     }
 
     const leftSet = new Set(splitArtists(left).map(canonical).filter(Boolean));
-    const inputSet = new Set(splitArtists(artist).map(canonical).filter(Boolean));
+    const inputSet = new Set(
+      splitArtists(artistEchoesTitle ? left : artist)
+        .map(canonical)
+        .filter(Boolean),
+    );
 
     if (replaceArtist) {
+      if (artistEchoesTitle) {
+        return { title: right, artist: left };
+      }
+
       if (isRemix(title)) {
         const remixer = artist;
         artist = left;
@@ -96,7 +108,10 @@ async function normalizeTitleAndArtist(inputTitle, inputArtist) {
       const remaining = [...inputSet].filter((p) => !leftSet.has(p));
       const remainingInParen = remaining.every((p) => parenSet.has(p));
 
-      if (hasOverlap && remainingInParen) title = right;
+      if (hasOverlap && remainingInParen) {
+        title = right;
+        if (artistEchoesTitle) artist = left;
+      }
     }
   }
 
