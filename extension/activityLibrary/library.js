@@ -786,12 +786,26 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   const filterBar = document.createElement("div");
   filterBar.className = "script-filter-bar";
 
+  const searchWrapper = document.createElement("div");
+  searchWrapper.className = "script-search-wrapper";
+
   const searchInput = document.createElement("input");
   searchInput.type = "text";
   searchInput.className = "script-search input";
   searchInput.dataset.repoId = repo.id;
   searchInput.placeholder = i18n.t("parserlist.search_site");
-  filterBar.appendChild(searchInput);
+  searchWrapper.appendChild(searchInput);
+
+  const resetBtn = document.createElement("span");
+  resetBtn.className = "script-filter-reset";
+  resetBtn.dataset.repoId = repo.id;
+  resetBtn.setAttribute("data-i18n", "common.reset");
+  resetBtn.setAttribute("data-i18n-attr", "title");
+  resetBtn.title = i18n.t("common.reset");
+  resetBtn.appendChild(createSVG(svg_paths.crossIconPaths));
+  searchWrapper.appendChild(resetBtn);
+
+  filterBar.appendChild(searchWrapper);
 
   // Category Select Container
   const categorySelect = document.createElement("select");
@@ -907,6 +921,18 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
     if (!chip) return;
     for (const c of chipRow.querySelectorAll(".filter-chip")) c.classList.remove("active");
     chip.classList.add("active");
+    applyFiltersInPlace(block, true);
+  });
+
+  resetBtn.addEventListener("click", () => {
+    const searchEl = block.querySelector(".script-search");
+    const categorySelect = block.querySelector(".script-category-select");
+    const chipRowEl = block.querySelector(".filter-chip-row");
+    if (searchEl) searchEl.value = "";
+    categorySelect?.tomselect?.clear();
+    chipRowEl?.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
+    const allChip = chipRowEl?.querySelector(".filter-chip[data-filter='all']");
+    if (allChip) allChip.classList.add("active");
     applyFiltersInPlace(block, true);
   });
 
@@ -1142,6 +1168,338 @@ const applyFiltersInPlace = (block, resetPage = false) => {
 
   const unloadedFavIcons = listEl.querySelectorAll(".script-row:not([style*='display: none']) .script-favicon:not([src])");
   if (typeof loadFavIcons === "function" && unloadedFavIcons.length > 0) loadFavIcons(unloadedFavIcons);
+
+  const resetBtn = block.querySelector(".script-filter-reset");
+  if (resetBtn) {
+    const hasSearch = searchEl?.value.trim().length > 0;
+    const hasCategory = (categorySelect?.tomselect?.getValue() ?? []).length > 0;
+    const activeChip = block.querySelector(".filter-chip.active");
+    const hasChip = activeChip && activeChip.dataset.filter !== "all";
+    resetBtn.classList.toggle("filter-active", hasSearch || hasCategory || hasChip);
+  }
+};
+
+// Issue report: browser info + DebugDB logs (GitHub Markdown)
+const REPORT_LOG_ENTRY_LIMIT = 200;
+
+const LOG_SOURCE_NOISE_BLOCKLIST = [
+  "[background:keepAlive]",
+  "[background:setupContextMenus]",
+  "[background:scheduleHistoryAdd]",
+  "[background:handleListUserScripts]",
+  "[background:init]",
+  "[GitHubStore]",
+  "[mainParser:initParsers]",
+  "[main:scheduleNextUpdate]",
+];
+
+const isNoiseLine = (text) => LOG_SOURCE_NOISE_BLOCKLIST.some((prefix) => text.includes(prefix));
+
+const readMemoryLogsForReport = async () => {
+  try {
+    const res = await msg("debug_read_memory_logs");
+    return Array.isArray(res?.entries) ? res.entries : [];
+  } catch (err) {
+    logError("[library:reportIssue]: Failed to read memory logs:", err);
+    return [];
+  }
+};
+
+const mergeAllEntries = (logEntries, activityEntries) => {
+  const tagged = [...logEntries.map((e) => ({ ...e, channel: "log" })), ...activityEntries.map((e) => ({ ...e, channel: "activity" }))];
+  return tagged.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+};
+
+const readDebugLogsForReport = async (hostname) => {
+  try {
+    const [logRes, memRes] = await Promise.all([msg("debug_read_logs", { hostname }), msg("debug_read_memory_logs", { hostname })]);
+    const logEntries = Array.isArray(logRes?.entries) ? logRes.entries : [];
+    const memEntries = Array.isArray(memRes?.entries) ? memRes.entries : [];
+    return mergeAllEntries(logEntries, memEntries);
+  } catch (err) {
+    logError("[library:reportIssue]: Failed to read logs:", err);
+    return [];
+  }
+};
+
+const formatReportLogTimestamp = (ts) => {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+const sanitizeReportLogMessage = (message) => {
+  let text;
+  if (message === null || message === undefined) text = "";
+  else if (typeof message === "object") {
+    try {
+      text = JSON.stringify(message);
+    } catch {
+      text = String(message);
+    }
+  } else {
+    text = String(message);
+  }
+  return text.replace(/\s+/g, " ").replace(/`{3,}/g, "'''").trim();
+};
+
+const formatReportLogs = (entries, limit = REPORT_LOG_ENTRY_LIMIT) => {
+  if (!entries.length) return "_No logs available._";
+
+  const recent = limit > 0 ? [...entries].reverse().slice(0, limit).reverse() : entries;
+  const omitted = entries.length - recent.length;
+  const lines = recent.map((entry) => {
+    const date = formatReportLogTimestamp(entry.ts);
+    const level = String(entry.level ?? "info").toUpperCase();
+    const source = entry.source ? ` ${entry.source}` : "";
+    const count = entry.count > 1 ? ` (x${entry.count})` : "";
+    return `${date}  [${level}]${source}: ${sanitizeReportLogMessage(entry.msg)}${count}`;
+  });
+
+  if (omitted > 0) lines.unshift(`... showing the ${recent.length} most recent of ${entries.length} entries (${omitted} older omitted) ...`);
+  return lines.join("\n");
+};
+
+const getReportBrowserInfo = () => {
+  const ua = navigator.userAgent || "unknown";
+  const platform = navigator.userAgentData?.platform || navigator.platform || "unknown";
+  const language = navigator.language || navigator.languages?.[0] || "unknown";
+
+  let name = "Unknown";
+  let version = "";
+
+  const browsers = [
+    [/Edg(?:e|A|iOS)?\/([\d.]+)/, "Edge"],
+    [/OPR\/([\d.]+)/, "Opera"],
+    [/Firefox\/([\d.]+)/, "Firefox"],
+    [/Vivaldi\/([\d.]+)/, "Vivaldi"],
+    [/Chrome\/([\d.]+)/, "Chrome"],
+    [/Version\/([\d.]+).*Safari/, "Safari"],
+  ];
+
+  for (const [pattern, label] of browsers) {
+    const match = ua.match(pattern);
+    if (match) {
+      name = label;
+      version = match[1];
+      break;
+    }
+  }
+
+  return {
+    browser: version ? `${name} ${version}` : name,
+    platform,
+    language,
+    userAgent: ua,
+  };
+};
+
+const extractReportHostname = (meta) => {
+  if (!meta?.domain) return null;
+  const d = Array.isArray(meta.domain) ? meta.domain[0] : meta.domain;
+  if (typeof d !== "string") return null;
+  try {
+    const withoutProtocol = d.replace(/^https?:\/\//, "");
+    const hostPart = withoutProtocol.split("/")[0];
+    const cleaned = hostPart.replace(/^\*\./, "");
+    return cleaned.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+};
+
+const getScriptLogTokens = (meta, sid) => {
+  const tokens = new Set();
+  const add = (value) => {
+    if (typeof value !== "string") return;
+    const token = value.trim().toLowerCase();
+    if (token.length >= 3) tokens.add(token);
+  };
+
+  add(meta?.title);
+  add(meta?.id);
+  add(meta?.name);
+  add(sid);
+
+  const domains = Array.isArray(meta?.domain) ? meta.domain : meta?.domain ? [meta.domain] : [];
+  for (const domain of domains) {
+    const host = String(domain)
+      .replace(/^https?:\/\//, "")
+      .split("/")[0]
+      .replace(/^\*\./, "")
+      .toLowerCase();
+    add(host);
+    add(host.replace(/^www\./, ""));
+  }
+
+  return [...tokens];
+};
+
+const filterReportLogs = (entries, tokens, hostname) => {
+  if (!tokens.length && !hostname) return entries;
+
+  return entries.filter((entry) => {
+    const text = typeof entry.msg === "string" ? entry.msg : "";
+    const level = String(entry.level ?? "info").toLowerCase();
+
+    if (text.includes("[selector:")) return false;
+
+    if (level === "info" && isNoiseLine(text)) return false;
+
+    if (hostname) {
+      const entryHostname = String(entry.hostname ?? "").toLowerCase();
+      if (!entryHostname) return false;
+      if (entryHostname !== hostname && !entryHostname.endsWith("." + hostname)) return false;
+    }
+
+    const isDomainLine = text.includes("[isAllowedDomain]:");
+    const isRegistrationLine = text.includes("[userScriptWorker]: Registered user script:");
+    const isUserScriptLine = text.includes("[mainParser:userScript]");
+    if (isDomainLine || isRegistrationLine || isUserScriptLine) {
+      const lower = text.toLowerCase();
+      return tokens.some((token) => lower.includes(token));
+    }
+
+    return true;
+  });
+};
+
+const filterReportLogsByActiveTab = (entries, parserId) => {
+  let refEntry = null;
+  for (const entry of entries) {
+    const text = typeof entry.msg === "string" ? entry.msg : String(entry.msg ?? "");
+    if (!text.includes("New active tab selected")) continue;
+    if (entry.parserId != null && entry.parserId !== parserId) continue;
+    if (entry.parserId == null && !text.includes(parserId)) continue;
+    if (refEntry === null || entry.ts >= refEntry.ts) refEntry = entry;
+  }
+
+  if (!refEntry) return entries;
+
+  const refTs = refEntry.ts;
+  const selectedTabId = refEntry.tabId != null ? String(refEntry.tabId) : null;
+
+  return entries.filter((entry) => {
+    if (entry.ts < refTs) return false;
+    const text = typeof entry.msg === "string" ? entry.msg : String(entry.msg ?? "");
+    const tabMatch = selectedTabId != null && (String(entry.tabId ?? "") === selectedTabId || text.includes(selectedTabId));
+    const parserMatch = (entry.parserId != null && entry.parserId === parserId) || text.includes(parserId);
+    return tabMatch || parserMatch;
+  });
+};
+
+const buildTechnicalDetailsMarkdown = async (meta, sid) => {
+  const { browser: browserName, platform, language, userAgent } = getReportBrowserInfo();
+  const hostname = extractReportHostname(meta);
+  const tokens = getScriptLogTokens(meta, sid);
+  let entries = await readDebugLogsForReport(hostname);
+  entries = filterReportLogsByActiveTab(entries, sid);
+  entries = filterReportLogs(entries, tokens, hostname);
+  const fence = "`".repeat(3);
+  const logsBlock = entries.length ? [fence, formatReportLogs(entries), fence].join("\n") : "_No logs captured._";
+
+  const details = [
+    `<details>`,
+    `<summary><strong>Technical Details</strong></summary>`,
+    ``,
+    `- **Browser:** ${browserName}`,
+    `- **Platform:** ${platform}`,
+    `- **Language:** ${language}`,
+    `- **User Agent:** \`${userAgent}\``,
+  ];
+
+  const { webOnlyMode: storedWebOnlyMode } = await browser.storage.local.get("webOnlyMode");
+  const webOnlyMode = storedWebOnlyMode ?? false;
+  details.push(`- **Extension Mode:** ${webOnlyMode ? "Web" : "Bridge"}`);
+
+  if (!webOnlyMode) {
+    const { serverPort: storedPort } = await browser.storage.local.get("serverPort");
+    const currentPort = storedPort ?? CONFIG.serverPort;
+    const response = await fetchWithTimeout(`http://localhost:${currentPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+    details.push(`- **Bridge Status:** ${response && response.ok ? "Connected" : "Not Connected"}`);
+  }
+
+  details.push(``, `**Recent Logs**`, ``, logsBlock, ``, `</details>`);
+
+  return details.join("\n");
+};
+
+const fillIssueBodyInPage = (issueBody) => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const findBodyTextarea = () => {
+    const components = document.querySelectorAll("[data-component='TextInput']");
+    for (const component of components) {
+      const textarea = component.querySelector("textarea");
+      if (textarea) return textarea;
+    }
+    const explicit = document.querySelector("textarea[name='issue[body]'], textarea#issue_body, textarea[aria-label*='body' i]");
+    if (explicit) return explicit;
+    return document.querySelector("textarea");
+  };
+
+  const setNativeValue = (element, value) => {
+    const descriptor = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value");
+    if (descriptor?.set) descriptor.set.call(element, value);
+    else element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    const tracker = element._valueTracker;
+    if (tracker?.setValue) tracker.setValue(value);
+  };
+
+  const fillOnce = (textarea) => {
+    if (!textarea) return false;
+    textarea.focus();
+    textarea.scrollIntoView({ block: "center" });
+    setNativeValue(textarea, issueBody);
+    return textarea.value === issueBody;
+  };
+
+  return (async () => {
+    const deadline = Date.now() + 20000;
+    let textarea = null;
+    let wroteAtLeastOnce = false;
+    let stableStreak = 0;
+
+    while (Date.now() < deadline) {
+      const pageLoaded = document.readyState === "complete";
+
+      const found = findBodyTextarea();
+      if (found) textarea = found;
+
+      if (textarea) {
+        const isEmpty = !textarea.value || textarea.value.trim() === "";
+
+        if (!wroteAtLeastOnce || isEmpty) wroteAtLeastOnce = fillOnce(textarea);
+      }
+
+      if (pageLoaded && wroteAtLeastOnce && textarea && textarea.value === issueBody) {
+        stableStreak += 1;
+        if (stableStreak >= 5) return { ok: true };
+      } else {
+        stableStreak = 0;
+      }
+
+      await sleep(150);
+    }
+
+    return { ok: Boolean(textarea && textarea.value === issueBody) };
+  })();
+};
+
+const fillGitHubIssueBody = async (tabId, issueBody) => {
+  if (tabId == null) return false;
+  try {
+    const [injection] = await browser.scripting.executeScript({
+      target: { tabId },
+      func: fillIssueBodyInPage,
+      args: [issueBody],
+    });
+    return Boolean(injection?.result?.ok);
+  } catch (_) {
+    return false;
+  }
 };
 
 // build the install/update/remove action buttons for a script row
@@ -1157,7 +1515,7 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
   const authors = Array.isArray(meta.authors) ? meta.authors : meta.authors ? [meta.authors] : [];
   const authorMentions = authors.map((a) => `@${a}`).join(", ");
   const manifest = browser.runtime.getManifest();
-  const issueBody = [
+  const issueParts = [
     `**Script:** [${meta.title ?? sid}](${repoUrl}/blob/main/${meta.file ?? "activities"})`,
     `**Script Version:** ${meta.version ?? "—"}`,
     `**Extension Version:** ${manifest.version ?? "—"}`,
@@ -1166,18 +1524,27 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     `---`,
     `<!-- Describe the issue below -->`,
     ``,
-  ]
-    .filter((l) => l !== null)
-    .join("\n");
+  ].filter((l) => l !== null);
 
-  const issueUrl = `${repoUrl}/issues/new?title=${issueTitle}&body=${encodeURIComponent(issueBody)}`;
+  const openIssueReport = async () => {
+    const technicalDetails = await buildTechnicalDetailsMarkdown(meta, sid);
+    const issueBody = [...issueParts, technicalDetails, ``].join("\n");
+
+    // Only the (short) title goes into the URL. Embedding the full body in the
+    // `?body=` parameter exceeds GitHub's "URI too long" limit, so the body is
+    // injected into the compose textarea after the page fully loads instead.
+    const composeUrl = `${repoUrl}/issues/new?title=${issueTitle}`;
+    const tab = await browser.tabs.create({ url: composeUrl });
+    await fillGitHubIssueBody(tab?.id, issueBody);
+  };
+
   const btnIssue = document.createElement("button");
   btnIssue.className = "script-action-btn report-issue-btn";
   btnIssue.title = i18n.t("library.action.reportIssue");
   btnIssue.appendChild(iconSVG("issueIconPaths", 14));
   btnIssue.addEventListener("click", (e) => {
     e.stopPropagation();
-    browser.tabs.create({ url: issueUrl });
+    openIssueReport();
   });
   actionsEl.appendChild(btnIssue);
 

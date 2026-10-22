@@ -377,6 +377,45 @@ body {
   display: none;
 }
 
+.script-search-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1;
+}
+
+.script-filter-reset {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-default);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--transition-normal) ease;
+}
+
+.script-filter-reset.filter-active {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-normal) ease;
+  height: 16px;
+  width: 16px;
+  display: flex !important;
+}
+
+.script-filter-reset.filter-active:hover {
+  opacity: 1;
+}
+
 .script-list {
   display: grid;
   gap: 18px;
