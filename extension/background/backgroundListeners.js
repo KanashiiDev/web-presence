@@ -1090,21 +1090,59 @@ const handleClearRpc = async (sender) => {
 
 const handleIsRpcConnected = async () => {
   const mode = state.webOnlyMode ? "web-only" : "default";
+
   try {
+    if (state.webOnlyMode) {
+      const discordTabs = await browser.tabs.query({
+        url: ["https://discord.com/*"],
+      });
+
+      if (!discordTabs.length) {
+        return {
+          ok: false,
+          reason: "No Discord tab found",
+          discordTabExists: false,
+          mode,
+        };
+      }
+
+      return {
+        ok: true,
+        discordTabExists: true,
+        mode,
+      };
+    }
+
     const res = await fetchWithTimeout(`http://localhost:${state.serverPort}/health`, {}, CONFIG.requestTimeout);
 
     if (!res) {
-      return { ok: false, reason: "No response from RPC server", mode };
+      return {
+        ok: false,
+        reason: "No response from RPC server",
+        mode,
+      };
     }
 
     if (!res.ok) {
-      return { ok: false, reason: `HTTP ${res.status}`, mode };
+      return {
+        ok: false,
+        reason: `HTTP ${res.status}`,
+        mode,
+      };
     }
 
     const data = await res.json();
-    return { ok: !!data.rpcConnected, mode };
+
+    return {
+      ok: !!data.rpcConnected,
+      mode,
+    };
   } catch (err) {
-    return { ok: false, reason: err.message || "Unknown error", mode };
+    return {
+      ok: false,
+      reason: err.message || "Unknown error",
+      mode,
+    };
   }
 };
 

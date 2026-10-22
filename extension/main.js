@@ -394,16 +394,17 @@ async function mainLoop() {
 }
 
 // Process the RPC update and handle connection
+
 async function processRPCUpdate(song, progress) {
   const rpcHealth = await isRpcConnected();
 
-  // Skip health check dependency if running in web-only mode
-  if (rpcHealth?.mode !== "web-only" && !rpcHealth?.ok) {
-    if (state.isConnected) {
+  if (!rpcHealth?.ok) {
+    if (state.isConnected === true) {
       logInfo(rpcHealth?.reason ? `[main]: RPC health check failed: ${rpcHealth.reason}` : "[main]: 🔌 RPC CONNECTION LOST!");
     } else if (state.isConnected === null) {
       logInfo(rpcHealth?.reason ? `[main]: RPC health check failed: ${rpcHealth.reason}` : "[main]: RPC not connected");
     }
+
     state.isConnected = false;
     return false;
   }
@@ -421,18 +422,21 @@ async function processRPCUpdate(song, progress) {
       if (!state.isConnected) {
         logInfo("[main]: RPC CONNECTION ESTABLISHED!");
       }
-      state.isConnected = true;
 
+      state.isConnected = true;
       rpcState.updateLastActivity(song, progress);
       logInfo("[main]: Rich Presence Updated Successfully!");
       return true;
-    } else if (res?.waiting) {
+    }
+
+    if (res?.waiting) {
       logInfo("[main]: RPC waiting (tab not audible yet)");
       return false;
-    } else {
-      logInfo("[main]: unexpected response state:", res?.ok !== undefined ? `ok=${res.ok}, waiting=${res.waiting}` : String(res).slice(0, 200));
-      return false;
     }
+
+    logInfo("[main]: unexpected response state:", res?.ok !== undefined ? `ok=${res.ok}, waiting=${res.waiting}` : String(res).slice(0, 200));
+
+    return false;
   } catch (e) {
     logError("[main]: RPC update failed:", e);
     logError("[main]: Stack trace:", e.stack);
