@@ -923,7 +923,7 @@ const handleGetSongInfo = async () => {
 const handleUpdateRpc = async (req, sender) => {
   const tab = await getSenderTab(sender);
   if (!tab) {
-    logWarn("[background]: No tab info from sender, skipping:", req);
+    logInfo("[background]: No tab info from sender, skipping:", req);
     return { ok: false, error: "No tab info" };
   }
 
@@ -967,7 +967,7 @@ const handleUpdateRpc = async (req, sender) => {
   if (isAudible && state.audibleTimers.has(tabId)) {
     clearTimeout(state.audibleTimers.get(tabId));
     state.audibleTimers.delete(tabId);
-    logInfo(`[background]: Tab ${tabId} resumed audio in UPDATE_RPC, timer cancelled`);
+    logInfo(`[background]: Tab ${tabId} resumed audio in UPDATE_RPC, timer cancelled`, { tabId, hostname: tab.url ? new URL(tab.url).hostname : null, tabUrl: tab.url });
   }
 
   // Check if it was on the map before setting
@@ -984,7 +984,11 @@ const handleUpdateRpc = async (req, sender) => {
 
   // If it hasn't entered the map yet and is not being played, reject it
   if (!isPlaying && !isAlreadyTracked) {
-    logInfo(`[background]: Tab ${tabId} UPDATE_RPC: not audible, not playing, not in map, rejecting`);
+    logInfo(`[background]: Tab ${tabId} UPDATE_RPC: not audible, not playing, not in map, rejecting`, {
+      tabId,
+      hostname: tab.url ? new URL(tab.url).hostname : null,
+      tabUrl: tab.url,
+    });
     state.activeTabMap.set(tabId, payload);
     return { ok: false, waiting: true };
   }
@@ -994,12 +998,16 @@ const handleUpdateRpc = async (req, sender) => {
 
   // It's not being played, but if it's already on the map, keep the RPC
   if (!isPlaying) {
-    logInfo(`[background]: Tab ${tabId} UPDATE_RPC: not playing but already tracked, keeping RPC`);
+    logInfo(`[background]: Tab ${tabId} UPDATE_RPC: not playing but already tracked, keeping RPC`, {
+      tabId,
+      hostname: tab.url ? new URL(tab.url).hostname : null,
+      tabUrl: tab.url,
+    });
     return { ok: true };
   }
 
   // 3) Add History
-  if (req.data.title !== "_Unknown Title_" && req.data.artist !== "_Unknown Artist_" && req.data.artist !== "-1") {
+  if (req.data.title !== "_Unknown Title_" && req.data.artist !== "_Unknown Artist_" && req.data.artist !== "-1" && !req.data.category?.includes("other")) {
     scheduleHistoryAdd(tabId, {
       title: req.data.title,
       artist: req.data.artist,
@@ -1069,7 +1077,7 @@ const handleIsTabAudible = async (sender) => {
 const handleClearRpc = async (sender) => {
   const tab = await getSenderTab(sender);
   if (!tab) {
-    logWarn("[background]: No tab info from sender, skipping");
+    logInfo("[background]: No tab info from sender, skipping");
     return { ok: false, error: "No tab info" };
   }
 
@@ -1861,14 +1869,37 @@ const setupListeners = () => {
             break;
           case "debug_log": {
             if (typeof debugLog === "function") {
-              const { level = "info", source = "unknown", args = [] } = req;
-              debugLog(level, source, args);
+              const { level = "info", source = "unknown", args = [], tabId, tabUrl, hostname, parserId } = req;
+              // Authoritative sender context; caller-supplied metadata is only a fallback
+              // and is treated as untrusted input.
+              const senderTabId = sender?.tab?.id;
+              const senderUrl = sender?.tab?.url || sender?.url;
+              let senderHostname = null;
+              if (senderUrl) {
+                try {
+                  senderHostname = new URL(senderUrl).hostname;
+                } catch {}
+              }
+              const meta = {
+                tabId: senderTabId != null ? senderTabId : tabId != null ? tabId : null,
+                tabUrl: senderUrl != null ? senderUrl : tabUrl != null ? tabUrl : null,
+                hostname: senderHostname != null ? senderHostname : hostname != null ? hostname : null,
+                parserId: parserId != null ? parserId : null,
+              };
+              debugLog(level, source, args, meta);
             }
             result = { ok: true };
             break;
           }
           case "debug_read_logs": {
-            result = { ok: true, entries: await debugLogReadAll() };
+            result = {
+              ok: true,
+              entries: await debugLogReadAll({
+                tabId: req.tabId,
+                hostname: req.hostname,
+                parserId: req.parserId,
+              }),
+            };
             break;
           }
           case "debug_clear_logs": {
@@ -1881,7 +1912,23 @@ const setupListeners = () => {
               if (!state._memoryLogs) {
                 state._memoryLogs = [];
               }
-              state._memoryLogs.push(...req.payload);
+              // Enrich each entry with authoritative sender context when the
+              // entry does not already carry it.
+              const senderTabId = sender?.tab?.id;
+              const senderUrl = sender?.tab?.url || sender?.url;
+              let senderHostname = null;
+              if (senderUrl) {
+                try {
+                  senderHostname = new URL(senderUrl).hostname;
+                } catch {}
+              }
+              const enriched = req.payload.map((entry) => ({
+                ...entry,
+                tabId: entry.tabId != null ? entry.tabId : senderTabId != null ? senderTabId : null,
+                hostname: entry.hostname != null ? entry.hostname : senderHostname != null ? senderHostname : null,
+                tabUrl: entry.tabUrl != null ? entry.tabUrl : senderUrl != null ? senderUrl : null,
+              }));
+              state._memoryLogs.push(...enriched);
 
               if (state._memoryLogs.length > 1000) {
                 state._memoryLogs = state._memoryLogs.slice(-1000);
@@ -1890,7 +1937,7 @@ const setupListeners = () => {
                 browser.runtime
                   .sendMessage({
                     action: "MEMORY_LOGS_UPDATED",
-                    newEntries: req.payload,
+                    newEntries: enriched,
                   })
                   .catch(() => {});
               } catch (e) {}
@@ -1903,7 +1950,14 @@ const setupListeners = () => {
           }
 
           case "debug_read_memory_logs": {
-            result = { ok: true, entries: state._memoryLogs || [] };
+            const entries = state._memoryLogs || [];
+            const filtered = entries.filter((entry) => {
+              if (req.tabId != null && entry.tabId !== req.tabId) return false;
+              if (req.hostname != null && entry.hostname !== req.hostname) return false;
+              if (req.parserId != null && entry.parserId !== req.parserId) return false;
+              return true;
+            });
+            result = { ok: true, entries: filtered };
             break;
           }
 
@@ -2064,7 +2118,7 @@ const setupListeners = () => {
       if (changeInfo.mutedInfo?.muted === true) {
         const pingRes = await safePingTab(tabId).catch(() => null);
         if (!pingRes?.isPlaying) {
-          logInfo(`[background]: Tab ${tabId} muted and not playing, clearing RPC`);
+          logInfo(`[background]: Tab ${tabId} muted and not playing, clearing RPC`, { tabId });
           if (state.audibleTimers.has(tabId)) {
             clearTimeout(state.audibleTimers.get(tabId));
             state.audibleTimers.delete(tabId);
@@ -2073,7 +2127,7 @@ const setupListeners = () => {
           state.tabUrlMap.delete(tabId);
           return;
         }
-        logInfo(`[background]: Tab ${tabId} muted but isPlaying is true, keeping RPC`);
+        logInfo(`[background]: Tab ${tabId} muted but isPlaying is true, keeping RPC`, { tabId });
       }
 
       // 2) Domain change control
@@ -2086,7 +2140,7 @@ const setupListeners = () => {
 
           if (oldHost !== newHost) {
             shouldClearImmediately = true;
-            logInfo(`[background]: Tab ${tabId} domain changed: ${oldHost} → ${newHost}, clearing RPC immediately`);
+            logInfo(`[background]: Tab ${tabId} domain changed: ${oldHost} → ${newHost}, clearing RPC immediately`, { tabId, hostname: newHost });
           }
         } catch (err) {
           logError("[background]: Domain comparison error:", err);
@@ -2101,7 +2155,7 @@ const setupListeners = () => {
 
           if (currentHost !== tabHost) {
             shouldClearImmediately = true;
-            logInfo(`[background]: Tab ${tabId} page reloaded on different domain, clearing RPC immediately`);
+            logInfo(`[background]: Tab ${tabId} page reloaded on different domain, clearing RPC immediately`, { tabId });
           }
         } catch (err) {
           logError("[background]: Page reload check error:", err);
@@ -2127,14 +2181,14 @@ const setupListeners = () => {
         if (!tabState.isAudioPlaying) {
           tabState.isAudioPlaying = true;
           state.activeTabMap.set(tabId, tabState);
-          logInfo(`[background]: Tab ${tabId} became audible, state updated`);
+          logInfo(`[background]: Tab ${tabId} became audible, state updated`, { tabId });
         }
 
         // If there is an audible timer, cancel it
         if (state.audibleTimers.has(tabId)) {
           clearTimeout(state.audibleTimers.get(tabId));
           state.audibleTimers.delete(tabId);
-          logInfo(`[background]: Tab ${tabId} audible resumed, cleanup timer cancelled`);
+          logInfo(`[background]: Tab ${tabId} audible resumed, cleanup timer cancelled`, { tabId });
         }
       } else {
         // The tab no longer active → just update the state
@@ -2143,13 +2197,13 @@ const setupListeners = () => {
           const isStillPlaying = !!pingRes?.isPlaying;
 
           if (isStillPlaying) {
-            logInfo(`[background]: Tab ${tabId} not audible but isPlaying is true, keeping RPC`);
+            logInfo(`[background]: Tab ${tabId} not audible but isPlaying is true, keeping RPC`, { tabId });
             return;
           }
 
           tabState.isAudioPlaying = false;
           state.activeTabMap.set(tabId, tabState);
-          logInfo(`[background]: Tab ${tabId} lost audio, will clear RPC in 5s if not recovered`);
+          logInfo(`[background]: Tab ${tabId} lost audio, will clear RPC in 5s if not recovered`, { tabId });
 
           // Only start a new timer if there isn't one already
           if (!state.audibleTimers.has(tabId)) {
@@ -2161,17 +2215,17 @@ const setupListeners = () => {
                 const stillPlaying = pingRes2?.isPlaying;
 
                 if (!t.audible && !stillPlaying) {
-                  logInfo(`[background]: Tab ${tabId} still not audible after 5s, clearing RPC`);
+                  logInfo(`[background]: Tab ${tabId} still not audible after 5s, clearing RPC`, { tabId });
                   await clearRpcForTab(tabId, "audio stopped for 5+ seconds");
                 } else {
-                  logInfo(`[background]: Tab ${tabId} recovered audio within 5s, keeping RPC active`);
+                  logInfo(`[background]: Tab ${tabId} recovered audio within 5s, keeping RPC active`, { tabId });
                   if (currentState) {
                     currentState.isAudioPlaying = true;
                     state.activeTabMap.set(tabId, currentState);
                   }
                 }
               } catch (err) {
-                logInfo(`[background]: Tab ${tabId} not found during cleanup timer, removing from map`);
+                logInfo(`[background]: Tab ${tabId} not found during cleanup timer, removing from map`, { tabId });
                 state.activeTabMap.delete(tabId);
               } finally {
                 state.audibleTimers.delete(tabId);
@@ -2179,12 +2233,12 @@ const setupListeners = () => {
             }, 5000);
 
             state.audibleTimers.set(tabId, timer);
-            logInfo(`[background]: Tab ${tabId} cleanup timer started (5s)`);
+            logInfo(`[background]: Tab ${tabId} cleanup timer started (5s)`, { tabId });
           }
         }
       }
     } catch (err) {
-      logError(`[background]: Tab ${tabId} onUpdated error:`, err);
+      logError(`[background]: Tab ${tabId} onUpdated error:`, err, { tabId });
     } finally {
       if (newUrl) state.tabUrlMap.set(tabId, newUrl);
     }
@@ -2361,8 +2415,9 @@ function setupIframeListeners() {
     }
 
     if (req.type === "IFRAME_DATA") {
-      if (sender.tab?.id != null) {
-        browser.tabs.sendMessage(sender.tab.id, req, { frameId: 0 }).catch(() => {});
+      const tabId = sender.tab?.id;
+      if (tabId != null) {
+        browser.tabs.sendMessage(tabId, req, { frameId: 0 }).catch(() => {});
       }
       return { ok: true };
     }

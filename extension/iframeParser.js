@@ -9,6 +9,196 @@ function safeSendMessage(msg) {
     return Promise.resolve();
   }
 }
+// Self-contained iframe logger
+//
+// Logs persist via browser.runtime.sendMessage({ action: "debug_log" })
+// -> background.js -> debugLogger.js -> IndexedDB.
+function _iframeLogState() {
+  const key = "__WP_IFRAME_LOG_STATE__";
+  if (!Object.prototype.hasOwnProperty.call(globalThis, key) || !globalThis[key]) {
+    globalThis[key] = { debugMode: false, initialized: false, listenerBound: false, pendingLoad: null };
+  }
+  return globalThis[key];
+}
+
+async function _iframeLoadDebugMode() {
+  const state = _iframeLogState();
+  if (state.pendingLoad) return state.pendingLoad;
+  state.pendingLoad = (async () => {
+    try {
+      const stored = await browser.storage.local.get("debugMode");
+      state.debugMode = stored?.debugMode === 1 || stored?.debugMode === true;
+    } catch {
+      state.debugMode = false;
+    }
+    state.initialized = true;
+    state.pendingLoad = null;
+    return state.debugMode;
+  })();
+  return state.pendingLoad;
+}
+
+function _iframeBindStorageListener() {
+  const state = _iframeLogState();
+  if (state.listenerBound) return;
+  try {
+    if (typeof browser !== "undefined" && browser.storage?.onChanged?.addListener) {
+      browser.storage.onChanged.addListener((changes) => {
+        if (changes && Object.prototype.hasOwnProperty.call(changes, "debugMode")) {
+          state.debugMode = changes.debugMode?.newValue === 1 || changes.debugMode?.newValue === true;
+        }
+      });
+      state.listenerBound = true; // only marked once the listener really exists
+    }
+  } catch {}
+}
+
+function _iframeGetDebugMode() {
+  const state = _iframeLogState();
+  if (!state.initialized) {
+    _iframeLoadDebugMode().catch(() => {});
+  }
+  return state.debugMode;
+}
+
+function _iframeLog(level, event, data) {
+  if (level !== "error" && !_iframeGetDebugMode()) return;
+  const payload = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  const message = { event: event, ctx: "iframeParser", origin: location.hostname.replace(/^www\./i, "").toLowerCase() };
+  for (const key of Object.keys(payload)) message[key] = payload[key];
+  const levelText = level === "error" ? "ERROR" : level === "warn" ? "WARN" : "INFO";
+  const logLine = `[web-presence - ${levelText}] [iframeParser:${event}] ${message.origin}`;
+  if (level === "error") {
+    console.error(logLine, message);
+  } else if (level === "warn") {
+    console.log(logLine, message);
+  } else {
+    console.log(`%c${logLine}`, "color:#2196f3; font-weight:bold;", message);
+  }
+  safeSendMessage({
+    action: "debug_log",
+    level: level,
+    source: "iframe",
+    args: [`[iframeParser:${event}]`, JSON.stringify(message)],
+  }).catch(() => {});
+}
+
+// ---- state-transition logging (per frame, per parser key) ----
+//
+// Polls run every CONFIG.activeInterval (5s by default), so log only state changes.
+// Each iframe has its own globalThis; states are keyed by parser key and cleared on pagehide.
+const _iframeLogStates = (globalThis.__WP_IFRAME_LOG_STATES__ ??= Object.create(null));
+
+function _iframeClearLogStates(scopeKey) {
+  if (typeof scopeKey === "string" && Object.prototype.hasOwnProperty.call(_iframeLogStates, scopeKey)) {
+    delete _iframeLogStates[scopeKey];
+    return;
+  }
+  for (const key of Object.keys(_iframeLogStates)) delete _iframeLogStates[key];
+}
+
+// Exclude volatile values (time, fallback age, pause state) to avoid false
+// state changes on every poll and preserve repeated-message counting.
+function _iframeNormalizeObservation(observation) {
+  return {
+    mode: typeof observation?.mode === "string" ? observation.mode : "unknown",
+    hasResult: observation?.hasResult === true,
+    source: typeof observation?.source === "string" ? observation.source : null,
+    duration: Number.isFinite(observation?.duration) ? Math.round(observation.duration) : null,
+    isCasting: observation?.isCasting === true,
+    fallback: observation?.fallback === true,
+    shape: typeof observation?.shape === "string" ? observation.shape : null,
+  };
+}
+
+function _iframeSameObservation(a, b) {
+  return (
+    !!a &&
+    !!b &&
+    a.mode === b.mode &&
+    a.hasResult === b.hasResult &&
+    a.source === b.source &&
+    a.duration === b.duration &&
+    a.isCasting === b.isCasting &&
+    a.fallback === b.fallback &&
+    a.shape === b.shape
+  );
+}
+
+function _iframeObservationContext(observation) {
+  const context = { key: observation.key, mode: observation.mode };
+  if (observation.source) context.source = observation.source;
+  if (observation.duration != null) context.duration = observation.duration;
+  if (observation.isCasting) context.isCasting = true;
+  if (observation.fallback) context.fallback = true;
+  if (observation.shape) context.shape = observation.shape;
+  return context;
+}
+
+/**
+ * Log one record per state change; drop repeats from console and IndexedDB.
+ *
+ * Track live timing separately from observation state, since cached results may
+ * outlive the video by one fallback window:
+ *   liveSince      - start of the current live run; silence doesn't move it
+ *   lastLiveAt     - timestamp of the latest live observation
+ *   lastLiveHeldMs - duration of the last live run
+ *
+ * On "video disappeared", heldMs = lastLiveAt - liveSince, excluding the gap
+ * between the last live poll and detection of disappearance.
+ */
+function _iframeObserve(key, observation) {
+  const current = _iframeNormalizeObservation(observation);
+  const now = Date.now();
+  const state = (_iframeLogStates[key] ??= { previous: null, liveSince: null, lastLiveAt: null, lastLiveHeldMs: null });
+
+  const isLive = current.hasResult && !current.fallback;
+  if (isLive && state.liveSince == null) state.liveSince = now;
+  if (isLive) state.lastLiveAt = now;
+
+  if (_iframeSameObservation(state.previous, current)) return; // same state: stay silent
+
+  const previous = state.previous;
+  const context = _iframeObservationContext({ ...current, key });
+
+  // Close the live run when live data stops, measured at the last live observation.
+  if (!isLive && state.liveSince != null) {
+    state.lastLiveHeldMs = state.lastLiveAt != null ? state.lastLiveAt - state.liveSince : null;
+    state.liveSince = null;
+    state.lastLiveAt = null;
+  }
+
+  if (!previous) {
+    _iframeLog("info", current.hasResult ? "iframe: video ready" : "iframe: no video", context);
+  } else if (!previous.hasResult && current.hasResult) {
+    _iframeLog("info", "iframe: video appeared", context);
+  } else if (previous.hasResult && !current.hasResult) {
+    const disappeared = { ...context, previousSource: previous.source };
+    if (state.lastLiveHeldMs != null) disappeared.heldMs = state.lastLiveHeldMs;
+    _iframeLog("info", "iframe: video disappeared", disappeared);
+  } else if (previous.source !== current.source) {
+    _iframeLog("info", "iframe: video source changed", { ...context, previousSource: previous.source });
+  } else if (previous.fallback !== current.fallback) {
+    _iframeLog("info", current.fallback ? "iframe: falling back to last known result" : "iframe: fresh results resumed", context);
+  } else {
+    _iframeLog("info", "iframe: video state changed", {
+      ...context,
+      previous: {
+        source: previous.source,
+        duration: previous.duration,
+        isCasting: previous.isCasting,
+        fallback: previous.fallback,
+        shape: previous.shape,
+      },
+    });
+  }
+
+  state.previous = current;
+}
+
+// Initialize debug mode early (single storage read, refreshed by the change listener)
+_iframeBindStorageListener();
+_iframeLoadDebugMode().catch(() => {});
 
 if (window.top !== window) {
   safeSendMessage({ type: "IFRAME_REGISTER" });
@@ -16,6 +206,7 @@ if (window.top !== window) {
   window.addEventListener(
     "pagehide",
     () => {
+      _iframeClearLogStates();
       safeSendMessage({ type: "IFRAME_UNREGISTER" });
     },
     { once: true },
@@ -229,7 +420,7 @@ function getVideoInfo() {
           area: getRectArea(bestContainer),
         };
       } catch (e) {
-        console.warn("JWPlayer error:", e);
+        console.log("JWPlayer error:", e);
         return null;
       }
     },
@@ -348,7 +539,7 @@ function getVideoInfo() {
           area: getRectArea(bestContainer),
         };
       } catch (e) {
-        console.warn("VideoJS error:", e);
+        console.log("VideoJS error:", e);
         return null;
       }
     },
@@ -465,7 +656,7 @@ function getVideoInfo() {
           area: getRectArea(bestContainer),
         };
       } catch (e) {
-        console.warn("Plyr error:", e);
+        console.log("Plyr error:", e);
         return null;
       }
     },
@@ -561,7 +752,7 @@ function getVideoInfo() {
           source: "flowplayer-dom",
         };
       } catch (e) {
-        console.warn("Flowplayer error:", e);
+        console.log("Flowplayer error:", e);
         return null;
       }
     },
@@ -609,7 +800,8 @@ function getVideoInfo() {
           source: "html5",
           area: getRectArea(best),
         };
-      } catch {
+      } catch (err) {
+        _iframeLog("error", "html5: error", { error: err?.message });
         return null;
       }
     },
@@ -617,32 +809,54 @@ function getVideoInfo() {
 
   const playerOrder = ["jwplayer", "videojs", "plyr", "flowplayer", "html5"];
 
+  // Which players were tried and what they returned, kept for the transition record
+  // instead of one log line per player per poll cycle.
+  const chain = [];
+
   for (const name of playerOrder) {
     try {
       const result = players[name]?.();
-      if (!result) continue;
+      if (!result) {
+        chain.push(`${name}:null`);
+        continue;
+      }
 
-      if (result.duration == null && result.currentTime == null && !result.isCasting) continue;
+      if (result.duration == null && result.currentTime == null && !result.isCasting) {
+        chain.push(`${name}:empty`);
+        continue;
+      }
 
       if (result.currentTime != null && result.duration != null) {
         result.currentTime = Math.min(Math.max(0, result.currentTime), result.duration);
       }
+
+      chain.push(`${name}:ok`);
 
       getVideoInfo._lastSuccess = {
         result,
         timestamp: Date.now(),
         source: name,
       };
+      getVideoInfo._lastChain = chain.join("|");
+      getVideoInfo._lastProvenance = "live";
 
       return result;
-    } catch {}
+    } catch (err) {
+      chain.push(`${name}:throw`);
+      _iframeLog("error", "getVideoInfo: player error", { name, error: err?.message });
+      continue;
+    }
   }
+
+  getVideoInfo._lastChain = chain.join("|");
 
   const last = getVideoInfo._lastSuccess;
   if (last && Date.now() - last.timestamp < 6000) {
+    getVideoInfo._lastProvenance = "cache";
     return structuredClone(last.result);
   }
 
+  getVideoInfo._lastProvenance = "none";
   return null;
 }
 
@@ -823,6 +1037,7 @@ function resolveIframeSelectors(iframeSelectors, iframeHostname) {
   if (!fields || typeof fields !== "object") return null;
 
   const result = {};
+  let resolvedCount = 0;
 
   for (const [key, rule] of Object.entries(fields)) {
     // $video private key: spreads the output of getVideoInfo()
@@ -830,6 +1045,7 @@ function resolveIframeSelectors(iframeSelectors, iframeHostname) {
       const videoData = resolveRule({ type: "video" });
       if (videoData && typeof videoData === "object") {
         Object.assign(result, videoData);
+        resolvedCount++;
       }
       continue;
     }
@@ -837,10 +1053,10 @@ function resolveIframeSelectors(iframeSelectors, iframeHostname) {
     const val = resolveRule(rule);
     if (val !== null && val !== undefined) {
       result[key] = val;
+      resolvedCount++;
     }
   }
 
-  // Empty object → null (means no data)
   return Object.keys(result).length > 0 ? result : null;
 }
 
@@ -850,47 +1066,94 @@ browser.runtime.onMessage.addListener(async (msg) => {
   const { key } = msg;
   const iframeHostname = location.hostname.replace(/^www\./i, "").toLowerCase();
 
+  // Only the state transition for `key` is logged (see _iframeObserve); the raw request
+  // arrival would repeat every CONFIG.activeInterval cycle for a settled iframe.
+
   // Built-in parsers
   const entry = window.iframeParsers?.[key];
   if (entry?.fn) {
     if (entry.match) {
       const matches = [entry.match].flat();
-      if (!matches.some((h) => h === "" || iframeHostname.includes(h.toLowerCase()))) return;
+      if (!matches.some((h) => h === "" || iframeHostname.includes(h.toLowerCase()))) {
+        _iframeObserve(key, { mode: "builtin", hasResult: false, shape: "hostname-mismatch" });
+        return;
+      }
     }
     const data = await entry.fn();
-    if (data == null) return;
+    if (data == null) {
+      _iframeObserve(key, { mode: "builtin", hasResult: false, shape: "null" });
+      return;
+    }
+    _iframeObserve(key, {
+      mode: "builtin",
+      hasResult: true,
+      source: typeof data.source === "string" ? data.source : "builtin",
+      duration: data.duration,
+      isCasting: data.isCasting === true,
+      shape: `keys=${Object.keys(data).length}`,
+    });
     safeSendMessage({
       type: "IFRAME_DATA",
       key,
       origin: iframeHostname,
       href: location.href,
       data,
-    });
+    }).catch((err) => _iframeLog("error", "Failed to send IFRAME_DATA", { key, error: err?.message }));
     return;
   }
 
   // iframeSelectors DSL
   if (msg.iframeSelectors) {
     const data = resolveIframeSelectors(msg.iframeSelectors, iframeHostname);
-    if (data == null) return;
+    if (data == null) {
+      _iframeObserve(key, { mode: "dsl", hasResult: false, shape: "null" });
+      return;
+    }
+    _iframeObserve(key, {
+      mode: "dsl",
+      hasResult: true,
+      source: typeof data.source === "string" ? data.source : "iframeSelectors",
+      duration: data.duration,
+      isCasting: data.isCasting === true,
+      shape: `keys=${Object.keys(data).length}`,
+    });
     safeSendMessage({
       type: "IFRAME_DATA",
       key,
       origin: iframeHostname,
       href: location.href,
       data,
-    });
+    }).catch((err) => _iframeLog("error", "Failed to send IFRAME_DATA", { key, error: err?.message }));
     return;
   }
 
   // userAdd / userScript / watchAutoDetect
+  // `fallback` reflects THIS call's provenance: "cache" only while getVideoInfo is serving
+  // the last known result because the current DOM has nothing. It is not a time window, so
+  // it flips back as soon as a real player result returns.
   const data = getVideoInfo();
-  if (data == null) return;
+  if (data == null) {
+    _iframeObserve(key, {
+      mode: "fallback",
+      hasResult: false,
+      shape: getVideoInfo._lastChain ? `chain=${getVideoInfo._lastChain}` : null,
+    });
+    return;
+  }
+  _iframeObserve(key, {
+    mode: "fallback",
+    hasResult: true,
+    source: data.source ?? null,
+    duration: data.duration,
+    isCasting: data.isCasting === true,
+    fallback: getVideoInfo._lastProvenance === "cache",
+    shape: getVideoInfo._lastChain ? `chain=${getVideoInfo._lastChain}` : null,
+  });
   safeSendMessage({
     type: "IFRAME_DATA",
     key,
     origin: iframeHostname,
     href: location.href,
     data,
-  });
+  }).catch((err) => _iframeLog("error", "Failed to send IFRAME_DATA", { key, error: err?.message }));
 });

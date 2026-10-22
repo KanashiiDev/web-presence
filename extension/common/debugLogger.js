@@ -7,6 +7,8 @@ const _memoryLogs = [];
 const MEMORY_ONLY_TAGS = ["[main"];
 const MEMORY_LOG_MAX = 500;
 
+const META_KEYS = ["tabId", "tabUrl", "hostname", "parserId"];
+
 function _isMemoryOnly(msg) {
   return MEMORY_ONLY_TAGS.some((tag) => msg.startsWith(tag));
 }
@@ -14,22 +16,40 @@ function _isMemoryOnly(msg) {
 const _IS_BACKGROUND_CTX = typeof window === "undefined";
 let isSyncing = false;
 
-function _isDuplicateEntry(entry, level, source, msg) {
-  return entry?.level === level && entry?.source === source && entry?.msg === msg;
+function _metaValue(v) {
+  return v == null ? null : v;
 }
 
-function pushMemoryLog(level, source, msg) {
+function _pickMeta(meta) {
+  if (!meta || typeof meta !== "object") return {};
+  const out = {};
+  for (const key of META_KEYS) {
+    if (key in meta) out[key] = _metaValue(meta[key]);
+  }
+  return out;
+}
+
+function _isDuplicateEntry(entry, level, source, msg, meta) {
+  if (entry?.level !== level || entry?.source !== source || entry?.msg !== msg) return false;
+  const m = meta || {};
+  return (
+    _metaValue(entry.tabId) === _metaValue(m.tabId) && _metaValue(entry.hostname) === _metaValue(m.hostname) && _metaValue(entry.parserId) === _metaValue(m.parserId)
+  );
+}
+
+function pushMemoryLog(level, source, msg, meta = {}) {
   const now = Date.now();
+  const m = _pickMeta(meta);
 
   if (_IS_BACKGROUND_CTX) {
     state._memoryLogs ??= [];
     const last = state._memoryLogs.at(-1);
 
-    if (_isDuplicateEntry(last, level, source, msg)) {
+    if (_isDuplicateEntry(last, level, source, msg, m)) {
       last.count = (last.count ?? 1) + 1;
       last.ts = now;
     } else {
-      state._memoryLogs.push({ ts: now, level, source, msg, count: 1 });
+      state._memoryLogs.push({ ts: now, level, source, msg, count: 1, ...m });
       // Trim in-place to avoid allocating a new array on every overflow
       if (state._memoryLogs.length > 1000) state._memoryLogs.splice(0, state._memoryLogs.length - 1000);
     }
@@ -41,13 +61,13 @@ function pushMemoryLog(level, source, msg) {
 
   // Non-background contexts: buffer locally then sync to background
   const last = _memoryLogs.at(-1);
-  if (_isDuplicateEntry(last, level, source, msg)) {
+  if (_isDuplicateEntry(last, level, source, msg, m)) {
     last.count = (last.count ?? 1) + 1;
     last.ts = now;
     return;
   }
 
-  _memoryLogs.push({ ts: now, level, source, msg, count: 1 });
+  _memoryLogs.push({ ts: now, level, source, msg, count: 1, ...m });
   if (_memoryLogs.length > MEMORY_LOG_MAX) _memoryLogs.shift();
   syncMemoryLogsWithBackground();
 }
@@ -162,7 +182,7 @@ function _formatMsg(args) {
 }
 
 // Public API
-async function debugLog(level, source, args) {
+async function debugLog(level, source, args, meta = {}) {
   try {
     const db = await _openDebugDB();
     // Strip formatting once and reuse for both the memory-only check and the final message
@@ -170,21 +190,34 @@ async function debugLog(level, source, args) {
     const msg = _formatMsg(clean);
 
     if (_isMemoryOnly(msg)) {
-      pushMemoryLog(level, source, msg);
+      pushMemoryLog(level, source, msg, meta);
       return;
     }
 
+    const m = _pickMeta(meta);
     const tx = db.transaction(DEBUG_STORE_NAME, "readwrite");
     const store = tx.objectStore(DEBUG_STORE_NAME);
     const now = Date.now();
     tx.onerror = (e) => console.error("[debugLogger] tx error:", e.target.error);
 
+    const entryBase = {
+      ts: now,
+      level,
+      source,
+      msg,
+      count: 1,
+      tabId: m.tabId ?? null,
+      tabUrl: m.tabUrl ?? null,
+      hostname: m.hostname ?? null,
+      parserId: m.parserId ?? null,
+    };
+
     store.openCursor(null, "prev").onsuccess = (e) => {
       const cursor = e.target.result;
-      if (_isDuplicateEntry(cursor?.value, level, source, msg)) {
+      if (_isDuplicateEntry(cursor?.value, level, source, msg, m)) {
         cursor.update({ ...cursor.value, count: (cursor.value.count ?? 1) + 1, ts: now });
       } else {
-        store.add({ ts: now, level, source, msg, count: 1 });
+        store.add(entryBase);
       }
     };
   } catch (err) {
@@ -243,13 +276,22 @@ async function debugLogCleanup() {
   }
 }
 
-async function debugLogReadAll() {
+async function debugLogReadAll(filters = {}) {
   try {
     const db = await _openDebugDB();
     const store = db.transaction(DEBUG_STORE_NAME, "readonly").objectStore(DEBUG_STORE_NAME);
     return await new Promise((resolve, reject) => {
       const req = store.getAll();
-      req.onsuccess = () => resolve(req.result ?? []);
+      req.onsuccess = () => {
+        const entries = req.result ?? [];
+        const filtered = entries.filter((entry) => {
+          if (filters.tabId != null && _metaValue(entry.tabId) !== filters.tabId) return false;
+          if (filters.hostname != null && _metaValue(entry.hostname) !== filters.hostname) return false;
+          if (filters.parserId != null && _metaValue(entry.parserId) !== filters.parserId) return false;
+          return true;
+        });
+        resolve(filtered);
+      };
       req.onerror = () => reject(req.error);
     });
   } catch (err) {

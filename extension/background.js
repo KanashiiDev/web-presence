@@ -233,7 +233,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
     }
 
     if (state.pendingClear.has(tabId)) {
-      logInfo(`[background:clearRpcForTab]: Clear already pending for tab ${tabId}, skipping`);
+      logInfo(`[background:clearRpcForTab]: Clear already pending for tab ${tabId}, skipping`, { tabId });
       return;
     }
 
@@ -245,7 +245,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
       const pending = state.pendingUpdates.get(tabId);
       if (pending?.timeout) {
         clearTimeout(pending.timeout);
-        logInfo(`[background:clearRpcForTab]: cleared pending update for tab ${tabId}`);
+        logInfo(`[background:clearRpcForTab]: cleared pending update for tab ${tabId}`, { tabId });
       }
       state.pendingUpdates.delete(tabId);
 
@@ -259,7 +259,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
       const controller = state.pendingFetches.get(tabId);
       if (controller) {
         controller.abort();
-        logInfo(`[background:clearRpcForTab]: aborted fetch for tab ${tabId}`);
+        logInfo(`[background:clearRpcForTab]: aborted fetch for tab ${tabId}`, { tabId });
       }
       state.pendingFetches.delete(tabId);
 
@@ -269,7 +269,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
           tab = await browser.tabs.get(tabId);
         } catch (err) {
           if (err.message.includes("No tab with id")) {
-            logInfo(`[background:clearRpcForTab]: Tab ${tabId} is already closed, RPC cleanup skipped.`);
+            logInfo(`[background:clearRpcForTab]: Tab ${tabId} is already closed, RPC cleanup skipped.`, { tabId });
           }
         }
 
@@ -291,10 +291,10 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
           console.log(`Reason: %c${reason}`, "color: #0275d8; font-weight: bold;");
           console.groupEnd();
         }
-        logInfo(`[background:clearRpcForTab]: Clearing RPC for tab ${tabId} - reason: ${reason}`);
+        logInfo(`[background:clearRpcForTab]: Clearing RPC for tab ${tabId} - reason: ${reason}`, { tabId, hostname: domain, tabUrl: url });
         if (state.webOnlyMode) {
           await sendToWebOnlyBridge({ activity: null });
-          logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId} via web-only`);
+          logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId} via web-only`, { tabId, hostname: domain, tabUrl: url });
         } else {
           try {
             await fetchWithTimeout(
@@ -306,14 +306,14 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
               },
               CONFIG.requestTimeout,
             );
-            logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId}`);
+            logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId}`, { tabId, hostname: domain, tabUrl: url });
           } catch (err) {
-            logError(`[background:clearRpcForTab]: RPC clear failed for tab ${tabId}:`, err.message);
+            logError(`[background:clearRpcForTab]: RPC clear failed for tab ${tabId}:`, err.message, { tabId, hostname: domain, tabUrl: url });
           }
         }
       }
     } catch (e) {
-      logError(`[background:clearRpcForTab]: Clear RPC failed tab ${tabId}`, e);
+      logError(`[background:clearRpcForTab]: Clear RPC failed tab ${tabId}`, e, { tabId });
     } finally {
       state.activeTabMap.delete(tabId);
       state.pendingClear.delete(tabId);
@@ -404,7 +404,11 @@ const updateActiveTabMap = async (state, tabs) => {
     const mainTab = matchedTabs.find((t) => t.active) || matchedTabs[0];
     const matchedData = matchedTabsMap.get(mainTab.id);
 
-    logInfo("[background:updateActiveTabMap]: New active tab selected:", mainTab.id, "parser:", matchedData?.matched[0]?.id ?? "none");
+    logInfo("[background:updateActiveTabMap]: New active tab selected:", mainTab.id, "parser:", matchedData?.matched[0]?.id ?? "none", {
+      tabId: mainTab.id,
+      hostname: mainTab.url ? new URL(mainTab.url).hostname : null,
+      parserId: matchedData?.matched[0]?.id ?? null,
+    });
 
     state.activeTabMap.set(mainTab.id, {
       lastUpdated: Date.now(),
@@ -425,7 +429,7 @@ const updateRpc = async (data, tabId) => {
   try {
     await browser.tabs.get(tabId);
   } catch (err) {
-    logInfo(`[background:updateRpc]: tab ${tabId} not found in browser, aborting`);
+    logInfo(`[background:updateRpc]: tab ${tabId} not found in browser, aborting`, { tabId });
     return;
   }
 
@@ -457,7 +461,7 @@ const updateRpc = async (data, tabId) => {
 
           if (exactMatch) {
             parserId = exactMatch.id;
-            logInfo(`[background:updateRpc]: Found exact parser match: ${hostname} -> ${parserId}`);
+            logInfo(`[background:updateRpc]: Found exact parser match: ${hostname} -> ${parserId}`, { tabId, hostname, parserId });
           }
         }
       } catch (e) {
@@ -501,7 +505,7 @@ const updateRpc = async (data, tabId) => {
     }
   } catch (err) {
     if (err.name !== "AbortError") {
-      logError(`[background:updateRpc]: Update RPC failed for tab ${tabId}:`, err);
+      logError(`[background:updateRpc]: Update RPC failed for tab ${tabId}:`, err, { tabId });
     }
     throw err;
   } finally {
@@ -514,12 +518,12 @@ const updateRpc = async (data, tabId) => {
 // Schedule RPC Update - It is used on the backgroundListeners.js SetupListeners side.
 const scheduleRpcUpdate = (data, tabId) => {
   if (state.pendingClear.has(tabId)) {
-    logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} is being cleared, skipping`);
+    logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} is being cleared, skipping`, { tabId });
     return;
   }
 
   if (!state.activeTabMap.has(tabId)) {
-    logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} not in activeTabMap, skipping`);
+    logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} not in activeTabMap, skipping`, { tabId });
     return;
   }
 
@@ -528,13 +532,13 @@ const scheduleRpcUpdate = (data, tabId) => {
 
   const timeout = setTimeout(() => {
     if (state.pendingClear.has(tabId)) {
-      logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} cleared during wait, aborting update`);
+      logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} cleared during wait, aborting update`, { tabId });
       state.pendingUpdates.delete(tabId);
       return;
     }
 
     if (!state.activeTabMap.has(tabId)) {
-      logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} removed during wait, aborting update`);
+      logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} removed during wait, aborting update`, { tabId });
       state.pendingUpdates.delete(tabId);
       return;
     }
@@ -550,7 +554,10 @@ const scheduleRpcUpdate = (data, tabId) => {
 async function safePingTab(tabId) {
   try {
     const res = await browser.tabs.sendMessage(tabId, { type: "PING_FOR_DATA" });
-    return res?.title && res?.artist ? res : null;
+    if (res?.title && res?.artist) {
+      return res;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -575,7 +582,12 @@ const processTab = async (tabId, tabData) => {
 
   if (!res || typeof res !== "object") {
     if (!tabData.lastUpdated || now - tabData.lastUpdated > CONFIG.stuckThreshold) {
-      logInfo(`[background:processTab]: Tab ${tabId} did not respond, clearing RPC`);
+      const rpcHealth = await handleIsRpcConnected();
+      if (!rpcHealth?.ok) {
+        logInfo(`[background:processTab]: Tab ${tabId} did not respond but RPC is not connected, skipping clear`, { tabId });
+        return;
+      }
+      logInfo(`[background:processTab]: Tab ${tabId} did not respond, clearing RPC`, { tabId });
       await clearRpcForTab(tabId, "tab did not respond");
     }
     return;
@@ -707,7 +719,7 @@ const handleKeepAliveConnect = (port) => {
   }
 
   keepAlivePorts.set(tabId, port);
-  logInfo(`[background:keepAlive]: Tab ${tabId} connected`);
+  logInfo(`[background:keepAlive]: Tab ${tabId} connected`, { tabId });
 
   const handleMessage = async (msg) => {
     switch (msg?.type) {
@@ -718,14 +730,14 @@ const handleKeepAliveConnect = (port) => {
 
       case "heartbeat":
         if (msg.mainActive === false) {
-          logInfo(`[background:keepAlive]: Tab ${tabId} heartbeat reports override inactive`);
+          logInfo(`[background:keepAlive]: Tab ${tabId} heartbeat reports override inactive`, { tabId });
         }
         break;
     }
   };
 
   port.onMessage.addListener((msg) => {
-    handleMessage(msg).catch((err) => logError(`[background:keepAlive]: message handling failed for tab ${tabId}:`, err));
+    handleMessage(msg).catch((err) => logError(`[background:keepAlive]: message handling failed for tab ${tabId}:`, err, { tabId }));
   });
 
   port.onDisconnect.addListener(() => {
@@ -734,7 +746,7 @@ const handleKeepAliveConnect = (port) => {
       keepAlivePorts.delete(tabId);
       stopLock(tabId);
       setTabAutoDiscardable(tabId, true, "disconnect");
-      logInfo(`[background:keepAlive]: Tab ${tabId} disconnected`);
+      logInfo(`[background:keepAlive]: Tab ${tabId} disconnected`, { tabId });
     }
   });
 };
@@ -754,17 +766,17 @@ const startLock = (tabId) => {
 
   navigator.locks
     .request(lockName, { signal: controller.signal }, async () => {
-      logInfo(`[background:keepAlive]: Lock acquired for tab ${tabId}`);
+      logInfo(`[background:keepAlive]: Lock acquired for tab ${tabId}`, { tabId });
       return new Promise((resolve) => {
         controller.signal.addEventListener("abort", () => {
-          logInfo(`[background:keepAlive]: Lock released for tab ${tabId}`);
+          logInfo(`[background:keepAlive]: Lock released for tab ${tabId}`, { tabId });
           resolve();
         });
       });
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
-        logError(`[background:keepAlive]: Lock error for tab ${tabId}:`, err);
+        logError(`[background:keepAlive]: Lock error for tab ${tabId}:`, err, { tabId });
       }
     });
 };
@@ -778,20 +790,29 @@ const stopLock = (tabId) => {
 };
 
 const setTabAutoDiscardable = async (tabId, discardable, reason = "") => {
+  let tab;
   try {
-    const tab = await browser.tabs.get(tabId);
+    tab = await browser.tabs.get(tabId);
 
     if (typeof tab.autoDiscardable !== "undefined" && tab.autoDiscardable === discardable) {
       return;
     }
 
     await browser.tabs.update(tabId, { autoDiscardable: discardable });
-    logInfo(`[background:keepAlive][${reason}]: Tab ${tabId} autoDiscardable set to ${discardable}`);
+    logInfo(`[background:keepAlive][${reason}]: Tab ${tabId} autoDiscardable set to ${discardable}`, {
+      tabId,
+      hostname: tab?.url ? new URL(tab.url).hostname : null,
+      tabUrl: tab?.url ?? null,
+    });
   } catch (err) {
     if (err.message && err.message.includes("Invalid tab ID")) {
       return;
     }
-    logError(`[background:keepAlive][${reason}]: Failed to set autoDiscardable for tab ${tabId}:`, err);
+    logError(`[background:keepAlive][${reason}]: Failed to set autoDiscardable for tab ${tabId}:`, err, {
+      tabId,
+      hostname: tab?.url ? new URL(tab.url).hostname : null,
+      tabUrl: tab?.url ?? null,
+    });
   }
 };
 
@@ -994,7 +1015,7 @@ async function sendToWebOnlyBridge(payload) {
         type: "FORWARD_TO_MAIN",
         payload,
       })
-      .catch((err) => logError(`[background:sendToWebOnlyBridge] Tab ${tab.id}:`, err.message));
+      .catch((err) => logError(`[background:sendToWebOnlyBridge] Tab ${tab.id}:`, err.message, { tabId: tab.id }));
   }
 }
 

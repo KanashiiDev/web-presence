@@ -16,7 +16,7 @@ class PatternValidator {
 
       return new RegExp(cleanPattern);
     } catch (err) {
-      console.warn("Invalid regex pattern:", pattern, err);
+      logWarn("Invalid regex pattern:", pattern, err);
       return /.*/;
     }
   }
@@ -57,6 +57,10 @@ class PatternValidator {
         invalidPatterns.push(p);
         regexList.push(/.*/);
       }
+    }
+
+    if (invalidPatterns.length) {
+      logWarn("[userScriptWorker]: Invalid URL patterns replaced with /.*/:", invalidPatterns.join(", "));
     }
 
     return { regexList, normalizedList: list, invalidPatterns };
@@ -180,7 +184,7 @@ class UserScriptManager {
 
             const timeoutId = setTimeout(() => {
               cleanup();
-              console.warn("[waitForParserReady] Timeout (8s), loop starting.");
+              __userScriptLog("warn", "waitForParserReady.timeout", { waitedMs: 8000 });
               resolve(); 
             }, 8000);
 
@@ -188,6 +192,7 @@ class UserScriptManager {
               if (event.source !== window) return;
               if (event.data?.type === "PARSER_READY") {
                 cleanup();
+                __userScriptLog("info", "waitForParserReady.resolved", { waitedMs: 8000 });
                 resolve();
               }
             }
@@ -208,6 +213,7 @@ class UserScriptManager {
 
             const timeoutId = setTimeout(() => {
               cleanup();
+              __userScriptLog("error", "useSetting.timeout", { key: key, waitedMs: 5000 });
               reject(new Error("useSetting timeout"));
             }, 5000);
 
@@ -243,8 +249,77 @@ class UserScriptManager {
         const __memoCache = Object.create(null);
         let __dryRun = false;
         let __memoLoaded = false;
+        // Userscript logging bridge
+        const __userScriptLogOnceKeys = Object.create(null);
+        const __userScriptLogLastContent = Object.create(null);
+        function __userScriptLog(level, event, data = {}) {
+          try {
+            // Deduplicate: if the meaningful content (excluding ts) is unchanged
+            // from the last log for this event, skip posting. Prevents spam from
+            // polls like trackData.summary where only the timestamp changes.
+            if (level !== "error") {
+              const signature = JSON.stringify({ ...data });
+              const lastSignature = __userScriptLogLastContent[event];
+              if (lastSignature === signature) return;
+              __userScriptLogLastContent[event] = signature;
+            }
+
+            const logData = {
+              scriptId: "${script.id}",
+              title: "${script.title}",
+              domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+              source: "mainParser:userScript",
+              ts: Date.now(),
+              ...data,
+            };
+
+            if (level === "error" && data.error instanceof Error) {
+              logData.errorName = data.error.name || "Error";
+              logData.errorMessage = data.error.message ? String(data.error.message).slice(0, 500) : "";
+              logData.errorStack = data.error.stack ? String(data.error.stack).slice(0, 1000) : "";
+              delete logData.error;
+            }
+
+            for (const key of Object.keys(data)) {
+              const val = data[key];
+              if (val === null || val === undefined || val === "") {
+                logData.emptyField = key;
+                break;
+              }
+            }
+
+            window.postMessage({
+              type: "USER_SCRIPT_LOG",
+              id: "${script.id}",
+              level: level,
+              event: String(event).slice(0, 120),
+              data: logData,
+            }, "*");
+          } catch (err) {
+            console.warn("[Web Presence] userScript log forwarding failed:", err);
+          }
+        }
+        function __userScriptLogOnce(level, event, message, windowMs = 10000, data = {}) {
+          const key = event + " " + message;
+          const now = Date.now();
+          const last = __userScriptLogOnceKeys[key];
+          if (last && now - last < windowMs) return;
+          __userScriptLogOnceKeys[key] = now;
+
+          // Evict stale once-keys so the map cannot grow unboundedly for the
+          // lifetime of the tab. Entries older than 5 minutes no longer suppress
+          // any future message and are safe to drop.
+          const cutoff = now - 300000;
+          for (const k of Object.keys(__userScriptLogOnceKeys)) {
+            if (__userScriptLogOnceKeys[k] <= cutoff) {
+              delete __userScriptLogOnceKeys[k];
+            }
+          }
+
+          __userScriptLog(level, event, { detail: message, ...data });
+        }
         function __memoWarn(msg) {
-          if (${script.debug}) console.warn("[Web Presence - Memo] " + msg);
+          __userScriptLog("warn", "memo.warn", { msg });
         }
         function __memoScope(scope) {
           let s = null;
@@ -264,6 +339,7 @@ class UserScriptManager {
 
             const timeoutId = setTimeout(() => {
               cleanup();
+              __userScriptLogOnce("warn", "memo.request.timeout", "memo request timed out", 10000, { waitedMs: 3000 });
               resolve(null);
             }, 3000);
 
@@ -284,7 +360,11 @@ class UserScriptManager {
         async function __refreshMemo() {
           if (__memoLoaded) return;
           const data = await __memoRequest("USER_SCRIPT_MEMO_GET");
-          if (!data || typeof data !== "object") return; // no answer, try again next iteration
+          if (!data || typeof data !== "object") {
+            // no answer, try again next iteration (only the first failure is logged)
+            __userScriptLogOnce("warn", "refreshMemo.noAnswer", "no memo response received, will retry on the next loop");
+            return;
+          }
           for (const scope of Object.keys(data)) {
             if (!__memoScope(scope) || !data[scope] || typeof data[scope] !== "object") continue;
             const bucket = __memoCache[scope] || (__memoCache[scope] = Object.create(null));
@@ -294,6 +374,7 @@ class UserScriptManager {
             }
           }
           __memoLoaded = true;
+          __userScriptLog("info", "refreshMemo.loaded", { scopes: Object.keys(data).length });
         }
         function setMemo(obj, scope) {
           const s = __memoScope(scope);
@@ -415,6 +496,7 @@ class UserScriptManager {
               description: "${script.description || ""}",
               urlPatterns: ${JSON.stringify(normalizedList)},
               title: "${script.title || "Unknown"}",
+              category: ${JSON.stringify(script.category || [])},
               mode: "${script.mode || "listen"}",
               watchAutoDetect: "${script.watchAutoDetect || "disable"}",
               iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},
@@ -451,10 +533,23 @@ class UserScriptManager {
               console.groupEnd();
             }
 
+            __userScriptLog("info", "trackData.summary", {
+              title: Boolean(trackData.title),
+              artist: Boolean(trackData.song?.artist),
+              source: Boolean(trackData.song?.source),
+              link: Boolean(trackData.song?.link),
+              positionSet: trackData.song?.position != null,
+              durationSet: trackData.song?.duration != null,
+              isPlaying: trackData.song?.isPlaying ?? false,
+              buttonCount: trackData.song?.buttons?.length ?? 0,
+            });
+
             window.postMessage({ type: "USER_SCRIPT_TRACK_DATA", data: { ...trackData, iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},}}, "*");
+            __userScriptLogOnce("info", "updateTrackData.sent", "track data sent", 30000);
           } catch (error) {
             if (__dryRun) return;
             if (error instanceof __ClearSignal) {
+              __userScriptLog("info", "updateTrackData.cleared", {});
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
                 id: "${script.id}",
@@ -462,6 +557,8 @@ class UserScriptManager {
               }, "*");
               return;
             }
+            // Summary only: the full payload stays in the local groupCollapsed output.
+            __userScriptLog("error", "updateTrackData.failed", { error: error });
             const now = new Date();
             const timeString = \`\${String(now.getHours()).padStart(2,'0')}:\${String(now.getMinutes()).padStart(2,'0')}:\${String(now.getSeconds()).padStart(2,'0')}\`;
             console.groupCollapsed(\`%c Web Presence - USERSCRIPT ERROR [%c\${timeString}%c]: %cTracking Failed\`,
@@ -477,6 +574,7 @@ class UserScriptManager {
           }
         }
       async function startScriptExecution() {
+        __userScriptLog("info", "script.start", { intervalMs: 4000 });
         if (${usesSetMemo}) {
           // silent first pass: only the setMemo side effects run, nothing is sent to the parser
           __dryRun = true;
@@ -491,7 +589,7 @@ class UserScriptManager {
           try {
             await updateTrackData();
           } catch (err) {
-            console.error("[Web Presence - UserScript Loop] Error:", err);
+            __userScriptLogOnce("error", "loop.error", err && err.message ? String(err.message).slice(0, 300) : "loop error", 5000, { error: err });
           } finally {
             setTimeout(loop, INTERVAL_DELAY);
           }
@@ -499,6 +597,9 @@ class UserScriptManager {
         loop();
       }
     startScriptExecution();
+    window.addEventListener("pagehide", () => {
+      __userScriptLog("info", "script.stop", {});
+    }, { once: true });
     })();
     `;
   }
@@ -650,6 +751,11 @@ class UserScriptManager {
     }
 
     await this.storage.saveScripts(scripts);
+
+    logInfo(
+      `[userScriptWorker]: Registration complete - successful: ${results.successful.length}, failed: ${results.failed.length}, disabled: ${results.disabled.length}`,
+    );
+
     return results;
   }
 

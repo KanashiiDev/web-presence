@@ -11,6 +11,9 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions(["background.js"], "activityLibrary/service.js", [], "start", true);
   inlineUtilsFunctions(["background.js", "common/utils.js", "main.js"], "common/debugLogger.js", [], "start");
 
+  // Logs
+  inlineUtilsFunctions(["background.js", "mainParser.js"], "common/utils/logging.js", [], "start");
+
   // Shared
   inlineUtilsFunctions(["common/utils.js", "popup/selector/selector.js"], ["../shared/dialog.js", "../shared/i18n.js"], [], [], "start");
 
@@ -20,23 +23,12 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   // Truncate
   inlineUtilsFunctions(["common/utils.js", "popup/selector/selector.js", "background.js"], "../shared/utils.js", ["truncate"]);
 
-  // Logs
+  // Background Utils
   inlineUtilsFunctions("background.js", "common/utils.js", [
-    "getDebugMode",
-    "_writeDebugLog",
-    "logInfo",
-    "logWarn",
-    "errorFilter",
-    "shouldIgnore",
-    "logError",
     "delay",
     "DEFAULT_PARSER_OPTIONS",
     "parseUrlPattern",
     "regexFromString",
-  ]);
-
-  // Background Utils
-  inlineUtilsFunctions("background.js", "common/utils.js", [
     "normalizeHost",
     "normalize",
     "normalizeTitleAndArtist",
@@ -106,13 +98,6 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "normalizeHost",
     "getSafeText",
     "getSafeHref",
-    "getDebugMode",
-    "_writeDebugLog",
-    "logInfo",
-    "logWarn",
-    "errorFilter",
-    "shouldIgnore",
-    "logError",
     "delay",
     "DEFAULT_PARSER_OPTIONS",
     "parseUrlPattern",

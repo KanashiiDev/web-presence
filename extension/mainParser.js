@@ -10,11 +10,16 @@ const settingsCache = {};
 const loadingPromises = {};
 const saveTimers = {};
 
+// Iframe playback state is transient. Cache entries that are not refreshed
+// within this window are stale and safe to evict, keeping the cache bounded
+// for the lifetime of the document.
+const IFRAME_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+
 // Save settings
 function scheduleSave(parserId) {
   if (saveTimers[parserId]) clearTimeout(saveTimers[parserId]);
 
-  saveTimers[parserId] = setTimeout(async () => {
+  const timeoutId = setTimeout(async () => {
     try {
       const snapshot = { ...settingsCache[parserId] };
 
@@ -41,9 +46,18 @@ function scheduleSave(parserId) {
         },
       });
     } catch (err) {
-      logError(`[mainParser:settings] save error for ${parserId}:`, err);
+      logError(`[mainParser:settings] save error for ${parserId}:`, err, { parserId });
+    } finally {
+      // Release the timer entry once it has fired so it does not linger for the
+      // lifetime of the document. Only clear if this entry is still the current
+      // timer for the parser (a later reschedule would have replaced it).
+      if (saveTimers[parserId] === timeoutId) {
+        delete saveTimers[parserId];
+      }
     }
   }, 120);
+
+  saveTimers[parserId] = timeoutId;
 }
 
 // Load settings
@@ -328,7 +342,6 @@ window.initParsers = async function () {
   await initializeAllParserSettings();
   await scheduleParserListSave();
   await cleanupOrphanSettingsAndEnables();
-  logInfo("[mainParser:initParsers]: Parsers initialized.");
 };
 
 // registerParser - Used to process all built-in parsers.
@@ -710,7 +723,8 @@ window.getSongInfo = async function () {
               // Apply parser filters and replacements
               const filterResult = await applyParserFilters(parser.id, dataArtist, dataTitle);
               if (filterResult.shouldBlock) {
-                if (isChanged) logInfo(`[mainParser]: Song blocked: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`);
+                if (isChanged)
+                  logInfo(`[mainParser]: Song blocked: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, { parserId: parser.id });
                 window.getSongInfoLastSong = currentData;
                 return "blocked";
               }
@@ -719,7 +733,8 @@ window.getSongInfo = async function () {
               if (filterResult.replaced) {
                 dataArtist = filterResult.artist;
                 dataTitle = filterResult.title;
-                if (isChanged) logInfo(`[mainParser]: Song replaced: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`);
+                if (isChanged)
+                  logInfo(`[mainParser]: Song replaced: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, { parserId: parser.id });
                 window.getSongInfoLastSong = currentData;
               }
 
@@ -731,7 +746,7 @@ window.getSongInfo = async function () {
           }
         }
       } catch (err) {
-        logError(`[mainParser]: Parser ${parser.id} failed:`, err);
+        logError(`[mainParser]: Parser ${parser.id} failed:`, err, { parserId: parser.id });
         continue;
       }
     }
@@ -944,6 +959,60 @@ function getBestData(iframeData, videoData) {
 // userScript Manager Listener
 const lastUseScriptRequest = Object.create(null);
 const firstTrackSentDomains = new Set();
+
+// Validation contract for USER_SCRIPT_LOG messages.
+// Generated userscripts run in the MAIN/USER_SCRIPT world, so a page can also post
+// this message type: the payload is therefore treated as untrusted input and is
+// only ever forwarded as small, bounded strings.
+const USER_SCRIPT_LOG_LEVELS = { error: "error", warn: "warn", info: "info" };
+const USER_SCRIPT_LOG_MAX_EVENT = 120;
+const USER_SCRIPT_LOG_MAX_ID = 128;
+const USER_SCRIPT_LOG_MAX_DATA = 2048;
+const userScriptLogDedupe = Object.create(null);
+
+function handleUserScriptLogMessage(msg) {
+  const level = USER_SCRIPT_LOG_LEVELS[msg.level] || USER_SCRIPT_LOG_LEVELS.info;
+  const event = typeof msg.event === "string" ? msg.event.slice(0, USER_SCRIPT_LOG_MAX_EVENT) : "unknown";
+  const id = typeof msg.id === "string" ? msg.id.slice(0, USER_SCRIPT_LOG_MAX_ID) : "unknown";
+
+  let data;
+  if (msg.data === undefined || msg.data === null) {
+    data = "";
+  } else if (typeof msg.data === "object" && !Array.isArray(msg.data)) {
+    try {
+      const serialized = JSON.stringify(msg.data);
+      data = serialized && serialized.length > USER_SCRIPT_LOG_MAX_DATA ? "[truncated]" : serialized;
+    } catch {
+      data = "[unserializable]";
+    }
+  } else {
+    data = String(msg.data).slice(0, USER_SCRIPT_LOG_MAX_DATA);
+  }
+  if (typeof data === "string" && data.includes("\n")) data = data.split("\n")[0];
+
+  // Deduplicate: identical (id, level, event, data) lines are logged once per minute.
+  const dedupeKey = `${id} ${level} ${event} ${data}`;
+  const now = Date.now();
+  if (userScriptLogDedupe[dedupeKey] && now - userScriptLogDedupe[dedupeKey] < 60000) return;
+  userScriptLogDedupe[dedupeKey] = now;
+
+  // Evict expired dedupe entries so the map cannot grow unboundedly for the
+  // lifetime of the document. Entries older than the 60s suppression window no
+  // longer suppress any future message and are safe to drop.
+  const dedupeCutoff = now - 60000;
+  for (const key of Object.keys(userScriptLogDedupe)) {
+    if (userScriptLogDedupe[key] <= dedupeCutoff) {
+      delete userScriptLogDedupe[key];
+    }
+  }
+
+  const entry = `[mainParser:userScript] [${id}] ${event}${data ? ` ${data}` : ""}`;
+  const meta = { parserId: id };
+  if (level === "error") logError(entry, meta);
+  else if (level === "warn") logWarn(`%c[WEB-PRESENCE - WARN]%c ${entry}`, "color:#ff9800; font-weight:bold;", "color:#fff;", meta);
+  else logInfo(entry, meta);
+}
+
 window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
   const msg = event.data;
@@ -996,9 +1065,10 @@ window.addEventListener("message", async (event) => {
     if (hadData) {
       browser.runtime.sendMessage({ type: "CLEAR_RPC" }).catch(() => {});
     }
-  }
-
-  if (msg?.type === "USER_SCRIPT_IFRAME_DATA_REQUEST") {
+  } else if (msg?.type === "USER_SCRIPT_LOG") {
+    handleUserScriptLogMessage(msg);
+    return;
+  } else if (msg?.type === "USER_SCRIPT_IFRAME_DATA_REQUEST") {
     const { requestId, id, iframeSelectors } = msg;
     const key = id;
     fetchIframeData(key, iframeSelectors).then((data) => {
@@ -1057,6 +1127,7 @@ window.addEventListener("message", async (event) => {
               duration: duration || song.duration,
               buttons: song.buttons,
               mode: msg.data.mode,
+              category: msg.data.category,
               isPlaying: Boolean(song.isPlaying || playing),
             };
           } catch (err) {
@@ -1082,6 +1153,8 @@ async function loadAllSavedUserParsers() {
 
   if (!Array.isArray(parserArray)) return;
 
+  let loadedCount = 0;
+
   for (const data of parserArray) {
     if (!data.selectors || !data.domain) continue;
 
@@ -1101,7 +1174,10 @@ async function loadAllSavedUserParsers() {
     const hostname = (typeof rawDomain === "string" ? rawDomain : String(rawDomain)).toLowerCase();
     const locHostname = location.hostname.replace(/^www\./, "").toLowerCase();
     const autoDetectEnabled = data.selectors.mode === "watch" && data.selectors.watchAutoDetect && data.selectors.watchAutoDetect !== "disable";
-    const parserId = data.id || generateParserKey(hostname, data.urlPatterns || [".*"]);
+
+    if (!isDomainMatch(hostname, locHostname)) continue;
+
+    loadedCount++;
 
     window.registerParser?.({
       domain: hostname,
@@ -1163,6 +1239,8 @@ async function loadAllSavedUserParsers() {
       }),
     });
   }
+
+  if (loadedCount) logInfo(`[mainParser:loadAllSavedUserParsers]: Loaded ${loadedCount} saved selector parsers`);
 }
 
 // Sync Parser Settings
@@ -1232,6 +1310,10 @@ async function cleanupOrphanSettingsAndEnables() {
       const id = key.slice("settings_".length);
       if (!validIds.has(id)) {
         logInfo(`[mainParser:settings]: Deleted Orphan Setting: ${key}`);
+        if (saveTimers[key]) {
+          clearTimeout(saveTimers[key]);
+          delete saveTimers[key];
+        }
         delete parserSettings[key];
         delete settingsCache[key];
         settingsDirty = true;
@@ -1257,6 +1339,7 @@ async function cleanupOrphanSettingsAndEnables() {
 }
 
 const activeFetchIframeListeners = Object.create(null);
+const iframeTimeoutLogged = new Set();
 
 function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
   if (activeFetchIframeListeners[key]) {
@@ -1278,6 +1361,10 @@ function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
 
     const timeoutId = setTimeout(() => {
       delete window.iframeDataCache?.[key];
+      if (!iframeTimeoutLogged.has(key)) {
+        iframeTimeoutLogged.add(key);
+        logWarn(`[mainParser:fetchIframeData]: Timeout fetching iframe data for key "${key}"`);
+      }
       cleanup(undefined);
     }, maxDelayMs);
 
@@ -1313,7 +1400,19 @@ function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
         ...(msg.data.paused != null ? { playing: msg.data.paused === false } : {}),
       };
       cache[key] = entry;
+      iframeTimeoutLogged.delete(key);
       cleanup(entry);
+
+      // Evict stale iframe cache entries so the cache cannot grow unboundedly
+      // for the lifetime of the document. Iframe playback state is transient;
+      // entries not refreshed within the TTL are no longer current.
+      const cacheNow = Date.now();
+      for (const cacheKey of Object.keys(cache)) {
+        const entryTs = cache[cacheKey]?.lastValidUpdate;
+        if (entryTs == null || cacheNow - entryTs > IFRAME_CACHE_MAX_AGE_MS) {
+          delete cache[cacheKey];
+        }
+      }
     };
 
     activeFetchIframeListeners[key] = listener;
