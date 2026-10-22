@@ -207,7 +207,7 @@ async function showUserScriptTutorial() {
   }
 
   // Shared selectors queried once per fade call
-  const TABS_SEL = ".script-tab";
+  const TABS_SEL = ".script-tab, #scriptSearch";
   const ITEMS_SEL = ".script-item";
   const TOOLBAR_SEL = "#btnNew, #btnImport, #btnExport, #btnGithubSettings";
   const ACTIONS_SEL = ".script-actions button";

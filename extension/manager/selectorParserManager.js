@@ -210,7 +210,7 @@ class UserParserUI {
 
       // Status badge
       const status = document.createElement("span");
-      status.className = "script-status";
+      status.className = "script-status badge badge-sm badge-rounded";
       status.classList.toggle("status-active", isEnabled);
       status.classList.toggle("status-inactive", !isEnabled);
       status.textContent = isEnabled ? i18n.t("userscript.status.active") : i18n.t("userscript.status.inactive");
