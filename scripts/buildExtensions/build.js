@@ -9,6 +9,8 @@ const { applyCssConfig } = require("./steps/applyCssConfig");
 const registerInlines = require("./inlineConfig");
 const { copyLocales } = require("./steps/copyLocales");
 const { checkMissingTranslations, generateLanguages } = require("../checkMissingTranslations");
+const { auditAll } = require("../audit");
+const { renderText } = require("../audit/report");
 
 const ROOT_DIR = path.join(__dirname, "..", "..");
 const TARGET = process.env.TARGET || "chrome";
@@ -68,4 +70,11 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   writeManifest(DIST_DIR, manifest);
 
   console.log(`✅ ${TARGET} build completed: ${DIST_DIR}`);
+
+  // 10. Scope audit of the freshly generated bundle for this target
+  const report = renderText(auditAll({ targets: [TARGET] }));
+  process.stdout.write(`${report.text}\n`);
+  if (report.summary.errors > 0) {
+    process.exitCode = 1;
+  }
 })();

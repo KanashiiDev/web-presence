@@ -37,6 +37,8 @@
     "check-locales": "node scripts/checkMissingTranslations.js",
     "check-locales:extension": "node scripts/checkMissingTranslations.js extension",
     "check-locales:server": "node scripts/checkMissingTranslations.js server",
+    "audit:scopes": "node scripts/auditScopes.js",
+    "test:audit": "node --test \"scripts/audit/__tests__/*.test.js\"",
     "build:win": "npm run clean && electron-builder --publish=never --win --x64",
     "build:mac": "npm run clean && electron-builder --publish=never --mac --x64",
     "build:mac:arm64": "npm run clean && electron-builder --publish=never --mac --arm64",
