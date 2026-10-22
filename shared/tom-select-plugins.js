@@ -113,5 +113,3 @@ function applyTsPlugins() {
     });
   });
 }
-
-applyTsPlugins();

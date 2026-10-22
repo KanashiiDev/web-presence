@@ -1,8 +1,7 @@
 // Time
 const getCurrentTime = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
 const dateToday = new Date();
-const dateYesterday = new Date();
-dateYesterday.setDate(dateToday.getDate() - 1);
+const dateYesterday = new Date(new Date().setDate(new Date().getDate() - 1));
 const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
 
 // Date formatting
