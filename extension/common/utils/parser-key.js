@@ -69,7 +69,11 @@ function generateParserKey(domain, urlPatterns, authors = []) {
     })
     .sort();
 
-  const hash = btoa(patternStrings.join("|"))
+  // unescape/encodeURIComponent keeps the input byte-safe for UTF-8 patterns.
+  const bytes = new TextEncoder().encode(patternStrings.join("|"));
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+
+  const hash = btoa(binary)
     .replace(/[^a-zA-Z0-9]/g, "")
     .slice(0, 10);
 
