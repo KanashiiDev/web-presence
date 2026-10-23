@@ -946,6 +946,10 @@ class UserScriptUI {
     const result = await sendAction("toggleUserScript", { id, enabled: newState });
 
     if (result?.ok) {
+      // Registration can fail while the enable state was stored.
+      if (result.error) {
+        showAlert(i18n.t("common.error"), result.error, "warn");
+      }
       await this.refreshList();
     } else {
       showAlert("Toggle Failed", result?.error || "Unknown error", "warn");

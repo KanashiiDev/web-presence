@@ -1,5 +1,38 @@
 const STORAGE_KEY = "userScriptsList";
 
+// JSON.stringify escapes the value safely for injection into generated code.
+function q(value) {
+  return JSON.stringify(value == null ? "" : String(value));
+}
+
+// One session nonce per user script id ("userScriptNonces"); the generated code
+// echoes it on every USER_SCRIPT_* message and mainParser.js validates it.
+const USER_SCRIPT_NONCES_KEY = "userScriptNonces";
+
+function generateSessionNonce() {
+  try {
+    if (globalThis.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch (_) {}
+  // Not cryptographic: the generated code is only ever injected by the browser.
+  return "u" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+async function getUserScriptNonces() {
+  const result = await browser.storage.local.get(USER_SCRIPT_NONCES_KEY);
+  return result[USER_SCRIPT_NONCES_KEY] ?? {};
+}
+
+// Re-registration reuses the existing nonce so registered scripts stay validated.
+async function getOrCreateScriptNonce(id) {
+  if (!id) return null;
+  const map = await getUserScriptNonces();
+  if (map[id]) return map[id];
+  const nonce = generateSessionNonce();
+  map[id] = nonce;
+  await browser.storage.local.set({ [USER_SCRIPT_NONCES_KEY]: map });
+  return nonce;
+}
+
 // URL pattern validation and normalization
 class PatternValidator {
   // Regex string → JS RegExp object
@@ -99,9 +132,11 @@ class UserScriptManager {
     this.storage = new ScriptStorage(STORAGE_KEY);
     this.validator = PatternValidator;
     this.registeredScripts = new Map();
+    // Serializes bulk registration; overlapping callers must not interleave.
+    this._registrationMutex = typeof createMutex === "function" ? createMutex() : null;
   }
 
-  buildTrackDataScript(script) {
+  buildTrackDataScript(script, nonce) {
     const { normalizedList } = PatternValidator.processPatterns(script.urlPatterns);
     // setMemo is used by this script -> run a silent first pass right away (see startScriptExecution)
     const usesSetMemo = /\bsetMemo\s*\(/.test(script.code || "");
@@ -134,7 +169,7 @@ class UserScriptManager {
           value instanceof NodeList ||
           value instanceof Element
         ) {
-          if (${script.debug}) {
+          if (${Boolean(script.debug)}) {
             console.warn("Dropped DOM value at:", path);
           }
           return null;
@@ -167,6 +202,8 @@ class UserScriptManager {
     // MAIN
     (async function() {
       const trackState = {};
+      // Session nonce: lets mainParser.js tell registered scripts from page-forged postMessages.
+      const __nonce = ${q(nonce)};
         const __userScriptUsedSettings = [];
         let __clearCalled = false;
         function waitForParserReady() {
@@ -231,7 +268,8 @@ class UserScriptManager {
             window.postMessage({
               type: "USER_SCRIPT_USE_SETTING_REQUEST",
               requestId,
-              id: "${script.id}",
+              nonce: __nonce,
+              id: ${q(script.id)},
               key,
               label,
               inputType: type,
@@ -265,9 +303,9 @@ class UserScriptManager {
             }
 
             const logData = {
-              scriptId: "${script.id}",
-              title: "${script.title}",
-              domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+              scriptId: ${q(script.id)},
+              title: ${q(script.title)},
+              domain: ${q(Array.isArray(script.domain) ? script.domain[0] : script.domain)},
               source: "mainParser:userScript",
               ts: Date.now(),
               ...data,
@@ -290,7 +328,8 @@ class UserScriptManager {
 
             window.postMessage({
               type: "USER_SCRIPT_LOG",
-              id: "${script.id}",
+              nonce: __nonce,
+              id: ${q(script.id)},
               level: level,
               event: String(event).slice(0, 120),
               data: logData,
@@ -353,7 +392,7 @@ class UserScriptManager {
             }
 
             window.addEventListener("message", handleResponse);
-            window.postMessage({ type, requestId, id: "${script.id}" }, "*");
+            window.postMessage({ type, requestId, nonce: __nonce, id: ${q(script.id)} }, "*");
           });
         }
         // Loads the tab's memo from the background once; retried until it succeeds
@@ -402,7 +441,7 @@ class UserScriptManager {
             hasChange = true;
           }
           if (!hasChange) return;
-          window.postMessage({ type: "USER_SCRIPT_MEMO_SET", id: "${script.id}", scope: s, data: changed }, "*");
+          window.postMessage({ type: "USER_SCRIPT_MEMO_SET", nonce: __nonce, id: ${q(script.id)}, scope: s, data: changed }, "*");
         }
         function getMemo(key, scope) {
           if (typeof key !== "string" || !key) {
@@ -446,7 +485,8 @@ class UserScriptManager {
             window.postMessage({
               type: "USER_SCRIPT_IFRAME_DATA_REQUEST",
               requestId,
-              id: "${script.id}",
+              nonce: __nonce,
+              id: ${q(script.id)},
               iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},
             }, "*");
           });
@@ -463,8 +503,9 @@ class UserScriptManager {
             if (__clearCalled) {
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
-                id: "${script.id}",
-                domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+                nonce: __nonce,
+                id: ${q(script.id)},
+                domain: ${q(Array.isArray(script.domain) ? script.domain[0] : script.domain)},
               }, "*");
               return;
             }
@@ -486,26 +527,26 @@ class UserScriptManager {
 
             // Track Data
             const trackData = {
-              id: "${script.id}",
-              version: "${script.version || "1.0.0"}",
-              domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+              id: ${q(script.id)},
+              version: ${q(script.version || "1.0.0")},
+              domain: ${q(Array.isArray(script.domain) ? script.domain[0] : script.domain)},
               domains: ${JSON.stringify(Array.isArray(script.domain) ? script.domain : [script.domain])},
               authors: ${JSON.stringify(script.authors || [])},
               authorsLinks: ${JSON.stringify(script.authorsLinks || [])},
-              homepage: "${script.homepage || ""}",
-              description: "${script.description || ""}",
+              homepage: ${q(script.homepage || "")},
+              description: ${q(script.description || "")},
               urlPatterns: ${JSON.stringify(normalizedList)},
-              title: "${script.title || "Unknown"}",
+              title: ${q(script.title || "Unknown")},
               category: ${JSON.stringify(script.category || [])},
-              mode: "${script.mode || "listen"}",
-              watchAutoDetect: "${script.watchAutoDetect || "disable"}",
+              mode: ${q(script.mode || "listen")},
+              watchAutoDetect: ${q(script.watchAutoDetect || "disable")},
               iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},
               isLibraryActivity: ${Boolean(script.storeScriptId)},
               song: normalizeTrackData({ ...trackState })
             };
 
             // Debug Mode
-            if (${script.debug} && trackData) {
+            if (${Boolean(script.debug)} && trackData) {
               const now = new Date();
               const timeString = \`\${String(now.getHours()).padStart(2,'0')}:\${String(now.getMinutes()).padStart(2,'0')}:\${String(now.getSeconds()).padStart(2,'0')}\`;
               console.groupCollapsed(\`%c Web Presence - USERSCRIPT DEBUG [%c\${timeString}%c]: %c\${trackData.title}\`,
@@ -526,9 +567,9 @@ class UserScriptManager {
               console.log("  • Source:     ", song.source || trackData.title || "Unknown");
               console.log("  • Song URL:   ", song.link || "N/A");
               console.log("  • Image:      ", song.image || "Default Image");
-              console.log("  • Duration:   ", "${script.watchAutoDetect}" === "enable" ? "Auto-Detect" : song.duration ?? "N/A");
-              console.log("  • Time Passed:", "${script.watchAutoDetect}" === "enable" ? "Auto-Detect" : song.timePassed ?? "N/A");
-              console.log("  • isPlaying:  ", "${script.watchAutoDetect}" === "enable" ? "Auto-Detect" : song.isPlaying ?? "N/A");
+              console.log("  • Duration:   ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.duration ?? "N/A");
+              console.log("  • Time Passed:", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.timePassed ?? "N/A");
+              console.log("  • isPlaying:  ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.isPlaying ?? "N/A");
               console.log("  • Buttons:    ", song.buttons ?? "N/A");
               console.groupEnd();
             }
@@ -544,7 +585,7 @@ class UserScriptManager {
               buttonCount: trackData.song?.buttons?.length ?? 0,
             });
 
-            window.postMessage({ type: "USER_SCRIPT_TRACK_DATA", data: { ...trackData, iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},}}, "*");
+            window.postMessage({ type: "USER_SCRIPT_TRACK_DATA", nonce: __nonce, data: { ...trackData, iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},}}, "*");
             __userScriptLogOnce("info", "updateTrackData.sent", "track data sent", 30000);
           } catch (error) {
             if (__dryRun) return;
@@ -552,8 +593,9 @@ class UserScriptManager {
               __userScriptLog("info", "updateTrackData.cleared", {});
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
-                id: "${script.id}",
-                domain: "${Array.isArray(script.domain) ? script.domain[0] : script.domain}",
+                nonce: __nonce,
+                id: ${q(script.id)},
+                domain: ${q(Array.isArray(script.domain) ? script.domain[0] : script.domain)},
               }, "*");
               return;
             }
@@ -575,7 +617,7 @@ class UserScriptManager {
         }
       async function startScriptExecution() {
         __userScriptLog("info", "script.start", { intervalMs: 4000 });
-        if (${usesSetMemo}) {
+        if (${Boolean(usesSetMemo)}) {
           // silent first pass: only the setMemo side effects run, nothing is sent to the parser
           __dryRun = true;
           try {
@@ -621,10 +663,27 @@ class UserScriptManager {
       if (!script.id) {
         script.id = generateParserKey(script.domain, script.urlPatterns, script.authors || []);
       }
+      // Only ids safe to embed in the generated script are accepted.
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(script.id)) {
+        logWarn("[userScriptWorker]: Rejected user script with invalid id:", script.id);
+        return { ok: false, error: "Invalid script id" };
+      }
       const manifest = browser.runtime.getManifest();
       const isMV3 = manifest.manifest_version === 3;
 
       const domains = (Array.isArray(script.domain) ? script.domain : [script.domain]).filter(Boolean);
+
+      // A "*" domain would produce the *://*/* match pattern; wildcard domains are rejected.
+      const hasWildcardDomain = domains.some(
+        (d) =>
+          String(d)
+            .replace(/^www\./, "")
+            .trim() === "*",
+      );
+      if (hasWildcardDomain) {
+        logWarn("[userScriptWorker]: Rejected user script with wildcard domain:", script.id);
+        return { ok: false, error: "Wildcard domain not allowed" };
+      }
 
       const matches = domains.flatMap((d) => {
         const cleanDomain = d.replace(/^www\./, "");
@@ -641,20 +700,28 @@ class UserScriptManager {
 
       if (!isEnabled) return { ok: true, skipped: true, reason: "Script is disabled" };
 
-      const trackingCode = this.buildTrackDataScript(script);
+      const trackingCode = this.buildTrackDataScript(script, await getOrCreateScriptNonce(script.id));
+
+      const world = this.resolveWorld(trackingCode);
 
       if (!browser.userScripts?.register) throw new Error("No compatible userscript API available");
 
       let registeredUserScript = null;
 
       if (isMV3) {
+        // register() throws "Duplicate script ID" if one is already registered.
+        const existingScripts = await browser.userScripts.getScripts();
+        if (Array.isArray(existingScripts) && existingScripts.some((s) => s.id === script.id)) {
+          await browser.userScripts.unregister({ ids: [script.id] });
+        }
+
         registeredUserScript = await browser.userScripts.register([
           {
             id: script.id,
             js: [{ code: trackingCode }],
             matches,
             runAt: script.runAt || "document_end",
-            world: this.resolveWorld(trackingCode),
+            world,
           },
         ]);
         this.registeredScripts.set(script.id, registeredUserScript);
@@ -710,53 +777,59 @@ class UserScriptManager {
     }
   }
 
-  async registerAllScripts() {
-    const scripts = await this.storage.getScripts();
-    const { parserEnabledState = {} } = await browser.storage.local.get("parserEnabledState");
-    const results = { successful: [], failed: [], disabled: [] };
+  registerAllScripts() {
+    const run = async () => {
+      const scripts = await this.storage.getScripts();
+      const { parserEnabledState = {} } = await browser.storage.local.get("parserEnabledState");
+      const results = { successful: [], failed: [], disabled: [] };
 
-    for (const script of scripts) {
-      try {
-        if (!script.id) script.id = generateParserKey(script.domain, script.urlPatterns, script.authors || []);
+      for (const script of scripts) {
+        try {
+          if (!script.id) script.id = generateParserKey(script.domain, script.urlPatterns, script.authors || []);
 
-        if (parserEnabledState[`enable_${script.id}`] === undefined) {
-          parserEnabledState[`enable_${script.id}`] = true;
-        }
+          if (parserEnabledState[`enable_${script.id}`] === undefined) {
+            parserEnabledState[`enable_${script.id}`] = true;
+          }
 
-        await this.unregisterUserScript(script, true);
+          await this.unregisterUserScript(script, true);
 
-        if (parserEnabledState[`enable_${script.id}`] === false) {
+          if (parserEnabledState[`enable_${script.id}`] === false) {
+            script.registered = false;
+            results.disabled.push(script.id);
+            continue;
+          }
+
+          await this.delay(50);
+          const registrationResult = await this.registerUserScript(script);
+
+          if (registrationResult.ok && !registrationResult.skipped) {
+            script.registered = true;
+            results.successful.push(script.id);
+          } else if (registrationResult.skipped) {
+            results.disabled.push(script.id);
+          } else {
+            script.registered = false;
+            results.failed.push({ id: script.id, error: registrationResult.error });
+          }
+        } catch (error) {
+          logError(`[userScriptWorker]: Error processing script ${script.id}:`, error);
           script.registered = false;
-          results.disabled.push(script.id);
-          continue;
+          results.failed.push({ id: script.id, error: error.message });
         }
-
-        await this.delay(50);
-        const registrationResult = await this.registerUserScript(script);
-
-        if (registrationResult.ok && !registrationResult.skipped) {
-          script.registered = true;
-          results.successful.push(script.id);
-        } else if (registrationResult.skipped) {
-          results.disabled.push(script.id);
-        } else {
-          script.registered = false;
-          results.failed.push({ id: script.id, error: registrationResult.error });
-        }
-      } catch (error) {
-        logError(`[userScriptWorker]: Error processing script ${script.id}:`, error);
-        script.registered = false;
-        results.failed.push({ id: script.id, error: error.message });
       }
-    }
 
-    await this.storage.saveScripts(scripts);
+      await this.storage.saveScripts(scripts);
 
-    logInfo(
-      `[userScriptWorker]: Registration complete - successful: ${results.successful.length}, failed: ${results.failed.length}, disabled: ${results.disabled.length}`,
-    );
+      logInfo(
+        `[userScriptWorker]: Registration complete - successful: ${results.successful.length}, failed: ${results.failed.length}, disabled: ${results.disabled.length}`,
+      );
 
-    return results;
+      return results;
+    };
+
+    // Serialized so overlapping bulk runs cannot interleave per script.
+    if (this._registrationMutex) return this._registrationMutex(run);
+    return run();
   }
 
   async delay(ms) {

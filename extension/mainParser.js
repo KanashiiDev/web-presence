@@ -956,6 +956,73 @@ function getBestData(iframeData, videoData) {
   return videoData || iframeData || {};
 }
 
+// Session nonce validation for USER_SCRIPT_* postMessages. A hostile page can
+// post from the same window, so these channels only accept messages whose nonce
+// matches the background-side "userScriptNonces" map (see userScriptWorker.js).
+const USER_SCRIPT_NONCES_KEY = "userScriptNonces";
+const USER_SCRIPT_NONCE_VALIDATED_TYPES = new Set([
+  "USER_SCRIPT_TRACK_DATA",
+  "USER_SCRIPT_CLEAR_ACTIVITY",
+  "USER_SCRIPT_USE_SETTING_REQUEST",
+  "USER_SCRIPT_MEMO_SET",
+  "USER_SCRIPT_MEMO_GET",
+  "USER_SCRIPT_IFRAME_DATA_REQUEST",
+  "USER_SCRIPT_LOG",
+]);
+let userScriptNonceMap = null;
+let userScriptNonceMapReady = getUserScriptNonceMap();
+let userScriptNonceWarnSpent = false;
+
+function getUserScriptNonceMap() {
+  return browser.storage.local
+    .get(USER_SCRIPT_NONCES_KEY)
+    .then((res) => {
+      userScriptNonceMap = res[USER_SCRIPT_NONCES_KEY] ?? null;
+      return userScriptNonceMap;
+    })
+    .catch(() => {
+      userScriptNonceMap = null;
+      return null;
+    });
+}
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (Object.hasOwn(changes, USER_SCRIPT_NONCES_KEY)) {
+    userScriptNonceMap = changes[USER_SCRIPT_NONCES_KEY].newValue ?? null;
+    userScriptNonceMapReady = Promise.resolve(userScriptNonceMap);
+  }
+  if (parserStateCache.ready && Object.hasOwn(changes, "parserEnabledState")) {
+    const value = changes.parserEnabledState.newValue;
+    parserStateCache.parserEnabledState = value && typeof value === "object" ? value : {};
+  }
+  if (parserStateCache.ready && Object.hasOwn(changes, "parserFilters")) {
+    const value = changes.parserFilters.newValue;
+    parserStateCache.parserFilters = Array.isArray(value) ? value : [];
+  }
+});
+
+// A message is genuine only when its nonce matches the stored nonce of its script id.
+function isUserScriptMessageAuthorized(msg) {
+  if (!userScriptNonceMap || typeof userScriptNonceMap !== "object") return false;
+  if (typeof msg.nonce !== "string" || !msg.nonce) return false;
+  const id = typeof msg.id === "string" && msg.id ? msg.id : typeof msg.data?.id === "string" && msg.data.id ? msg.data.id : null;
+  if (!id || typeof id !== "string") return false;
+  return userScriptNonceMap[id] === msg.nonce;
+}
+
+async function isUserScriptPostMessageAllowed(event) {
+  if (event.origin !== location.origin) return false;
+  if (!USER_SCRIPT_NONCE_VALIDATED_TYPES.has(event.data?.type)) return true;
+  await userScriptNonceMapReady;
+  const allowed = isUserScriptMessageAuthorized(event.data);
+  if (!allowed && !userScriptNonceWarnSpent) {
+    userScriptNonceWarnSpent = true;
+    logWarn("[mainParser]: Rejected unauthenticated USER_SCRIPT_* message (missing or invalid nonce)");
+  }
+  return allowed;
+}
+
 // userScript Manager Listener
 const lastUseScriptRequest = Object.create(null);
 const firstTrackSentDomains = new Set();
@@ -1015,11 +1082,15 @@ function handleUserScriptLogMessage(msg) {
 
 window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
+  if (!(await isUserScriptPostMessageAllowed(event))) return;
   const msg = event.data;
 
   if (msg?.type === "USER_SCRIPT_USE_SETTING_REQUEST") {
     const { id, key, label, inputType, defaultValue, requestId } = msg;
-
+    // The nonce gate already proves the sender; this guard protects the parserSettings write path.
+    if (typeof id !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(id) || !userScriptNonceMap || !Object.hasOwn(userScriptNonceMap, id)) {
+      return;
+    }
     try {
       const result = await useSetting(id, key, label, inputType, defaultValue === "" ? undefined : defaultValue);
       // Send back the result

@@ -353,10 +353,16 @@ const handleToggleUserScript = async (req) => {
   const scriptsList = await scriptManager.storage.getScripts();
   const script = scriptsList.find((s) => s.id === req.id);
 
+  let registerError = null;
+
   if (script) {
     if (newEnabledState) {
       const result = await scriptManager.registerUserScript(script);
       script.registered = result.ok && !result.skipped;
+      // Enable state persists even when registration fails.
+      if (!result.ok) {
+        registerError = result.error || "Registration failed";
+      }
     } else {
       await scriptManager.unregisterUserScript(script, true);
       script.registered = false;
@@ -365,7 +371,12 @@ const handleToggleUserScript = async (req) => {
     await scriptManager.storage.saveScripts(scriptsList);
   }
 
-  return { ok: true, enabled: newEnabledState };
+  return {
+    ok: true,
+    enabled: newEnabledState,
+    registered: script ? script.registered : false,
+    ...(registerError && { error: registerError }),
+  };
 };
 
 // GitHub Store Handlers
