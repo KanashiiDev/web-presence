@@ -316,14 +316,14 @@ async function clearRpcActivity({ maxRetries = 1, timeoutMs = 5000 } = {}) {
   return false;
 }
 
-// Resets all activity-related state fields to their defaults.
+// Resets all activity-related state fields to their defaults. Ownership
+// (lastActiveClient) only expires via the CLIENT_TIMEOUT check.
 function resetActivityState(historyFilePath) {
   clearWebRPC();
   if (historyFilePath) flushListeningTime(historyFilePath);
   state.currentActivity = null;
   state.lastUpdateAt = null;
   state.lastActivitySeenAt = null;
-  state.lastActiveClient = null;
   state.listeningStartTime = null;
   // Remove currentActivity files
   if (localActivitySave) activityWriter.clearActivityFiles();

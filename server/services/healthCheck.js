@@ -74,6 +74,7 @@ async function tick(historyFilePath) {
     if (state.lastActiveClient?.timestamp && now - state.lastActiveClient.timestamp > CLIENT_TIMEOUT) {
       await safeClear();
       resetActivityState(historyFilePath);
+      state.lastActiveClient = null;
       if (!clientLooksAlive()) {
         maybeReconnect("health: dead after timeout");
       }

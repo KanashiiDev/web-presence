@@ -8,34 +8,59 @@ const { buildActivity, setRpcActivity, clearRpcActivity, resetActivityState, han
 function createRpcRouter(historyFilePath) {
   const router = Router();
   const RATE_LIMIT_MS = 2000;
+  const RATE_LIMIT_MAP_MAX = 50;
+
+  // Per-client rate limiting with a bounded map so tab churn cannot grow it.
+  const lastUpdateAtByClient = new Map();
+
+  const isRateLimited = (clientId, now) => {
+    const last = lastUpdateAtByClient.get(clientId);
+    if (last && now - last < RATE_LIMIT_MS) return true;
+
+    lastUpdateAtByClient.set(clientId, now);
+    if (lastUpdateAtByClient.size > RATE_LIMIT_MAP_MAX) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [key, time] of lastUpdateAtByClient) {
+        if (time < oldestTime) {
+          oldestTime = time;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey !== null) lastUpdateAtByClient.delete(oldestKey);
+    }
+    return false;
+  };
 
   // POST /update-rpc
   router.post("/update-rpc", async (req, res) => {
     const now = Date.now();
 
-    // Rate-limit: 2s between updates
-    if (state.lastUpdateAt && now - state.lastUpdateAt < RATE_LIMIT_MS) {
+    const clientId = typeof req.body?.clientId === "string" && req.body.clientId ? req.body.clientId : "unknown";
+
+    // Rate-limit: 2s between updates per client
+    if (isRateLimited(clientId, now)) {
       return res.status(429).json({ error: "Too many updates" });
     }
     state.lastUpdateAt = now;
 
     try {
-      const { data, clientId } = req.body ?? {};
+      const { data } = req.body ?? {};
       if (!data || typeof data !== "object") {
         return res.status(400).json({ error: "Invalid data object" });
       }
 
-      state.lastUpdateRequest = data;
-      const incomingId = String(clientId ?? "unknown");
+      const incomingId = clientId;
 
-      // Client ownership check
+      // Single active client rule: ignore other clients while the owner is fresh.
       if (state.lastActiveClient) {
         const ownerElapsed = now - (state.lastActiveClient.timestamp ?? 0);
         if (ownerElapsed < CLIENT_TIMEOUT && state.lastActiveClient.clientId !== incomingId) {
-          // Another client is active and hasn't timed out yet
           return res.json({ success: true, message: "Another Client is Active" });
         }
       }
+
+      state.lastUpdateRequest = data;
 
       // Try the Discord App connection - but if there is a bridge, continue even if it fails
       const discordConnected = await connectRPC();
@@ -109,6 +134,11 @@ function createRpcRouter(historyFilePath) {
       const { clientId } = req.body;
       if (!clientId || typeof clientId !== "string") {
         return res.status(400).json({ error: "clientId is required and must be a string" });
+      }
+
+      // Non-owner clears are ignored, the same as their updates.
+      if (state.lastActiveClient?.clientId && state.lastActiveClient.clientId !== clientId && Date.now() - (state.lastActiveClient.timestamp ?? 0) < CLIENT_TIMEOUT) {
+        return res.json({ success: true, ignored: true, message: "Another Client is Active" });
       }
 
       if (state.clearRpcInProgress) {
