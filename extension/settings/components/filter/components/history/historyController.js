@@ -150,6 +150,7 @@ const HistoryActions = {
 };
 
 // SCROLL HANDLER
+// Thin wrapper around the shared createHistoryScroll() factory (common/utils/history-scroll.js).
 const HistoryScroll = {
   async activate() {
     // Clear existing
@@ -158,178 +159,23 @@ const HistoryScroll = {
       HistoryState.activeScrollCleanup = null;
     }
 
-    const panel = HistoryDOM.panel;
-    const sbInstance = simpleBarInstances.get(panel);
-    if (!sbInstance) return;
-
-    const scrollElement = sbInstance.getScrollElement?.() || panel.querySelector(".simplebar-content-wrapper") || panel.querySelector(".simplebar-content") || panel;
-
-    // State
-    let isLoading = false;
-    let lastScrollTop = scrollElement.scrollTop;
-    let rafId = null;
-    let isDragging = false;
-    let dragStartTime = 0;
-    let popupShown = false;
-    let observer = null;
-    let scrollListener = null;
-    let draggingInterval = null;
-
-    const BOTTOM_TOLERANCE = 100;
-    const POPUP_DELAY = 700;
-
-    const checkNearBottom = (tolerance = BOTTOM_TOLERANCE) => {
-      return scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - tolerance;
-    };
-
-    const waitForStableScroll = (timeout = 400) => {
-      return new Promise((resolve) => {
-        let lastPos = scrollElement.scrollTop;
-        let stableCount = 0;
-
-        const check = setInterval(() => {
-          if (scrollElement.scrollTop === lastPos) {
-            if (++stableCount >= 3) {
-              clearInterval(check);
-              resolve();
-            }
-          } else {
-            lastPos = scrollElement.scrollTop;
-            stableCount = 0;
-          }
-        }, 40);
-
-        setTimeout(() => {
-          clearInterval(check);
-          resolve();
-        }, timeout);
-      });
-    };
-
-    const isFullyLoaded = () => {
-      const data = HistoryState.isFiltering ? HistoryState.filteredHistory : HistoryState.fullHistory;
-      return HistoryState.currentOffset >= data.length;
-    };
-
-    const tryLoad = async () => {
-      if (isFullyLoaded() || !(scrollElement.scrollHeight > scrollElement.clientHeight + 1) || !checkNearBottom() || isLoading || isDragging) {
-        return;
-      }
-
-      isLoading = true;
-      try {
+    const cleanup = await createHistoryScroll({
+      panel: HistoryDOM.panel,
+      isAllLoaded: () => {
+        const data = HistoryState.isFiltering ? HistoryState.filteredHistory : HistoryState.fullHistory;
+        return HistoryState.currentOffset >= data.length;
+      },
+      renderMore: async () => {
         await HistoryRenderer.render({
           reset: false,
           query: HistoryDOM.searchBox?.value || "",
         });
-      } catch (e) {
-        console.error("renderHistory error:", e);
-      } finally {
-        isLoading = false;
-      }
-    };
-
-    const updateDraggingState = () => {
-      const wasDragging = isDragging;
-      isDragging = panel.classList.contains("simplebar-dragging") || sbInstance.el?.classList?.contains("simplebar-dragging");
-
-      if (isDragging && !wasDragging) {
-        // Drag started
-        dragStartTime = Date.now();
-        popupShown = false;
-
-        if (isFullyLoaded()) return;
-
-        draggingInterval = setInterval(() => {
-          if (!isDragging || isFullyLoaded()) {
-            clearInterval(draggingInterval);
-            draggingInterval = null;
-            return;
-          }
-
-          if (checkNearBottom()) {
-            const elapsed = Date.now() - dragStartTime;
-            if (elapsed >= POPUP_DELAY && !popupShown) {
-              showPopupMessage(i18n.t("popupMessage.releaseToLoadHistory"), "warning", null, 0, "#historyFooter");
-              popupShown = true;
-            }
-          } else {
-            dragStartTime = Date.now();
-            if (popupShown) {
-              hidePopupMessage();
-              popupShown = false;
-            }
-          }
-        }, 100);
-      } else if (!isDragging && wasDragging) {
-        // Drag ended
-        if (draggingInterval) {
-          clearInterval(draggingInterval);
-          draggingInterval = null;
-        }
-
-        if (popupShown) {
-          hidePopupMessage();
-          popupShown = false;
-        }
-
-        if (!isFullyLoaded()) {
-          handleDragEnd();
-        }
-      }
-    };
-
-    const handleDragEnd = async () => {
-      await waitForStableScroll(400);
-      if (checkNearBottom(50)) {
-        await tryLoad();
-      }
-    };
-
-    scrollListener = () => {
-      updateDraggingState();
-
-      if (isDragging || scrollElement.scrollTop === lastScrollTop) return;
-      lastScrollTop = scrollElement.scrollTop;
-
-      if (rafId) return;
-
-      rafId = requestAnimationFrame(async () => {
-        rafId = null;
-        await tryLoad();
-      });
-    };
-
-    scrollElement.addEventListener("scroll", scrollListener, { passive: true });
-
-    observer = new MutationObserver(updateDraggingState);
-    observer.observe(panel, {
-      attributes: true,
-      attributeFilter: ["class"],
+      },
+      // Settings keeps the footer hint and the pre-existing 700 ms delay / no load cooldown.
+      loaderDelayMs: 700,
+      loadCooldownMs: 0,
+      popupFooterSelector: "#historyFooter",
     });
-
-    const cleanup = () => {
-      if (scrollListener && scrollElement) {
-        scrollElement.removeEventListener("scroll", scrollListener);
-        scrollListener = null;
-      }
-      if (draggingInterval) {
-        clearInterval(draggingInterval);
-        draggingInterval = null;
-      }
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      if (observer) {
-        observer.disconnect();
-        observer = null;
-      }
-      if (popupShown) {
-        hidePopupMessage();
-        popupShown = false;
-      }
-    };
 
     HistoryState.activeScrollCleanup = cleanup;
     return cleanup;
