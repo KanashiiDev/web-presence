@@ -31,12 +31,6 @@ body {
   min-height: 100vh;
 }
 
-#listControls {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
 a.link {
   color: var(--link-color);
   text-decoration: none;
@@ -379,13 +373,6 @@ input[disabled] {
   color: var(--red-color);
 }
 
-code {
-  background: var(--foreground-color-400);
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  font-family: Consolas, "Courier New", monospace;
-}
-
 small > code {
   margin-right: 2px;
 }
@@ -454,7 +441,7 @@ small > code {
   background: var(--foreground-color-400);
 }
 
-.modal-content-wrapper,
+/* .modal-content-wrapper part now comes from the shared component styles (css-components) */
 #importResultList {
   max-height: 382px;
   overflow-y: auto;
@@ -526,15 +513,7 @@ small > code {
   background: var(--accent-color-bright);
 }
 
-.modal-content .close-btn {
-  background: var(--foreground-color-400);
-  flex: 1;
-}
-
-.modal-content .close-btn:hover {
-  background: var(--foreground-color-500);
-}
-
+/* .modal-content .close-btn styles come from shared css-components.css */
 .modal .button-group .button {
   background: var(--foreground-color-400);
   color: var(--text-color-primary);
@@ -742,26 +721,6 @@ small > code {
 .useSetting-item > button:last-of-type {
   justify-self: end;
   align-self: center;
-}
-
-.hidden-visibility {
-  visibility: hidden;
-}
-
-.parser-icon-container,
-.parser-icon {
-  height: 24px;
-  border-radius: var(--radius-sm);
-  transition: height var(--transition-reduced) ease;
-  cursor: pointer;
-}
-
-.parser-icon:hover {
-  height: 26px;
-}
-
-.parser-icon-container {
-  margin-right: 0;
 }
 
 .disabled .parser-icon-container {

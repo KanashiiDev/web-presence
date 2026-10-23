@@ -140,7 +140,6 @@
 }
 
 .icon-btn:hover {
-  background: var(--foreground-color-400);
   color: var(--text-color-primary);
 }
 

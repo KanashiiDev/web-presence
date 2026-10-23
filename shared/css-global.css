@@ -1086,3 +1086,94 @@ html.setup-dialog-open #mainFooterButtons {
 .transition-slow {
   transition: var(--transition-slow);
 }
+
+/* ============= Shared Page Styles (deduplicated) ============= */
+/* Shared page styles (previously duplicated across pages; page CSS keeps the
+   differing declarations only). */
+
+#historyPanel h3:first-of-type {
+  margin-top: 0;
+}
+
+.history-entry img {
+  background: var(--foreground-color-200);
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--transition-normal) ease;
+  box-shadow: 0px 3px 6px 0px var(--shadow-color);
+}
+
+.history-entry img.lazyloaded {
+  opacity: 1;
+}
+
+#historyFooter {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  width: calc(100% - 5px);
+  text-align: end;
+  position: relative;
+}
+
+/* Filter reset buttons base (page CSS keeps the differing offsets) */
+#debugSearchResetBtn.filter-active,
+#debugTabIdResetBtn.filter-active,
+#debugHostnameResetBtn.filter-active,
+#activitySearchResetBtn.filter-active,
+.script-filter-reset.filter-active {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-normal) ease;
+  height: 16px;
+  width: 16px;
+}
+
+#debugSearchResetBtn.filter-active:hover,
+#debugTabIdResetBtn.filter-active:hover,
+#debugHostnameResetBtn.filter-active:hover,
+#activitySearchResetBtn.filter-active:hover,
+.script-filter-reset.filter-active:hover {
+  opacity: 1;
+}
+
+/* Parser icon base (popup + userScriptManager) */
+.parser-icon-container,
+.parser-icon {
+  height: 24px;
+  border-radius: var(--radius-sm);
+  transition: height var(--transition-reduced) ease;
+  cursor: pointer;
+}
+
+.parser-icon:hover {
+  height: 26px;
+}
+
+.parser-icon-container {
+  margin-right: 0;
+}
+
+.hidden-visibility {
+  visibility: hidden;
+}
+
+#listControls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+code {
+  background: var(--foreground-color-400);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-family: Consolas, "Courier New", monospace;
+}
