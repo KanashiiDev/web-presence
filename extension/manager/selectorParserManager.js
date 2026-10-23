@@ -293,10 +293,38 @@ class UserParserUI {
           .split(",")
           .map((p) => p.trim())
           .filter(Boolean)
-      : [".*"];
+: [".*"];
+
+    // Validate selector syntax for every filled field before persisting
+    const draftSelectors = {
+      title: selTitle,
+      artist: document.getElementById("selArtist").value.trim() || undefined,
+      source: document.getElementById("selSource").value.trim() || undefined,
+      image: document.getElementById("selImage").value.trim() || undefined,
+      isPlaying: document.getElementById("selIsPlaying").value.trim() || undefined,
+      timePassed: document.getElementById("selTimePassed").value.trim() || undefined,
+      duration: document.getElementById("selDuration").value.trim() || undefined,
+      buttonLink: document.getElementById("selButtonLink").value.trim() || undefined,
+      buttonText: document.getElementById("selButtonText").value.trim() || undefined,
+      buttonLink2: document.getElementById("selButtonLink2").value.trim() || undefined,
+      buttonText2: document.getElementById("selButtonText2").value.trim() || undefined,
+    };
+
+    const sharedValidation = validateSelectorConfig(draftSelectors, { urlPatterns });
+    if (!sharedValidation.ok) {
+      showAlert(i18n.t("selector.editor.warn.invalidFields"), sharedValidation.invalidFields.map((labelKey) => i18n.t(labelKey)).join(", "), "warn");
+      return;
+    }
 
     const primaryDomain = Array.isArray(domain) ? domain[0] : domain;
-    const newId = generateParserKey(primaryDomain, urlPatterns);
+    let newId;
+    try {
+      newId = generateParserKey(primaryDomain, urlPatterns);
+    } catch (err) {
+      logError("[selectorParserManager]: Failed to generate parser id:", err);
+      showAlert(i18n.t("common.error"), "", "error");
+      return;
+    }
 
     const updatedObj = {
       id: newId,
@@ -495,6 +523,7 @@ class UserParserUI {
 
       const closeBtn = this.createButton(i18n.t("common.close"), () => {
         if (!importFinished) return;
+        window.removeEventListener("click", onWindowClick);
         modal.remove();
         resolve({ duplicates, newParsers });
       });
@@ -508,12 +537,16 @@ class UserParserUI {
 
       if (typeof activateSimpleBar === "function") activateSimpleBar("importModalBody");
 
-      window.onclick = (ev) => {
-        if (importFinished && ev.target === modal) {
-          modal.remove();
-          resolve({ duplicates, newParsers });
-        }
+      // addEventListener keeps pre-existing window click handlers intact.
+      const onWindowClick = (ev) => {
+        if (importFinished && ev.target === modal) closeViaOutside();
       };
+      const closeViaOutside = () => {
+        window.removeEventListener("click", onWindowClick);
+        modal.remove();
+        resolve({ duplicates, newParsers });
+      };
+      window.addEventListener("click", onWindowClick);
     });
   }
 

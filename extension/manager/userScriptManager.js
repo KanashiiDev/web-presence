@@ -1306,6 +1306,7 @@ ${codeIndented}
 
       const closeBtn = this.createButton(i18n.t("common.close"), async () => {
         if (importFinished) {
+          window.removeEventListener("click", onWindowClick);
           modal.remove();
           resolve({ duplicates, newScripts });
         }
@@ -1319,13 +1320,16 @@ ${codeIndented}
       document.body.appendChild(modal);
       activateSimpleBar("importModalBody");
 
-      // Close when clicking outside the modal
-      window.onclick = (ev) => {
-        if (importFinished && ev.target === modal) {
-          modal.remove();
-          resolve({ duplicates, newScripts });
-        }
+      // addEventListener keeps pre-existing window click handlers intact.
+      const onWindowClick = (ev) => {
+        if (importFinished && ev.target === modal) closeViaOutside();
       };
+      const closeViaOutside = () => {
+        window.removeEventListener("click", onWindowClick);
+        modal.remove();
+        resolve({ duplicates, newScripts });
+      };
+      window.addEventListener("click", onWindowClick);
     });
   }
 
