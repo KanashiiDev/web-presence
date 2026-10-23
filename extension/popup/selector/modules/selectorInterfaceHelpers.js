@@ -387,7 +387,9 @@ function createFieldInputs(placeholderMap = getPlaceholderMap()) {
       input.placeholder = placeholderMap[key] || "";
     }
 
-    const button = document.createElement("a");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "selector.editor.selectWithClick");
     const hideSelect = config.type === "select" || config.hidden || config.disableSelect || key === "regex";
     if (hideSelect) wrapper.classList.add("select-hidden");
     button.setAttribute("data-field", key);
@@ -406,17 +408,20 @@ function createActionButtons(root, shadow) {
   const optionsDiv = document.createElement("div");
   optionsDiv.className = "userRpc-listItemOptions";
 
-  const saveBtn = document.createElement("a");
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
   saveBtn.className = "userRpc-optionButtons btn";
   saveBtn.id = "saveSelectors";
   saveBtn.textContent = "common.save";
 
-  const exitBtn = document.createElement("a");
+  const exitBtn = document.createElement("button");
+  exitBtn.type = "button";
   exitBtn.className = "userRpc-optionButtons btn";
   exitBtn.id = "closeSelectorUI";
   exitBtn.textContent = "common.close";
 
-  const addButtonsToggle = document.createElement("a");
+  const addButtonsToggle = document.createElement("button");
+  addButtonsToggle.type = "button";
   addButtonsToggle.className = "userRpc-optionButtons btn addButtonsToggle";
   addButtonsToggle.textContent = "selector.editor.addButtons";
   addButtonsToggle.addEventListener("click", () => {
@@ -485,7 +490,8 @@ function setupDragFunctionality(root) {
       keepInsideViewport();
     } else {
       const rect = root.getBoundingClientRect();
-      root.style.left = window.innerWidth - rect.width - 15 + "px";
+      // Clamp horizontally - the panel must not go offscreen on narrow windows
+      root.style.left = Math.max(0, window.innerWidth - rect.width - 15) + "px";
       root.style.top = "15px";
     }
   });
@@ -606,6 +612,15 @@ function setupEventListeners(shadow) {
     });
   });
 
+  // Track unsaved edits so the close button can ask for confirmation
+  shadow.addEventListener(
+    "input",
+    () => {
+      shadow._selectorDirty = true;
+    },
+    true,
+  );
+
   // Save User Add RPC
   shadow.getElementById("saveSelectors").addEventListener("click", async () => {
     const fields = ALL_FIELDS;
@@ -662,7 +677,37 @@ function setupEventListeners(shadow) {
 
     const rawPattern = selectors["regex"] || ".*";
     const patternStrings = Array.isArray(rawPattern) ? rawPattern.map((p) => p.toString()) : [rawPattern.toString()];
-    const id = generateParserKey(savedDomain, rawPattern);
+    let id;
+    try {
+      id = generateParserKey(savedDomain, rawPattern);
+    } catch (err) {
+      logError("[selector]: Failed to generate parser id:", err);
+      showStatusMsg(t("common.error"), 1, 0, shadow);
+      return;
+    }
+
+    // Syntax validation for the remaining fields (regex, css selectors, domain)
+    const sharedValidation = validateSelectorConfig(selectors, {
+      urlPatterns: patternStrings,
+      hasDomain: !!savedDomain,
+    });
+
+    if (!sharedValidation.ok) {
+      const fragment = document.createDocumentFragment();
+      fragment.appendChild(document.createTextNode(t("selector.editor.warn.invalidFields")));
+      fragment.appendChild(document.createElement("br"));
+
+      const ul = document.createElement("ul");
+      sharedValidation.invalidFields.forEach((labelKey) => {
+        const li = document.createElement("li");
+        li.textContent = t(labelKey);
+        ul.appendChild(li);
+      });
+      fragment.appendChild(ul);
+
+      showStatusMsg(fragment, true, false, shadow);
+      return;
+    }
 
     const newEntry = {
       id,
@@ -687,12 +732,27 @@ function setupEventListeners(shadow) {
 
     shadow._editingParserId = id;
     await browser.storage.local.set({ userParserSelectors: parserArray });
+    shadow._selectorDirty = false;
 
-    showStatusMsg(t("selector.editor.saved"), 0, 0, shadow);
+    const savedFragment = document.createDocumentFragment();
+    savedFragment.appendChild(document.createTextNode(t("selector.editor.saved")));
+    savedFragment.appendChild(document.createElement("br"));
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.className = "userRpc-refresh-page";
+    refreshBtn.textContent = t("selector.editor.refreshPage");
+    refreshBtn.addEventListener("click", () => location.reload());
+    savedFragment.appendChild(refreshBtn);
+
+    showStatusMsg(savedFragment, 0, 0, shadow);
   });
 
   // Close User Add RPC
-  shadow.getElementById("closeSelectorUI").addEventListener("click", () => {
+  shadow.getElementById("closeSelectorUI").addEventListener("click", async () => {
+    if (shadow._selectorDirty) {
+      const proceed = await showConfirm("", { heading: t("selector.editor.warn.unsavedClose"), target: shadow });
+      if (!proceed) return;
+    }
     clearInterval(previewInterval);
     if (shadow._previewRefreshInterval != null) {
       clearInterval(shadow._previewRefreshInterval);

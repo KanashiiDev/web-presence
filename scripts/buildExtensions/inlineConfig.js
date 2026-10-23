@@ -119,6 +119,8 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "svg_paths",
     "svgCache",
     "createSVG",
+    "validateSelectorConfig",
+    "SELECTOR_CSS_FIELDS",
   ]);
 
   // Selector Components

@@ -208,30 +208,6 @@ function isElementVisible(el) {
 /* ────────────────────────────────────── */
 /*      Flutter Canvas Detection          */
 /* ────────────────────────────────────── */
-function isFlutterCanvas(el) {
-  if (!el) return false;
-  // Check for Flutter-specific indicators
-  if (el.closest("flt-canvas-container")) return true;
-  if (el.closest("flutter-view")) return true;
-  if (document.querySelector("flt-glass-pane")) return true;
-
-  return false;
-}
-
-function getFlutterCanvasAtPoint(x, y) {
-  const canvas = document.elementFromPoint(x, y);
-  if (isFlutterCanvas(canvas)) return canvas;
-
-  // Check if we're in a Flutter app by looking for flutter-view ancestor
-  const flutterView = document.querySelector("flutter-view");
-  if (flutterView) {
-    const canvasEl = flutterView.querySelector("canvas[aria-hidden='true']");
-    if (canvasEl) return canvasEl;
-  }
-
-  return null;
-}
-
 function isFlutterPage() {
   return !!document.querySelector("flutter-view, flt-glass-pane, flt-canvas-container > canvas[aria-hidden='true']");
 }
@@ -283,23 +259,6 @@ function hasInteractiveRole(el) {
 /* ─────────────────────────── */
 /*      Element Detection      */
 /* ─────────────────────────── */
-function isElementAtPoint(el, x, y) {
-  try {
-    return safeElementsFromPoint(x, y).includes(el);
-  } catch {
-    try {
-      const rect = el.getBoundingClientRect();
-      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-    } catch {
-      return false;
-    }
-  }
-}
-
-function isElementVisibleAndAtPoint(el, x, y) {
-  return isValidElement(el) && isElementAtPoint(el, x, y);
-}
-
 function isFullScreenOverlay(el) {
   if (!el || el === document.body || el === document.documentElement) return false;
 
@@ -319,10 +278,6 @@ function isFullScreenOverlay(el) {
   } finally {
     isFullScreenOverlay._depth--;
   }
-}
-
-function deepElementsFromPoint(x, y, root = document) {
-  return safeElementsFromPoint(x, y, root);
 }
 
 function deepElementFromPoint(x, y, root = document) {
@@ -347,21 +302,6 @@ function deepElementFromPoint(x, y, root = document) {
   }
 
   return el;
-}
-
-function findDeepestValidElementInTree(root, x, y, depth = 0) {
-  if (depth > SELECTOR_CONSTANTS.MATCH_LIMITS.MAX_DEPTH_SAFETY) return root;
-
-  let deepest = root;
-  const children = [...(root.children || []), ...(root.shadowRoot ? root.shadowRoot.children || [] : [])];
-  for (const child of children) {
-    if (!isElementVisibleAndAtPoint(child, x, y)) continue;
-    if (isValidElement(child)) {
-      const deeper = findDeepestValidElementInTree(child, x, y, depth + 1);
-      if (deeper && isValidElement(deeper)) deepest = deeper;
-    }
-  }
-  return deepest;
 }
 
 /* ──────────────────────────────── */
@@ -431,10 +371,6 @@ function isGenericClass(cls) {
 
 function filterNonGenericClasses(classes) {
   return Array.from(classes || []).filter((cls) => classifyClass(cls) === "stable");
-}
-
-function filterWeakClasses(classes) {
-  return Array.from(classes || []).filter((cls) => classifyClass(cls) === "weak");
 }
 
 // Source classes for prefix extraction: stable + hash (weak classes have no meaningful prefix)

@@ -621,11 +621,6 @@ function getGoodClass(el) {
   return scored[0]?.cls ?? null;
 }
 
-function isPartialClass(cls) {
-  // Check if class looks like CSS Modules hashed class (prefix_hash)
-  return /[_-][a-zA-Z0-9]{4,16}(?:_\d+)?$/.test(cls);
-}
-
 function hasNonGenericClass(el) {
   return filterNonGenericClasses(safeGetClassList(el)).length > 0;
 }

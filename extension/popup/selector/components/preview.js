@@ -1,4 +1,9 @@
 // Create Preview Section
+// Placeholder text for custom action buttons; keeps comparisons consistent.
+function customActionText() {
+  return t("selector.preview.customAction");
+}
+
 function createPreviewSection(root) {
   const preview = document.createElement("div");
   preview.className = "rpc-preview";
@@ -77,12 +82,12 @@ function createPreviewSection(root) {
   const customButton = document.createElement("a");
   customButton.className = "custom-btn";
   customButton.id = "customButton";
-  customButton.textContent = "Custom Action";
+  customButton.textContent = customActionText();
 
   const customButton2 = document.createElement("a");
   customButton2.className = "custom-btn";
   customButton2.id = "customButton2";
-  customButton2.textContent = "Custom Action";
+  customButton2.textContent = customActionText();
 
   linkContainer.appendChild(link);
   linkContainer.appendChild(customButton);
@@ -131,7 +136,8 @@ async function updatePreview(shadow, editMode) {
     }
   };
 
-  function isValidUrl(input) {
+  // Selector values are untrusted; their href may be a javascript:/data: URL.
+  function isHttpUrl(input) {
     if (typeof input !== "string") return false;
 
     const value = input.trim();
@@ -183,8 +189,8 @@ async function updatePreview(shadow, editMode) {
     source: getText(selectors.source) || getPlainText(selectors.source) || getCleanHostname() || t("selector.editor.source.label") || "source",
     timePassed: getText(selectors.timePassed) || undefined,
     duration: getText(selectors.duration) || undefined,
-    buttonText: getText(selectors.buttonText) || getPlainText(selectors.buttonText) || "Custom Action",
-    buttonText2: getText(selectors.buttonText2) || getPlainText(selectors.buttonText2) || "Custom Action",
+    buttonText: getText(selectors.buttonText) || getPlainText(selectors.buttonText) || customActionText(),
+    buttonText2: getText(selectors.buttonText2) || getPlainText(selectors.buttonText2) || customActionText(),
     mode: selectors.mode === "watch" ? t("selector.preview.watchTo") : t("selector.preview.listenTo"),
   };
 
@@ -234,7 +240,8 @@ async function updatePreview(shadow, editMode) {
 
   const setLink = () => {
     const el = details.querySelector(".link");
-    const href = elements.link?.href || (isValidUrl(selectors.link) ? selectors.link : location.origin);
+    const stringFallback = isHttpUrl(selectors.link) ? selectors.link : location.origin;
+    const href = getSafeHref(() => elements.link, "link", stringFallback) ?? stringFallback;
     const linkText = t("selector.preview.open", { source: texts.source });
     if (el) {
       if (el.href !== href) el.href = href;
@@ -244,12 +251,13 @@ async function updatePreview(shadow, editMode) {
 
   const setButtons = ({ linkElement, fallbackUrl, buttonText, buttonSelector = "#customButton" }) => {
     const el = details.querySelector(buttonSelector);
-    const href = linkElement?.href || (isValidUrl(fallbackUrl) ? fallbackUrl : "");
+    const stringFallback = isHttpUrl(fallbackUrl) ? fallbackUrl : "";
+    const href = getSafeHref(() => linkElement, "buttonLink", stringFallback) ?? stringFallback;
 
     if (el) {
       if (el.href !== href) el.href = href;
       if (el.textContent !== buttonText) el.textContent = buttonText;
-      if (el.textContent !== "Custom Action" && el.href) {
+      if (el.textContent !== customActionText() && el.href) {
         el.style.display = "block";
       } else {
         el.style.display = "none";
@@ -259,7 +267,7 @@ async function updatePreview(shadow, editMode) {
     const link = details.querySelector(".link");
 
     if (buttons) {
-      const bothHaveHrefAndText = Array.from(buttons).every((btn) => btn.href && btn.textContent.trim() !== "" && btn.textContent.trim() !== "Custom Action");
+      const bothHaveHrefAndText = Array.from(buttons).every((btn) => btn.href && btn.textContent.trim() !== "" && btn.textContent.trim() !== customActionText());
       if (link) link.style.display = bothHaveHrefAndText ? "none" : "block";
     } else {
       if (link) link.style.display = "block";
