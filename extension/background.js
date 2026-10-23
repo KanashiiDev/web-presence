@@ -285,7 +285,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
           logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId} via web-only`, { tabId, hostname: domain, tabUrl: url });
         } else {
           try {
-            await fetchWithTimeout(
+            const response = await fetchWithTimeout(
               `http://localhost:${state.serverPort}/clear-rpc`,
               {
                 method: "POST",
@@ -294,6 +294,11 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
               },
               CONFIG.requestTimeout,
             );
+            if (typeof response?.ok === "boolean" && !response.ok) {
+              const errorBody = await response.json().catch(() => ({}));
+              const detail = errorBody && typeof errorBody === "object" && errorBody.error ? String(errorBody.error) : "unknown";
+              throw new Error(`HTTP ${response.status}: ${detail}`);
+            }
             logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId}`, { tabId, hostname: domain, tabUrl: url });
           } catch (err) {
             logError(`[background:clearRpcForTab]: RPC clear failed for tab ${tabId}:`, err.message, { tabId, hostname: domain, tabUrl: url });
@@ -489,6 +494,11 @@ const updateRpc = async (data, tabId) => {
         },
         CONFIG.requestTimeout,
       );
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const detail = errorBody && typeof errorBody === "object" && errorBody.error ? String(errorBody.error) : "unknown";
+        throw new Error(`RPC ${response.status}: ${detail}`);
+      }
       await response.text();
     }
   } catch (err) {
@@ -538,7 +548,7 @@ const scheduleRpcUpdate = (data, tabId) => {
   state.pendingUpdates.set(tabId, { timeout, data });
 };
 
-// Checks the Active Tab
+// Checks the Active Tab. Pings tab content scripts for their last parsed song.
 async function safePingTab(tabId) {
   try {
     const res = await browser.tabs.sendMessage(tabId, { type: "PING_FOR_DATA" });
@@ -556,52 +566,18 @@ const processTab = async (tabId, tabData) => {
   if (!state.activeTabMap.has(tabId)) return;
 
   const now = Date.now();
-  // If being processed for the first time, wait a bit for the content script to load
-  if (!tabData.lastUpdated) {
-    state.activeTabMap.set(tabId, {
-      ...tabData,
-      lastUpdated: 0,
-    });
-    return;
-  }
+  if (!tabData.lastUpdated) return;
   if (now - tabData.lastUpdated < CONFIG.activeInterval) return;
 
-  const res = await safePingTab(tabId);
-
-  if (!res || typeof res !== "object") {
-    if (!tabData.lastUpdated || now - tabData.lastUpdated > CONFIG.stuckThreshold) {
-      const rpcHealth = await handleIsRpcConnected();
-      if (!rpcHealth?.ok) {
-        logInfo(`[background:processTab]: Tab ${tabId} did not respond but RPC is not connected, skipping clear`, { tabId });
-        return;
-      }
-      logInfo(`[background:processTab]: Tab ${tabId} did not respond, clearing RPC`, { tabId });
-      await clearRpcForTab(tabId, "tab did not respond");
+  if (now - tabData.lastUpdated > CONFIG.stuckThreshold) {
+    const rpcHealth = await handleIsRpcConnected();
+    if (!rpcHealth?.ok) {
+      logInfo(`[background:processTab]: Tab ${tabId} is stale but RPC is not connected, skipping clear`, { tabId });
+      return;
     }
-    return;
+    logInfo(`[background:processTab]: Tab ${tabId} data is stale, clearing RPC`, { tabId });
+    await clearRpcForTab(tabId, "tab data is stale");
   }
-
-  if (!res.title || !res.artist) return;
-
-  // Radio / stream check (duration = 0)
-  if (res.duration <= 0) {
-    if (now - tabData.lastUpdated >= CONFIG.activeInterval) {
-      state.activeTabMap.set(tabId, {
-        ...res,
-        lastUpdated: now,
-        isAudioPlaying: true,
-      });
-    }
-    return;
-  }
-
-  // Normal update
-  state.activeTabMap.set(tabId, {
-    ...res,
-    lastUpdated: now,
-    isAudioPlaying: true,
-    progress: res.progress,
-  });
 };
 
 // Main Loop
