@@ -16,7 +16,6 @@ const state = {
   parserList: [],
   parserListLoaded: false,
   parserListLoading: null,
-  parserEnabledCache: new Map(),
   parserMap: {},
   pendingClear: new Set(),
   pendingFetches: new Map(),
@@ -26,16 +25,6 @@ const state = {
 
 const getEnabledParsers = () => state.parserList.filter((p) => p.isEnabled);
 const historyData = () => loadHistory();
-
-// Retrieves the 'enable_' data from the local storage.
-async function loadParserEnabledCache(parserEnabledCache, parserList) {
-  parserEnabledCache.clear();
-  const { parserEnabledState = {} } = await browser.storage.local.get("parserEnabledState");
-  parserList.forEach((p) => {
-    const enableKey = `enable_${p.id}`;
-    parserEnabledCache.set(p.id, parserEnabledState[enableKey] !== false);
-  });
-}
 
 const historyMutex = createMutex();
 async function scheduleHistoryAdd(tabId, songData) {
@@ -143,7 +132,6 @@ async function loadParserList() {
 
     // If there is an 'enable_' setting in the cache, use it.
     state.parserMap = Object.fromEntries(state.parserList.map((p) => [`${p.id}`, p]));
-    await loadParserEnabledCache(state.parserEnabledCache, state.parserList);
     state.parserListLoaded = true;
   } catch (error) {
     logError("[background:loadParserList]: ParserList loading failed:", error);
@@ -219,8 +207,8 @@ const loadParserListOnce = async (force = false) => {
   });
 };
 
-const parserReady = async () => {
-  await loadParserListOnce();
+const parserReady = async (force = false) => {
+  await loadParserListOnce(force);
 };
 
 const activeTabMutex = createMutex();

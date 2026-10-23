@@ -2035,13 +2035,15 @@ const setupListeners = () => {
     if (area !== "local") return;
 
     for (const [key, change] of Object.entries(changes)) {
-      // Update parser enabled cache
+      // Update enabled state directly; the debounced loadParserList() syncs the rest.
       if (key === "parserEnabledState") {
         const enabledState = change.newValue || {};
 
-        for (const [enableKey, isEnabled] of Object.entries(enabledState)) {
-          const parserId = enableKey.startsWith("enable_");
-          state.parserEnabledCache.set(parserId, isEnabled !== false);
+        for (const parser of state.parserList) {
+          const enableKey = `enable_${parser.id}`;
+          if (Object.hasOwn(enabledState, enableKey)) {
+            parser.isEnabled = enabledState[enableKey] !== false;
+          }
         }
       }
       // If the parser list or settings have changed, reload

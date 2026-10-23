@@ -25,9 +25,8 @@ const isAllowedDomain = async (hostname, pathname) => {
 
       if (!hasMatch) continue;
 
-      // Parser enabled check
-      const cached = state.parserEnabledCache.has(parser.id) ? state.parserEnabledCache.get(parser.id) : parser.isEnabled !== false;
-      if (cached) {
+      // parserList entries carry isEnabled, kept fresh by storage.onChanged.
+      if (parser.isEnabled !== false) {
         return { ok: true, match: `[isAllowedDomain]: Match: ${hostname}${pathname} (parser: ${parser.title} [${parser.id}])` };
       }
     }
