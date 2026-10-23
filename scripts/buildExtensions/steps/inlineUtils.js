@@ -2,6 +2,9 @@ const fs = require("fs-extra");
 const path = require("path");
 const acorn = require("acorn");
 
+// Operators minifiers prepend to parenthesized IIFEs so they keep their expression-statement shape.
+const UNARY_IIFE_OPERATORS = ["!", "void", "+", "-", "~"];
+
 /**
  * Creates the inline utils system bound to specific extensionDir and distDir.
  * Returns { inlineUtilsFunctions, buildInlineFunctions }
@@ -65,6 +68,21 @@ function createInlineUtils(extensionDir, distDir) {
       return includeAll || (name && namesToInclude.includes(name));
     }
 
+    // Minified bundles usually wrap IIFEs in a unary operator (i.e. !function(){}()); accept both shapes.
+    function getIifeCall(expression) {
+      if (expression.type === "CallExpression") {
+        return expression.callee.type === "FunctionExpression" ? expression : null;
+      }
+      if (expression.type === "UnaryExpression" && UNARY_IIFE_OPERATORS.includes(expression.operator) && expression.argument.type === "CallExpression") {
+        return expression.argument.callee.type === "FunctionExpression" ? expression.argument : null;
+      }
+      return null;
+    }
+
+    function isRequireCall(expression) {
+      return expression.type === "CallExpression" && expression.callee.type === "Identifier" && expression.callee.name === "require";
+    }
+
     for (const node of ast.body) {
       // Function declarations
       if (node.type === "FunctionDeclaration" && shouldInclude(node.id?.name)) {
@@ -120,24 +138,39 @@ function createInlineUtils(extensionDir, distDir) {
         continue;
       }
 
-      // IIFE and anonymous functions
-      if (node.type === "ExpressionStatement" && node.expression.type === "CallExpression" && node.expression.callee.type === "FunctionExpression") {
-        if (includeAll || shouldInclude(node.expression.callee.id?.name)) {
-          extracted.push(code.slice(node.start, node.end));
+      // IIFE and anonymous functions (direct or unary-wrapped, as minifiers emit)
+      if (node.type === "ExpressionStatement") {
+        const iifeCall = getIifeCall(node.expression);
+        if (iifeCall) {
+          if (includeAll || shouldInclude(iifeCall.callee.id?.name)) {
+            extracted.push(code.slice(node.start, node.end));
+          }
+          continue;
         }
-        continue;
+
+        // includeAll keeps any other effectful top level statement as well; minified bundles
+        // commonly open with sequence expressions doing polyfill and init work. Only CommonJS
+        // plumbing (imports to the module system) stays out.
+        if (includeAll && node.expression.type !== "AssignmentExpression" && !isRequireCall(node.expression)) {
+          extracted.push(code.slice(node.start, node.end));
+          continue;
+        }
       }
     }
 
-    // Guard: top level statements that are not declarations/IIFE/commonjs-exports are
-    // silently dropped from every bundle this file is inlined into. That hid module
-    // initialization code before, so make it loud instead of silent.
+    // Guard: statements that are neither kept by the extraction rules above nor dropped by
+    // design (CommonJS plumbing) are silently lost; make that loud.
     for (const node of ast.body) {
-      if (node.type === "ExpressionStatement" && node.expression.type === "AssignmentExpression") continue; // commonjs exports
-      if (node.type === "ExpressionStatement" && node.expression.type === "CallExpression") {
-        const callee = node.expression.callee;
-        if (callee.type === "FunctionExpression") continue; // IIFE: kept
-        if (callee.type === "Identifier" && callee.name === "require") continue;
+      if (node.type === "ExpressionStatement") {
+        // Assignments and require() calls are dropped by design (module system plumbing).
+        continue;
+      }
+      const covered =
+        node.type === "FunctionDeclaration" ||
+        node.type === "VariableDeclaration" ||
+        node.type === "ClassDeclaration" ||
+        (node.type === "ExportNamedDeclaration" && node.declaration);
+      if (!covered) {
         const statement = code.slice(node.start, node.end).replace(/\s+/g, " ").slice(0, 80);
         console.warn(
           `[build] inlineUtils: "${sourceFilePath.replace(/\\/g, "/")}" is inlined into ${inlineTargets}, ` +

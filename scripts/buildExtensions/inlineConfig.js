@@ -9,7 +9,8 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions(["background.js", "common/utils.js", "mainParser.js"], "config.js", [], "start", true);
 
   inlineUtilsFunctions(["background.js"], "activityLibrary/service.js", [], "start", true);
-  inlineUtilsFunctions(["background.js", "common/utils.js", "main.js"], "common/debugLogger.js", [], "start");
+
+  inlineUtilsFunctions(["background.js", "common/utils.js", "main.js"], "common/debugLogger.js", [], "start", true);
 
   // Logs
   inlineUtilsFunctions(["background.js", "mainParser.js"], "common/utils/logging.js", [], "start");
