@@ -36,8 +36,8 @@ const listRepos = () => apiCall("store_listRepos");
 const addRepo = (url) => apiCall("store_addRepo", { url });
 const removeRepo = (repoId) => apiCall("store_removeRepo", { repoId });
 const checkUpdates = () => apiCall("store_checkUpdates");
-const installScript = (repoId, meta) => apiCall("store_installScript", { repoId, scriptMeta: meta });
-const updateScript = (repoId, meta) => apiCall("store_updateScript", { repoId, scriptMeta: meta });
+const installScript = (repoId, meta, opts) => apiCall("store_installScript", { repoId, scriptMeta: meta, ...(opts ?? {}) });
+const updateScript = (repoId, meta, opts) => apiCall("store_updateScript", { repoId, scriptMeta: meta, ...(opts ?? {}) });
 const batchUpdate = (updates) => apiCall("store_batchUpdate", { updates });
 
 const getInstalledScripts = async () => {
@@ -640,8 +640,26 @@ const handleScriptAction = async (btn, action) => {
   const isInstall = action === "install";
   showStatus(i18n.t(isInstall ? "library.status.installing" : "library.status.updating", [scriptMeta.title ?? "Script"]), true, 0);
 
-  const fn = isInstall ? () => installScript(repoId, scriptMeta) : () => updateScript(repoId, scriptMeta);
-  const result = await fn().catch((err) => ({ ok: false, error: err.message }));
+  let fn = isInstall ? () => installScript(repoId, scriptMeta) : () => updateScript(repoId, scriptMeta);
+  let result = await fn().catch((err) => ({ ok: false, error: err.message }));
+
+  // Remote code registering in the MAIN world requires explicit confirmation.
+  if (result?.requiresMainConfirmation) {
+    const confirmed = await showConfirm("", {
+      heading: `${i18n.t("library.confirm.mainWorld")}\n[${scriptMeta.title ?? ""}]`,
+      body: "",
+      type: "tip",
+      labelOk: i18n.t("common.ok"),
+    });
+    if (confirmed) {
+      fn = isInstall ? () => installScript(repoId, scriptMeta, { confirmMain: true }) : () => updateScript(repoId, scriptMeta, { confirmMain: true });
+      result = await fn().catch((err) => ({ ok: false, error: err.message }));
+    } else {
+      showStatus(i18n.t("library.warn.mainWorldCancelled", [scriptMeta.title ?? "Script"]), false, 5000);
+      btn.disabled = false;
+      return;
+    }
+  }
 
   btn.replaceChildren(iconSVG(isInstall ? "downloadIconPaths" : "refreshIconPaths", 13));
   btn.disabled = false;

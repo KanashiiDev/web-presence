@@ -555,6 +555,8 @@
   "library.action.upToDate": "À jour",
   "library.banner.updatesAvailable": "{0} mises à jour disponibles.",
   "library.confirm.removeRepo": "Supprimer ce dépôt ?\n(Tous les sites installés depuis celui-ci seront également SUPPRIMÉS !)",
+  "library.confirm.mainWorld": "Ce site demande le monde MAIN, ce qui lui donne un accès direct aux données de la page. L'installer et l'exécuter dans le monde MAIN ?",
+  "library.warn.mainWorldCancelled": "Installation annulée : le monde MAIN n'a pas été confirmé ({0}).",
   "library.confirm.removeScript": "Supprimer ce site ?",
   "library.error.prefix": "Erreur : ",
   "library.error.unknown": "Erreur inconnue",

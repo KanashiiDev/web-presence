@@ -555,6 +555,8 @@
   "library.action.upToDate": "Актуально",
   "library.banner.updatesAvailable": "Доступно обновлений: {0}.",
   "library.confirm.removeRepo": "Удалить этот репозиторий?\n(Все сайты, установленные из него, также будут УДАЛЕНЫ!)",
+  "library.confirm.mainWorld": "Этот сайт запрашивает контекст MAIN, что даёт ему прямой доступ к данным страницы. Установить и запускать его в контексте MAIN?",
+  "library.warn.mainWorldCancelled": "Установка отменена: контекст MAIN не подтверждён ({0}).",
   "library.confirm.removeScript": "Удалить этот сайт?",
   "library.error.prefix": "Ошибка: ",
   "library.error.unknown": "Неизвестная ошибка",

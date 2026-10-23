@@ -555,6 +555,8 @@
   "library.action.upToDate": "Up to date",
   "library.banner.updatesAvailable": "{0} updates available.",
   "library.confirm.removeRepo": "Remove this repo?\n(All sites installed from it will also be DELETED!)",
+  "library.confirm.mainWorld": "This site requests the MAIN world, which gives it direct access to page data. Install and run it in the MAIN world?",
+  "library.warn.mainWorldCancelled": "Installation cancelled: the MAIN world was not confirmed ({0}).",
   "library.confirm.removeScript": "Remove this site?",
   "library.error.prefix": "Error: ",
   "library.error.unknown": "Unknown error",

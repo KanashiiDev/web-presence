@@ -28,7 +28,7 @@ class GitHubStoreService {
     this._alarmsApi = null;
     this._actionApi = null;
     this._initApis();
-    this.firstTimeSetup();
+    // Not called from the constructor: onboarding is shown by the popup instead.
   }
 
   // API Initialization
@@ -178,6 +178,21 @@ class GitHubStoreService {
     }, 100);
   }
 
+  // Bounded retry for network-level failures only; HTTP error statuses never retry.
+  async _fetchWithRetry(url, options = {}, timeout = 10000, retries = 1, backoffMs = 1000) {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await fetchWithTimeout(url, options, timeout);
+      } catch (err) {
+        const retriable = err?.name === "AbortError" || err?.name === "TypeError";
+        if (!retriable || attempt >= retries) throw err;
+        attempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
+      }
+    }
+  }
+
   // Fetch
   /**
    * Fetches hash.json first to cheaply detect whether index.json.gz has changed.
@@ -192,7 +207,7 @@ class GitHubStoreService {
 
     let remoteHash = null;
     try {
-      const hashRes = await fetch(hashUrl, { cache: "no-store" });
+      const hashRes = await this._fetchWithRetry(hashUrl, { cache: "no-store" }, 5000);
       if (hashRes.ok) {
         const hashObj = await hashRes.json();
         remoteHash = hashObj?.sha256 ?? null;
@@ -212,7 +227,7 @@ class GitHubStoreService {
 
     let gzRes;
     try {
-      gzRes = await fetch(gzUrl, { headers: gzHeaders, cache: "no-store" });
+      gzRes = await this._fetchWithRetry(gzUrl, { headers: gzHeaders, cache: "no-store" }, 15000);
     } catch (err) {
       throw new Error(`index.json.gz fetch failed (${gzUrl}): ${err.message}`);
     }
@@ -253,7 +268,7 @@ class GitHubStoreService {
 
     let res;
     try {
-      res = await fetch(url, { cache: "no-store" });
+      res = await this._fetchWithRetry(url, { cache: "no-store" }, 10000);
     } catch (err) {
       throw new Error(`Script fetch failed (${url}): ${err.message}`);
     }
@@ -386,7 +401,7 @@ class GitHubStoreService {
       const scripts = changed ? data : (repo.scripts ?? []);
 
       // Snapshot of previous script IDs before overwriting — used for "new" detection
-      const previousScriptIds = new Set((repo.scripts ?? []).map((s) => s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors)));
+      const previousScriptIds = new Set((repo.scripts ?? []).map((s) => this._storeScriptId(s)));
       const isFirstLoad = repo.scripts == null;
 
       if (changed) {
@@ -404,6 +419,10 @@ class GitHubStoreService {
       const installed = await this._getInstalledScripts();
       const installedMap = new Map(installed.map((s) => [s.id ?? s.storeScriptId, s]));
 
+      // Legacy-installed (pre-namespaced ids) scripts match via persisted repoId + file.
+      const byStoreFilePath = new Map(installed.filter((s) => s.storeRepoId === repoId && s.storeFilePath).map((s) => [s.storeFilePath, s]));
+      const remoteFiles = new Set((scripts ?? []).filter((s) => s?.file).map((s) => s.file));
+
       const updates = [];
       const newScripts = [];
       const remoteIds = new Set();
@@ -411,9 +430,10 @@ class GitHubStoreService {
       for (const remoteMeta of scripts) {
         if (!remoteMeta?.file) continue;
 
-        const scriptId = remoteMeta.id ?? generateParserKey(remoteMeta.domain, remoteMeta.urlPatterns ?? ["/.*/"], remoteMeta.authors);
+        const scriptId = this._storeScriptId(remoteMeta);
         remoteIds.add(scriptId);
-        const localScript = installedMap.get(scriptId);
+        let localScript = installedMap.get(scriptId);
+        if (!localScript) localScript = byStoreFilePath.get(remoteMeta.file) ?? null;
 
         if (!localScript) {
           newScripts.push({ ...remoteMeta, _repoId: repoId, _scriptId: scriptId });
@@ -422,11 +442,13 @@ class GitHubStoreService {
         }
       }
 
-      // Auto-remove scripts that are no longer in the repo
+      // Auto-remove scripts that are no longer in the repo; the file-path
+      // fallback above means legacy scripts with existing repo files stay.
       const removedScripts = [];
       for (const [installedId, localScript] of installedMap) {
         if (localScript.storeRepoId !== repoId) continue;
         if (remoteIds.has(installedId)) continue;
+        if (localScript.storeFilePath && remoteFiles.has(localScript.storeFilePath)) continue;
         removedScripts.push(localScript);
       }
 
@@ -447,17 +469,14 @@ class GitHubStoreService {
 
       // Detect new scripts: only when hash changed, not on first load, and absent from previous snapshot
       if (changed && !isFirstLoad) {
-        const trulyNew = scripts.filter((s) => {
-          const sid = s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors);
-          return !previousScriptIds.has(sid);
-        });
+        const trulyNew = (scripts ?? []).filter((s) => s?.file && !previousScriptIds.has(this._storeScriptId(s)));
 
         if (trulyNew.length > 0) {
           try {
             const { storeNewScriptIds = [] } = await browser.storage.local.get("storeNewScriptIds");
             const existing = new Set(storeNewScriptIds);
             for (const s of trulyNew) {
-              existing.add(s.id ?? generateParserKey(s.domain, s.urlPatterns ?? ["/.*/"], s.authors));
+              existing.add(this._storeScriptId(s));
             }
             await browser.storage.local.set({ storeNewScriptIds: [...existing] });
           } catch (_) {}
@@ -513,7 +532,7 @@ class GitHubStoreService {
 
     try {
       const repos = await this._loadRepos();
-      if (Object.keys(refopos).length === 0) {
+      if (Object.keys(repos).length === 0) {
         logInfo("[GitHubStore]: No repository found, adding default repository...");
         await this.addRepo(defaultUrl);
       }
@@ -560,8 +579,12 @@ class GitHubStoreService {
       const { code } = await this._fetchScriptFile(repo.rawBase, scriptMeta.file);
 
       const installed = await this._getInstalledScripts();
-      const scriptId = scriptMeta.id ?? generateParserKey(scriptMeta.domain, scriptMeta.urlPatterns ?? ["/.*/"], scriptMeta.authors);
-      const localScript = installed.find((s) => (s.id ?? s.storeScriptId) === scriptId);
+      const scriptId = this._storeScriptId(scriptMeta);
+      let localScript = installed.find((s) => (s.id ?? s.storeScriptId) === scriptId);
+      // Legacy-installed scripts (pre-namespaced ids) match by repoId + file.
+      if (!localScript && scriptMeta.file) {
+        localScript = installed.find((s) => s.storeRepoId === repoId && s.storeFilePath === scriptMeta.file) ?? null;
+      }
 
       const scriptObj = this._buildScriptObj(scriptMeta, code, repoId, repo);
 
@@ -580,8 +603,12 @@ class GitHubStoreService {
     if (!repoId || !scriptMeta) return { ok: false, error: "Missing Parameters" };
 
     const installed = await this._getInstalledScripts();
-    const scriptId = scriptMeta.id ?? generateParserKey(scriptMeta.domain, scriptMeta.urlPatterns ?? ["/.*/"], scriptMeta.authors);
-    const local = installed.find((s) => (s.id ?? s.storeScriptId) === scriptId);
+    const scriptId = this._storeScriptId(scriptMeta);
+    let local = installed.find((s) => (s.id ?? s.storeScriptId) === scriptId);
+    // Legacy-installed scripts (pre-namespaced ids) match by repoId + file.
+    if (!local && scriptMeta.file) {
+      local = installed.find((s) => s.storeRepoId === repoId && s.storeFilePath === scriptMeta.file) ?? null;
+    }
 
     if (local && !this._isNewer(scriptMeta.version, local.version)) {
       return { ok: true, skipped: true, reason: "Already up to date" };
@@ -897,6 +924,11 @@ class GitHubStoreService {
       tags,
       iframeSelectors,
     };
+  }
+
+  // meta.id mirrors the generator's formula for id-less index entries.
+  _storeScriptId(meta) {
+    return meta?.id || generateParserKey(meta.domain, meta.urlPatterns ?? ["/.*/"], meta.authors);
   }
 
   _buildScriptObj(meta, rawCode, repoId, repo) {

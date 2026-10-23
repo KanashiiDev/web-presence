@@ -555,6 +555,8 @@
   "library.action.upToDate": "Güncel",
   "library.banner.updatesAvailable": "{0} güncelleme mevcut.",
   "library.confirm.removeRepo": "Bu repo kaldırılsın mı?\n(Buradan yüklenen tüm siteler de SİLİNECEKTİR!)",
+  "library.confirm.mainWorld": "Bu site, sayfa verilerine doğrudan erişim veren MAIN dünyasını istiyor. MAIN dünyasında kurulup çalıştırılsın mı?",
+  "library.warn.mainWorldCancelled": "Kurulum iptal edildi: MAIN dünyası onaylanmadı ({0}).",
   "library.confirm.removeScript": "Bu site kaldırılsın mı?",
   "library.error.prefix": "Hata: ",
   "library.error.unknown": "Bilinmeyen hata",
