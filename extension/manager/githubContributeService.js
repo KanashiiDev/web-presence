@@ -152,18 +152,33 @@ class GitHubContributeService {
       headers["Content-Type"] = "application/json";
     }
 
-    const res = await fetch(`${GITHUB_CONTRIBUTE.API_BASE}${path}`, {
-      ...options,
-      method,
-      headers,
-      body: hasBody ? JSON.stringify(options.body) : undefined,
-    });
+    const res = await fetchWithTimeout(
+      `${GITHUB_CONTRIBUTE.API_BASE}${path}`,
+      {
+        ...options,
+        method,
+        headers,
+        body: hasBody ? JSON.stringify(options.body) : undefined,
+      },
+      method === "GET" ? 10000 : 30000,
+    );
 
     if (res.status === 403 || res.status === 429) {
-      const retryAfter = res.headers.get("Retry-After") || res.headers.get("X-RateLimit-Reset");
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const resetHeader = res.headers.get("X-RateLimit-Reset");
       const rateLimitRemaining = res.headers.get("X-RateLimit-Remaining");
       if (rateLimitRemaining === "0" || res.status === 429) {
-        throw new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
+        // Retry-After is seconds-to-wait; X-RateLimit-Reset is an epoch timestamp.
+        let retryAfter = null;
+        if (retryAfterHeader && Number.isFinite(Number(retryAfterHeader))) {
+          retryAfter = Number(retryAfterHeader);
+        } else if (resetHeader && Number.isFinite(Number(resetHeader))) {
+          retryAfter = Math.max(0, Math.round(Number(resetHeader) - Date.now() / 1000));
+        }
+        const rateLimitError = new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
+        rateLimitError.status = res.status;
+        rateLimitError.retryAfter = retryAfter;
+        throw rateLimitError;
       }
     }
 
@@ -197,17 +212,21 @@ class GitHubContributeService {
    * @returns {{ device_code, user_code, verification_uri, expires_in, interval }}
    */
   async requestDeviceCode() {
-    const res = await fetch(`${GITHUB_CONTRIBUTE.OAUTH_BASE}/login/device/code`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
+    const res = await fetchWithTimeout(
+      `${GITHUB_CONTRIBUTE.OAUTH_BASE}/login/device/code`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: GITHUB_CONTRIBUTE.CLIENT_ID,
+          scope: GITHUB_CONTRIBUTE.SCOPE,
+        }),
       },
-      body: JSON.stringify({
-        client_id: GITHUB_CONTRIBUTE.CLIENT_ID,
-        scope: GITHUB_CONTRIBUTE.SCOPE,
-      }),
-    });
+      10000,
+    );
 
     if (!res.ok) throw new Error(`Device code request failed: ${res.status}`);
     return res.json();
@@ -218,16 +237,21 @@ class GitHubContributeService {
    * @param {string} device_code
    * @param {number} interval - seconds between polls
    * @param {AbortSignal} signal - to cancel polling
+   * @param {number} expiresIn - seconds until the device code expires (from the device flow response)
    * @returns {string} access_token
    */
-  async pollForToken(device_code, interval = 5, signal) {
+  async pollForToken(device_code, interval = 5, signal, expiresIn = 900) {
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     // Track the base interval separately so slow_down only affects the current cycle.
     // Accumulating interval += 5 on every slow_down would make long auth flows wait forever.
     let currentInterval = interval;
+    // Polling must also stop locally at the device code expiry.
+    const expiresInSec = Number.isFinite(Number(expiresIn)) && Number(expiresIn) > 0 ? Number(expiresIn) : 900;
+    const deadline = Date.now() + expiresInSec * 1000;
 
     while (true) {
       if (signal?.aborted) throw new Error("cancelled");
+      if (Date.now() >= deadline) throw new Error("expired");
 
       await delay(currentInterval * 1000);
       // Reset to base after each cycle; slow_down will bump it again if needed
@@ -235,18 +259,22 @@ class GitHubContributeService {
 
       if (signal?.aborted) throw new Error("cancelled");
 
-      const res = await fetch(`${GITHUB_CONTRIBUTE.OAUTH_BASE}/login/oauth/access_token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+      const res = await fetchWithTimeout(
+        `${GITHUB_CONTRIBUTE.OAUTH_BASE}/login/oauth/access_token`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            client_id: GITHUB_CONTRIBUTE.CLIENT_ID,
+            device_code,
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          }),
         },
-        body: JSON.stringify({
-          client_id: GITHUB_CONTRIBUTE.CLIENT_ID,
-          device_code,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
-      });
+        10000,
+      );
 
       const data = await res.json();
 
@@ -379,9 +407,13 @@ class GitHubContributeService {
     const filePath = this.getFilePath(script);
 
     try {
-      const response = await fetch(`https://raw.githubusercontent.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/main/index.json.gz`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const response = await fetchWithTimeout(
+        `https://raw.githubusercontent.com/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/main/index.json.gz`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+        15000,
+      );
 
       if (response.status === 404) return null;
       if (!response.ok) {
@@ -394,15 +426,24 @@ class GitHubContributeService {
       }
 
       let jsonText;
-      if (typeof DecompressionStream !== "undefined") {
-        const ds = new DecompressionStream("gzip");
-        jsonText = await new Response(response.body.pipeThrough(ds)).text();
-      } else {
-        jsonText = await response.text();
+      try {
+        if (typeof DecompressionStream !== "undefined") {
+          const ds = new DecompressionStream("gzip");
+          jsonText = await new Response(response.body.pipeThrough(ds)).text();
+        } else {
+          jsonText = await response.text();
+        }
+      } catch (err) {
+        throw this._corruptIndexError(err);
       }
 
-      const indexData = JSON.parse(jsonText);
-      if (!Array.isArray(indexData)) return null;
+      let indexData;
+      try {
+        indexData = JSON.parse(jsonText);
+      } catch (err) {
+        throw this._corruptIndexError(err);
+      }
+      if (!Array.isArray(indexData)) throw this._corruptIndexError(new Error("index root is not an array"));
 
       // Prefer match by stable id; fall back to file path for older entries
       const match = indexData.find((item) => item.id === script.id) || indexData.find((item) => item.file === filePath);
@@ -417,9 +458,19 @@ class GitHubContributeService {
         authorsLinks: this._toStringArray(match.authorsLinks),
       };
     } catch (e) {
+      // A corrupt upstream index is distinct from "not found upstream".
+      if (e?.code === "INDEX_CORRUPT") throw e;
       if (e instanceof SyntaxError || e instanceof TypeError) return null;
       throw e;
     }
+  }
+
+  // Builds the INDEX_CORRUPT error so callers can separate upstream data
+  // failures from "script not in upstream".
+  _corruptIndexError(cause) {
+    const err = new Error(`Upstream index.json.gz is corrupt: ${cause?.message || cause}`);
+    err.code = "INDEX_CORRUPT";
+    return err;
   }
 
   // Main contribute flow

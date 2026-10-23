@@ -2262,7 +2262,7 @@ ${codeIndented}
 
           // Poll for token
           try {
-            const accessToken = await githubContributeService.pollForToken(device_code, interval || 5, abortController.signal);
+            const accessToken = await githubContributeService.pollForToken(device_code, interval || 5, abortController.signal, expires_in);
 
             clearInterval(timerInterval);
 
