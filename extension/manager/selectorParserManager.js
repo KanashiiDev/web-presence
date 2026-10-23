@@ -293,7 +293,7 @@ class UserParserUI {
           .split(",")
           .map((p) => p.trim())
           .filter(Boolean)
-: [".*"];
+      : [".*"];
 
     // Validate selector syntax for every filled field before persisting
     const draftSelectors = {

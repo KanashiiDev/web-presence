@@ -24,9 +24,9 @@ async function renderList(filteredList = null, isSearch = null) {
   container.appendChild(spinner);
 
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  const tabUrl = new URL(tab.url);
-  const tabHostname = normalizeHost(tabUrl.hostname);
-  const tabPath = tabUrl.pathname;
+  const tabUrl = tab?.url ? new URL(tab.url) : null;
+  const tabHostname = tabUrl ? normalizeHost(tabUrl.hostname) : "";
+  const tabPath = tabUrl ? tabUrl.pathname : "";
 
   const list = filteredList ?? (await getFreshParserList(true));
 

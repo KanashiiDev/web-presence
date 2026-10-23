@@ -42,7 +42,8 @@ async function renderHistory({ reset = true, query = "" } = {}) {
     target.appendChild(spinner);
 
     const res = await sendAction("loadHistory");
-    historyState.fullHistory = res.data;
+    historyState.fullHistory = res?.data ?? [];
+    historyState.loadFailed = res?.ok === false;
   }
 
   buildHistorySourceCache();
@@ -73,7 +74,7 @@ async function renderHistory({ reset = true, query = "" } = {}) {
 
   if (reset && !pagedHistory.length) {
     const emptyMsg = Object.assign(document.createElement("i"), {
-      textContent: hasFilter ? i18n.t("common.noResults") : i18n.t("common.empty"),
+      textContent: hasFilter ? i18n.t("common.noResults") : historyState.loadFailed ? i18n.t("history.loadFailed") : i18n.t("common.empty"),
     });
     target.appendChild(emptyMsg);
     return;

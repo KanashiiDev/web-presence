@@ -992,14 +992,6 @@ browser.storage.onChanged.addListener((changes, area) => {
     userScriptNonceMap = changes[USER_SCRIPT_NONCES_KEY].newValue ?? null;
     userScriptNonceMapReady = Promise.resolve(userScriptNonceMap);
   }
-  if (parserStateCache.ready && Object.hasOwn(changes, "parserEnabledState")) {
-    const value = changes.parserEnabledState.newValue;
-    parserStateCache.parserEnabledState = value && typeof value === "object" ? value : {};
-  }
-  if (parserStateCache.ready && Object.hasOwn(changes, "parserFilters")) {
-    const value = changes.parserFilters.newValue;
-    parserStateCache.parserFilters = Array.isArray(value) ? value : [];
-  }
 });
 
 // A message is genuine only when its nonce matches the stored nonce of its script id.

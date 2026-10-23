@@ -177,10 +177,12 @@ h4 {
 label[id*="buttonText"],
 input[id*="buttonText"],
 a[id*="buttonText"],
+button[id*="buttonText"],
 br[id*="buttonText"],
 label[id*="buttonLink"],
 input[id*="buttonLink"],
 a[id*="buttonLink"],
+button[id*="buttonLink"],
 br[id*="buttonLink"] {
   display: none;
 }

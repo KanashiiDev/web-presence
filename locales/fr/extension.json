@@ -498,7 +498,7 @@
   "selector.editor.selectWithClick": "Sélectionner avec un clic de souris",
   "selector.editor.warn.fillTitleField": "Veuillez remplir le champ titre.",
   "selector.editor.warn.invalidFields": "Sélecteur(s) non valide ou introuvable:",
-"selector.editor.saved": "Enregistré ! Veuillez actualiser la page.",
+  "selector.editor.saved": "Enregistré ! Veuillez actualiser la page.",
   "selector.editor.refreshPage": "Actualiser la page",
   "selector.editor.warn.unsavedClose": "Il y a des modifications non enregistrées. Fermer quand même ?",
   "selector.warn.forbiddenArea": "Cette zone ne peut pas être sélectionnée. Veuillez cliquer sur un élément valide.",
