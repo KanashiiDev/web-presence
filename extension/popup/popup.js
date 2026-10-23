@@ -152,7 +152,13 @@ const sectionManager = {
         initStatsDropdown();
         statsModule.init();
         const res = await sendAction("loadHistory");
-        historyState.fullHistory = res.data;
+        historyState.fullHistory = res?.data ?? [];
+
+        if (res?.ok === false) {
+          const note = Object.assign(document.createElement("i"), { className: "popup-load-note", textContent: i18n.t("history.loadFailed") });
+          document.getElementById("historyStatsPanel")?.prepend(note);
+        }
+
         await renderTopStats(historyState.fullHistory, "day");
         await activateSimpleBar("historyStatsPanel");
         break;
@@ -167,6 +173,98 @@ const sectionManager = {
     }
   },
 };
+
+// Light periodic refresh for the connection banner and library badge dot only.
+let _popupRefreshBusy = false;
+let _bannerDismissed = false;
+
+async function refreshPopupState(connectionMode) {
+  if (_popupRefreshBusy) return;
+  _popupRefreshBusy = true;
+  try {
+    // Bridge connection banner
+    try {
+      const rpcHealth = _bannerDismissed ? null : await browser.runtime.sendMessage({ type: "IS_RPC_CONNECTED" });
+      const wantBanner = !_bannerDismissed && rpcHealth?.ok !== true;
+
+      // Banner key per mode: web-only (Discord tab missing), bridge missing, Discord disconnected.
+      let bannerKey = null;
+      if (wantBanner) {
+        if (connectionMode === "web-only") {
+          bannerKey = "popup.bridgeDisconnectedWebOnly";
+        } else if (rpcHealth?.bridgeFound === false) {
+          bannerKey = "popup.bridgeNotFound";
+        } else {
+          bannerKey = "popup.discordNotConnected";
+        }
+      }
+
+      const banner = document.querySelector(".popup-connection-banner");
+
+      if (!wantBanner && banner) {
+        banner.remove();
+      } else if (wantBanner && !banner) {
+        const newBanner = document.createElement("div");
+        newBanner.className = "popup-connection-banner";
+
+        // The key lives on the span: applyTranslations() would wipe the close button otherwise.
+        const text = document.createElement("span");
+        text.className = "popup-connection-banner-text";
+        text.textContent = i18n.t(bannerKey);
+
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "popup-connection-banner-close";
+        closeBtn.appendChild(createSVG(svg_paths.crossIconPaths));
+        closeBtn.setAttribute("aria-label", i18n.t("common.close"));
+        closeBtn.addEventListener("click", () => {
+          _bannerDismissed = true;
+          newBanner.remove();
+        });
+
+        newBanner.append(text, closeBtn);
+        // The key must live on the span: applyTranslations() would wipe the close button otherwise.
+        text.dataset.i18n = bannerKey;
+        document.body.prepend(newBanner);
+      } else if (wantBanner && banner) {
+        const text = banner.querySelector(".popup-connection-banner-text");
+        if (text && text.dataset.i18n !== bannerKey) {
+          text.textContent = i18n.t(bannerKey);
+          text.dataset.i18n = bannerKey;
+        }
+      }
+    } catch (refreshError) {
+      logWarn("[popup]: Bridge status refresh failed:", refreshError);
+    }
+
+    // Library badge dot (new store scripts)
+    try {
+      const { storeNewScriptIds = [], storeNewScriptNotification = true } = await browser.storage.local.get(["storeNewScriptIds", "storeNewScriptNotification"]);
+      const btnStore = document.getElementById("openLibraryBtn");
+      const existingDot = btnStore?.querySelector(".library-badge-dot");
+      const wantDot = storeNewScriptNotification && storeNewScriptIds.length > 0;
+
+      if (wantDot && !existingDot && btnStore) {
+        const dot = document.createElement("span");
+        dot.className = "library-badge-dot";
+        btnStore.appendChild(dot);
+      } else if (!wantDot && existingDot) {
+        existingDot.remove();
+      }
+    } catch (badgeError) {
+      logWarn("[popup]: Library badge refresh failed:", badgeError);
+    }
+  } finally {
+    _popupRefreshBusy = false;
+  }
+}
+
+const POPUP_REFRESH_INTERVAL = 2500;
+
+function startPopupRefresh(connectionMode) {
+  const timer = setInterval(() => refreshPopupState(connectionMode), POPUP_REFRESH_INTERVAL);
+  window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
+}
 
 // Global event handlers
 const popupModule = {
@@ -243,7 +341,7 @@ const popupModule = {
         const isEdit = button.getAttribute("editMode");
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
-        if (tab.status !== "complete") {
+        if (tab && tab.status !== "complete") {
           showPopupMessage(i18n.t("popupMessage.waitForLoad"), "warning", 2000);
           enableButton();
           return;
@@ -377,10 +475,13 @@ domLoadedListener = async () => {
     // Motion Preference Check
     await initMotionPreference();
 
+    // Bridge connection status banner (rechecked by the periodic refresh)
+    await refreshPopupState(currentConnectionMode);
+
     // Check for tab load completion
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
-    if (tab.status !== "complete") {
+    if (tab && tab.status !== "complete") {
       await new Promise((resolve, reject) => {
         const TIMEOUT_MS = 10_000;
         let settled = false;
@@ -465,8 +566,16 @@ domLoadedListener = async () => {
     // Initialize popup module
     popupModule.init();
     applyTranslations();
+
+    // Light periodic refresh while the popup is open
+    startPopupRefresh(currentConnectionMode);
   } catch (error) {
     logError("[popup]: Error loading settings:", error);
+    try {
+      await showAlert(i18n.t("popup.loadFailed"), error?.message ?? "", "danger");
+    } catch (_) {
+      // Dialog unavailable - already logged above.
+    }
   } finally {
     loadingOverlay.remove();
   }

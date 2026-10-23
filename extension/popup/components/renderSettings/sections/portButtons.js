@@ -8,6 +8,13 @@ async function buildPortButtons(container) {
     });
   }
 
+  // The Discord Web bridge lives in the desktop server process, so /health is the probe.
+  async function isAppAccessible() {
+    const { serverPort: liveServerPort } = await browser.storage.local.get("serverPort");
+    const response = await fetchWithTimeout(`http://localhost:${liveServerPort ?? CONFIG.serverPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+    return !!(response && response.ok);
+  }
+
   // Port
   const portWrapper = document.createElement("div");
   portWrapper.className = "settings-option port-wrapper";
@@ -28,9 +35,21 @@ async function buildPortButtons(container) {
   portInput.addEventListener(
     "input",
     debounce(async () => {
-      await browser.storage.local.set({ serverPort: portInput.value });
+      try {
+        await browser.storage.local.set({ serverPort: portInput.value });
+      } catch (error) {
+        logError("[Port]: Failed to save server port:", error);
+        await showAlert(i18n.t("common.error"), error?.message ?? "", "danger").catch(() => {});
+      }
     }, 300),
   );
+
+  // Indicator - this setting only takes effect after Apply
+  const applyHint = document.createElement("span");
+  applyHint.className = "apply-required-hint";
+  applyHint.textContent = "*";
+  applyHint.title = i18n.t("settings.apply");
+  portLabel.appendChild(applyHint);
 
   // Apply Button
   const btnApply = document.createElement("span");
@@ -45,10 +64,9 @@ async function buildPortButtons(container) {
     btnApply.classList.add("loading");
     try {
       // Check if the application is accessible
-      const currentPort = storedPort ?? CONFIG.serverPort;
-      const response = await fetchWithTimeout(`http://localhost:${currentPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+      const response = await isAppAccessible();
 
-      if (!response || !response.ok) {
+      if (!response) {
         await showAlert(i18n.t("settings.port.bridge.error"), "", "warn");
         return;
       }
@@ -94,11 +112,22 @@ async function buildPortButtons(container) {
   webBridgeInput.addEventListener(
     "input",
     debounce(async () => {
-      await browser.storage.local.set({
-        discordWebPort: webBridgeInput.value,
-      });
+      try {
+        await browser.storage.local.set({
+          discordWebPort: webBridgeInput.value,
+        });
+      } catch (error) {
+        logError("[Port]: Failed to save Discord Web port:", error);
+        await showAlert(i18n.t("common.error"), error?.message ?? "", "danger").catch(() => {});
+      }
     }, 300),
   );
+
+  const webBridgeApplyHint = document.createElement("span");
+  webBridgeApplyHint.className = "apply-required-hint";
+  webBridgeApplyHint.textContent = "*";
+  webBridgeApplyHint.title = i18n.t("settings.apply");
+  webBridgeLabel.appendChild(webBridgeApplyHint);
 
   const btnWebBridgeApply = document.createElement("span");
   btnWebBridgeApply.appendChild(createSVG(svg_paths.penIconPaths));
@@ -110,10 +139,9 @@ async function buildPortButtons(container) {
     btnWebBridgeApply.classList.add("loading");
     try {
       // Check if the application is accessible
-      const currentPort = storedPort ?? CONFIG.serverPort;
-      const response = await fetchWithTimeout(`http://localhost:${currentPort}/health`, {}, CONFIG.requestTimeout).catch(() => null);
+      const response = await isAppAccessible();
 
-      if (!response || !response.ok) {
+      if (!response) {
         await showAlert(i18n.t("settings.port.bridge.error"), "", "warn");
         return;
       }

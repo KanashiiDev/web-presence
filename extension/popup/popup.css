@@ -76,6 +76,7 @@ html.setup-dialog-open,
 
 body.fg-blur[data-section="main"] #searchBox,
 body.fg-blur[data-section="main"] #mainFooterButtons a,
+body.fg-blur[data-section="main"] #mainFooterButtons button,
 body.fg-blur[data-section="main"] .parser-span,
 body.fg-blur[data-section="main"] .parser-options.open,
 body.fg-blur[data-section="main"] #parserTagFilterMenu,
@@ -201,6 +202,7 @@ html.setup-dialog-open .filter-select-wrapper,
 html.setup-dialog-open .date-range-picker,
 html.setup-dialog-open #mainFooterButtons,
 html.setup-dialog-open footer a:not(#githubLink),
+html.setup-dialog-open footer button:not(#githubLink),
 body[data-connection-mode="web-only"] #openDashboardBtn,
 body[data-section="settings"] .search-controls,
 body[data-section="settings"] #settingsToggle,
@@ -338,6 +340,52 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   z-index: 99999;
 }
 
+.popup-connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--warning-color);
+  border-radius: 8px;
+  background-color: var(--warning-color);
+  font-size: 12px;
+}
+
+.popup-connection-banner-text {
+  flex: 1;
+}
+
+.popup-connection-banner-close {
+  flex: none;
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--warning-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.popup-connection-banner-close:hover {
+  color: var(--red-color);
+}
+
+.popup-load-note {
+  display: block;
+  margin: 6px 10px;
+  color: var(--warning-color);
+  font-size: 12px;
+}
+
+.apply-required-hint {
+  margin-left: 3px;
+  color: var(--warning-color);
+  font-weight: 700;
+  cursor: help;
+}
+
 #settingsPanel,
 #historyPanel,
 #historyStatsPanel,
@@ -390,11 +438,6 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
 .history-entry.selected .history-artist,
 .history-entry.selected .history-source {
   color: var(--text-color-btn) !important;
-}
-
-.btn-action:hover,
-.slider:hover {
-  background: var(--foreground-color-300);
 }
 
 #openLibraryBtn {
@@ -574,21 +617,9 @@ footer {
   flex: 1;
 }
 
-.parser-icon-container,
+/* height, radius, transition and cursor come from shared page styles */
 .parser-icon {
-  height: 24px;
   margin-right: 6px;
-  border-radius: var(--radius-sm);
-  transition: height var(--transition-reduced) ease;
-  cursor: pointer;
-}
-
-.parser-icon:hover {
-  height: 26px;
-}
-
-.parser-icon-container {
-  margin-right: 0;
 }
 
 .parser-icon-container.spinner {
@@ -877,12 +908,31 @@ span.status-display svg {
   display: none;
 }
 
-.hidden-visibility {
-  visibility: hidden;
+/* Keyboard-accessible icon controls (converted from anchors/spans) */
+.icon-btn {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
-#historyFilterResetBtn.filter-active,
-#parserTagFilterResetBtn.filter-active,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+button:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 #historyToggle,
 #historyStatsToggle,
 .parser-filter,
@@ -898,6 +948,12 @@ span.status-display svg {
   width: 16px;
 }
 
+/* base (position, size, opacity, transition) comes from shared page styles */
+#historyFilterResetBtn.filter-active,
+#parserTagFilterResetBtn.filter-active {
+  right: 10px;
+}
+
 #githubLink img {
   width: 16px;
   height: 16px;
@@ -907,7 +963,8 @@ body[data-theme="dark"] #githubLink img {
   filter: invert(1);
 }
 
-footer a {
+footer a,
+footer button.icon-btn {
   opacity: 0.7;
   transition: opacity var(--transition-normal) ease;
   height: 16px;
@@ -996,6 +1053,8 @@ footer a {
   height: 16px;
   width: 16px;
   z-index: 6;
+  background: 0;
+  border: 0;
 }
 
 #historyFilterResetBtn.filter-active,
@@ -1116,6 +1175,7 @@ footer a {
 }
 
 footer a:hover,
+footer button.icon-btn:hover,
 .history-entry:hover .song-link,
 #historyToggle:hover,
 #historyStatsToggle:hover,
@@ -1168,10 +1228,6 @@ footer a:hover,
   position: relative;
   display: block;
   height: 35px;
-}
-
-#historyPanel h3:first-of-type {
-  margin-top: 0;
 }
 
 #parserTagFilterMenuContent i,
@@ -1269,21 +1325,7 @@ footer a:hover,
   margin: 0;
 }
 
-.history-entry img {
-  background: var(--foreground-color-200);
-  width: 46px;
-  height: 46px;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity var(--transition-normal) ease;
-  box-shadow: 0px 3px 6px 0px var(--shadow-color);
-}
-
-.history-entry img.lazyloaded {
-  opacity: 1;
-}
-
+/* base image and .lazyloaded styles come from shared page styles */
 .history-entry img[src*="chrome-extension"] {
   border-radius: 16px;
 }
@@ -1313,16 +1355,6 @@ body.cleaning-mode .history-trash:hover {
 body.cleaning-mode .selected .history-trash {
   transform: scale(0.8);
   opacity: 0.7;
-}
-
-#historyFooter {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 10px;
-  width: calc(100% - 5px);
-  text-align: end;
-  position: relative;
 }
 
 .port-apply-btn .spinner {
