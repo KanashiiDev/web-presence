@@ -750,7 +750,13 @@ function setupEventListeners(shadow) {
   // Close User Add RPC
   shadow.getElementById("closeSelectorUI").addEventListener("click", async () => {
     if (shadow._selectorDirty) {
-      const proceed = await showConfirm("", { heading: t("selector.editor.warn.unsavedClose"), target: shadow });
+      const proceed = await showConfirm("", {
+        heading: t("selector.editor.warn.unsavedClose"),
+        target: shadow.getElementById("userRpc-selectorRoot"),
+        labelOk: t("common.ok"),
+        labelCancel: t("common.cancel"),
+        body: t("dialog.warnDelete"),
+      });
       if (!proceed) return;
     }
     clearInterval(previewInterval);
