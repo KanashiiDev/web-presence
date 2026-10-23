@@ -44,6 +44,7 @@ export function stopAutoUpdate() {
 window.onload = async () => {
   await i18n.load("server");
   applyTranslations();
+  applyTsPlugins();
   initTheme();
   initEventListeners();
   initVisibilityRefresh();
