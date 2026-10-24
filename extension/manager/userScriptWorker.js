@@ -499,8 +499,12 @@ class UserScriptManager {
             // UserScript
             ${script.code || ""}
 
-            if (__dryRun) return;
+            if (__dryRun) {
+              __userScriptLogOnce("info", "updateTrackData.dryRun", "dry run skipped sending track data", 10000);
+              return;
+            }
             if (__clearCalled) {
+              __userScriptLogOnce("info", "updateTrackData.clear", "clear called, sending clear activity", 10000);
               window.postMessage({
                 type: "USER_SCRIPT_CLEAR_ACTIVITY",
                 nonce: __nonce,
@@ -515,6 +519,9 @@ class UserScriptManager {
             const finalLink = resolvedSongUrl ?? resolvedLink;
             // update trackState
             trackState.title = typeof title === "undefined" || title == null ? null : typeof title === "string" || typeof title === "number" ? String(title) : null;
+            if (!trackState.title) {
+              __userScriptLogOnce("info", "updateTrackData.noTitle", "title is empty, RPC update will be skipped", 10000);
+            }
             trackState.artist = typeof artist === "undefined" || artist == null ? null : typeof artist === "string" || typeof artist === "number" ? String(artist) : null;
             trackState.image = typeof image === "undefined" || image == null ? null : typeof image === "string" || typeof image === "number" ? String(image) : null;
             trackState.source = typeof source === "undefined" || source == null ? null : typeof source === "string" || typeof source === "number" ? String(source) : null;

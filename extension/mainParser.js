@@ -1402,7 +1402,6 @@ async function cleanupOrphanSettingsAndEnables() {
 }
 
 const activeFetchIframeListeners = Object.create(null);
-const iframeTimeoutLogged = new Set();
 
 function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
   if (activeFetchIframeListeners[key]) {
@@ -1424,10 +1423,6 @@ function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
 
     const timeoutId = setTimeout(() => {
       delete window.iframeDataCache?.[key];
-      if (!iframeTimeoutLogged.has(key)) {
-        iframeTimeoutLogged.add(key);
-        logWarn(`[mainParser:fetchIframeData]: Timeout fetching iframe data for key "${key}"`);
-      }
       cleanup(undefined);
     }, maxDelayMs);
 
@@ -1463,7 +1458,6 @@ function fetchIframeData(key, iframeSelectors = null, maxDelayMs = 10000) {
         ...(msg.data.paused != null ? { playing: msg.data.paused === false } : {}),
       };
       cache[key] = entry;
-      iframeTimeoutLogged.delete(key);
       cleanup(entry);
 
       // Evict stale iframe cache entries so the cache cannot grow unboundedly

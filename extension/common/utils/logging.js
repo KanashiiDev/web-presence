@@ -241,6 +241,7 @@ const errorFilter = (() => {
     /No tab with id/i,
     /extension context invalidated/i,
     /could not establish connection/i,
+    /browser is shutting down/i,
     /failed to fetch/i,
     /update failed after all retries/i,
     /update failed \(no response\)/i,
