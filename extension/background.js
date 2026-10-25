@@ -99,9 +99,8 @@ async function loadParserList() {
       await state.parserListLoading;
     }
 
-    const { parserList = [], userParserSelectors = [], userScriptsList = [] } = await browser.storage.local.get(["parserList", "userParserSelectors", "userScriptsList"]);
-    const builtInList = parserList.filter((p) => !p.userAdd && !p.userScript);
-    logInfo(`Loaded ${builtInList.length} built-in, ${userParserSelectors.length} selector, ${userScriptsList.length} userscript parsers`);
+    const { userParserSelectors = [], userScriptsList = [] } = await browser.storage.local.get(["userParserSelectors", "userScriptsList"]);
+    logInfo(`Loaded ${userParserSelectors.length} selector, ${userScriptsList.length} userscript parsers`);
 
     // Selector Parsers
     const userList = userParserSelectors.map((u) => {
@@ -126,7 +125,7 @@ async function loadParserList() {
     });
 
     // Merge the lists
-    const allParsers = [...builtInList, ...userList, ...userScriptList];
+    const allParsers = [...userList, ...userScriptList];
 
     // Get Enable settings from storage and apply them to the parsers
     const { parserEnabledState = {} } = await browser.storage.local.get("parserEnabledState");

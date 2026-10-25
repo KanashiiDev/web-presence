@@ -3,7 +3,6 @@ const path = require("path");
 
 const { prefixCssFiles } = require("./steps/prefixCss");
 const { copyExtensionFiles, buildManifest, writeManifest } = require("./steps/copyAndManifest");
-const { bundleParsers } = require("./steps/bundleParsers");
 const { createInlineUtils } = require("./steps/inlineUtils");
 const { applyCssConfig } = require("./steps/applyCssConfig");
 const registerInlines = require("./inlineConfig");
@@ -36,10 +35,7 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   // 4. Build and write manifest
   const manifest = buildManifest(EXTENSION_DIR, TARGET, pkgVersion);
 
-  // 5. Bundle all parsers into compiledParsers.js
-  bundleParsers(EXTENSION_DIR, DIST_DIR);
-
-  // 6. Inline utilities
+  // 5. Inline utilities
   const commonUtilsPath = path.join(DIST_DIR, "common", "utils.js");
   fs.ensureDirSync(path.dirname(commonUtilsPath));
   if (!fs.existsSync(commonUtilsPath)) {
@@ -50,16 +46,16 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   registerInlines(inlineUtilsFunctions);
   buildInlineFunctions();
 
-  // 7. Apply CSS config
+  // 6. Apply CSS config
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-config.css", CSS_TARGETS);
 
   // Shared CSS (global styles + components) injected to provide consistent cross-page styles
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-global.css", CSS_TARGETS, "/*CSS-GLOBAL*/");
 
-  // 8. Apply CSS components
+  // 7. Apply CSS components
   applyCssConfig(SHARED_DIR, DIST_DIR, "css-components.css", CSS_TARGETS, "/*CSS-COMPONENTS*/");
 
-  // 9. Copy locales
+  // 8. Copy locales
   checkMissingTranslations(LOCALES_DIR, ["extension"]);
   generateLanguages(LOCALES_DIR);
 

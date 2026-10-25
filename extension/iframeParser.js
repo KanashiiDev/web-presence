@@ -1,5 +1,4 @@
 // Works only in iframe frames.
-// Looks at window.iframeParsers defined by compiledIframeParsers.js,
 // runs the matching parser, and sends the data to the main frame via the background.
 
 function safeSendMessage(msg) {
@@ -1069,39 +1068,6 @@ browser.runtime.onMessage.addListener(async (msg) => {
   // Only the state transition for `key` is logged (see _iframeObserve); the raw request
   // arrival would repeat every CONFIG.activeInterval cycle for a settled iframe.
 
-  // Built-in parsers
-  const entry = window.iframeParsers?.[key];
-  if (entry?.fn) {
-    if (entry.match) {
-      const matches = [entry.match].flat();
-      if (!matches.some((h) => h === "" || iframeHostname.includes(h.toLowerCase()))) {
-        _iframeObserve(key, { mode: "builtin", hasResult: false, shape: "hostname-mismatch" });
-        return;
-      }
-    }
-    const data = await entry.fn();
-    if (data == null) {
-      _iframeObserve(key, { mode: "builtin", hasResult: false, shape: "null" });
-      return;
-    }
-    _iframeObserve(key, {
-      mode: "builtin",
-      hasResult: true,
-      source: typeof data.source === "string" ? data.source : "builtin",
-      duration: data.duration,
-      isCasting: data.isCasting === true,
-      shape: `keys=${Object.keys(data).length}`,
-    });
-    safeSendMessage({
-      type: "IFRAME_DATA",
-      key,
-      origin: iframeHostname,
-      href: location.href,
-      data,
-    }).catch((err) => _iframeLog("error", "Failed to send IFRAME_DATA", { key, error: err?.message }));
-    return;
-  }
-
   // iframeSelectors DSL
   if (msg.iframeSelectors) {
     const data = resolveIframeSelectors(msg.iframeSelectors, iframeHostname);
@@ -1127,7 +1093,7 @@ browser.runtime.onMessage.addListener(async (msg) => {
     return;
   }
 
-  // userAdd / userScript / watchAutoDetect
+  // userAdd / userScript watchAutoDetect
   // `fallback` reflects THIS call's provenance: "cache" only while getVideoInfo is serving
   // the last known result because the current DOM has nothing. It is not a time window, so
   // it flips back as soon as a real player result returns.

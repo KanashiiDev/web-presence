@@ -17,7 +17,7 @@ const DEFAULT_JS_FILES = [
 const MAIN_WORLD_JS_FILES = ["keepAliveMain.js"];
 
 const IFRAME_JS_FILES = ["libs/browser-polyfill.js", "iframeParser.js"];
-const EXCLUDED_DIRS = ["manifests", "parsers", "matches", path.join("libs", "codemirror", "addons")];
+const EXCLUDED_DIRS = ["manifests", "matches", path.join("libs", "codemirror", "addons")];
 
 function copyExtensionFiles(extensionDir, distDir) {
   fs.copySync(extensionDir, distDir, {
@@ -34,16 +34,6 @@ function buildManifest(extensionDir, target, pkgVersion) {
 
   const currentDefaultJs = [...DEFAULT_JS_FILES];
   const currentIframeJs = [...IFRAME_JS_FILES];
-
-  const compiledParsersPath = path.join(extensionDir, "compiledParsers.js");
-  if (fs.existsSync(compiledParsersPath)) {
-    currentDefaultJs.push("compiledParsers.js");
-  }
-
-  const compiledIframeParsersPath = path.join(extensionDir, "compiledIframeParsers.js");
-  if (fs.existsSync(compiledIframeParsersPath)) {
-    currentIframeJs.push("compiledIframeParsers.js");
-  }
 
   if (!manifest.content_scripts) {
     manifest.content_scripts = [];
