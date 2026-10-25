@@ -9,6 +9,39 @@ function q(value) {
 // echoes it on every USER_SCRIPT_* message and mainParser.js validates it.
 const USER_SCRIPT_NONCES_KEY = "userScriptNonces";
 
+// Init block inside the single script editor:
+//   // @init-code-start
+//   ...runs ONCE at injection (document_start), outside the polling loop...
+//   // @init-code-end
+// The end marker also accepts "@init code-end". Only the first block is extracted.
+const INIT_BLOCK_RE = /^[ \t]*\/\/[ \t]*@init-code-start[^\r\n]*\r?\n([\s\S]*?)^[ \t]*\/\/[ \t]*@init[- ]code-end[^\r\n]*(?:\r?\n|$)/m;
+
+// Splits a script into its init part (marked block + optional legacy script.initCode field)
+// and the polling part. A start marker without an end marker is ignored (both stay comments).
+function splitInitCode(script, warn = true) {
+  const code = typeof script?.code === "string" ? script.code : "";
+  const legacy = typeof script?.initCode === "string" ? script.initCode.trim() : "";
+  const m = INIT_BLOCK_RE.exec(code);
+  if (!m) {
+    if (warn && /@init-code-start/.test(code)) {
+      logWarn("[userScriptWorker]: @init-code-start without a matching @init-code-end, init block ignored:", script?.id);
+    }
+    return { initCode: legacy, mainCode: code };
+  }
+  const block = m[1].trim();
+  return {
+    initCode: [legacy, block].filter(Boolean).join("\n"),
+    mainCode: code.slice(0, m.index) + code.slice(m.index + m[0].length),
+  };
+}
+
+// No per-script runAt setting: init code has to run before page scripts, so a script that has an
+// init block is injected at document_start; everything else at document_idle. (The polling code is
+// gated on DOMContentLoaded anyway, so the injection time does not matter for it.)
+function resolveRunAt(initCode) {
+  return initCode ? "document_start" : "document_idle";
+}
+
 function generateSessionNonce() {
   try {
     if (globalThis.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -139,7 +172,13 @@ class UserScriptManager {
   buildTrackDataScript(script, nonce) {
     const { normalizedList } = PatternValidator.processPatterns(script.urlPatterns);
     // setMemo is used by this script -> run a silent first pass right away (see startScriptExecution)
-    const usesSetMemo = /\bsetMemo\s*\(/.test(script.code || "");
+    // initCode runs ONCE, immediately at injection (before the DOM exists at document_start),
+    // outside the 4s polling loop. Use it for fetch/XHR/history hooks; share results with the
+    // polling code through the `shared` object. Async is allowed (top-level await).
+    const { initCode, mainCode } = splitInitCode(script);
+    const runAt = resolveRunAt(initCode);
+    const usesSetMemo = /\bsetMemo\s*\(/.test(mainCode);
+    const initBlock = initCode ? "(async function () {\n" + initCode + "\n})().catch(function (err) { __userScriptLog('error', 'init.failed', { error: err }); });" : "";
 
     return `
     // AUTO-GENERATED-UTILS
@@ -206,7 +245,46 @@ class UserScriptManager {
       const __nonce = ${q(nonce)};
         const __userScriptUsedSettings = [];
         let __clearCalled = false;
+        // Messages posted before mainParser.js is listening are buffered and flushed once the
+        // parser is ready. Without this, an early USER_SCRIPT_MEMO_SET is lost for good because
+        // setMemo only sends keys that changed locally.
+        const __outbox = [];
+        let __parserIsReady = false;
+        function __send(msg) {
+          if (__parserIsReady) {
+            window.postMessage(msg, "*");
+            return;
+          }
+          if (__outbox.length >= 500) __outbox.shift();
+          __outbox.push(msg);
+        }
+        let __parserReadyP = null;
         function waitForParserReady() {
+          if (!__parserReadyP) {
+            __parserReadyP = __waitForParserReadyImpl().then(() => {
+              __parserIsReady = true;
+              while (__outbox.length) window.postMessage(__outbox.shift(), "*");
+            });
+          }
+          return __parserReadyP;
+        }
+        // Resolves when the DOM is parsed; immediate at document_idle.
+        function __domReady() {
+          return new Promise((resolve) => {
+            if (document.readyState !== "loading") return resolve();
+            document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+          });
+        }
+        // Persistent state shared between initCode (hooks) and the polling code.
+        const shared = Object.create(null);
+        const __onceKeys = Object.create(null);
+        function once(key, fn) {
+          if (__onceKeys[key]) return;
+          __onceKeys[key] = true;
+          return fn();
+        }
+        function __waitForParserReadyImpl() {
+          const __t0 = Date.now();
           return new Promise((resolve) => {
             if (window.__parserSystemReady) return resolve();
 
@@ -229,7 +307,7 @@ class UserScriptManager {
               if (event.source !== window) return;
               if (event.data?.type === "PARSER_READY") {
                 cleanup();
-                __userScriptLog("info", "waitForParserReady.resolved", { waitedMs: 8000 });
+                __userScriptLog("info", "waitForParserReady.resolved", { waitedMs: Date.now() - __t0 });
                 resolve();
               }
             }
@@ -240,7 +318,8 @@ class UserScriptManager {
         }
         function useSetting(key, label, type, defaultValue) {
           __userScriptUsedSettings.push({ key, label, type, defaultValue });
-          return new Promise((resolve, reject) => {
+          // Wait for the parser first so the 5s timeout only measures the round trip.
+          return waitForParserReady().then(() => new Promise((resolve, reject) => {
             const requestId = \`useSetting_\${Date.now()}_\${Math.random()}\`;
 
             const cleanup = () => {
@@ -275,7 +354,7 @@ class UserScriptManager {
               inputType: type,
               defaultValue
             }, "*");
-          });
+          }));
         }
         function clearActivity() {
           __clearCalled = true;
@@ -326,14 +405,14 @@ class UserScriptManager {
               }
             }
 
-            window.postMessage({
+            __send({
               type: "USER_SCRIPT_LOG",
               nonce: __nonce,
               id: ${q(script.id)},
               level: level,
               event: String(event).slice(0, 120),
               data: logData,
-            }, "*");
+            });
           } catch (err) {
             console.warn("[Web Presence] userScript log forwarding failed:", err);
           }
@@ -368,7 +447,7 @@ class UserScriptManager {
           return s;
         }
         function __memoRequest(type) {
-          return new Promise((resolve) => {
+          return waitForParserReady().then(() => new Promise((resolve) => {
             const requestId = "memo_" + Date.now() + "_" + Math.random();
 
             const cleanup = () => {
@@ -393,7 +472,7 @@ class UserScriptManager {
 
             window.addEventListener("message", handleResponse);
             window.postMessage({ type, requestId, nonce: __nonce, id: ${q(script.id)} }, "*");
-          });
+          }));
         }
         // Loads the tab's memo from the background once; retried until it succeeds
         async function __refreshMemo() {
@@ -441,7 +520,7 @@ class UserScriptManager {
             hasChange = true;
           }
           if (!hasChange) return;
-          window.postMessage({ type: "USER_SCRIPT_MEMO_SET", nonce: __nonce, id: ${q(script.id)}, scope: s, data: changed }, "*");
+          __send({ type: "USER_SCRIPT_MEMO_SET", nonce: __nonce, id: ${q(script.id)}, scope: s, data: changed });
         }
         function getMemo(key, scope) {
           if (typeof key !== "string" || !key) {
@@ -497,7 +576,7 @@ class UserScriptManager {
             __clearCalled = false;
             await __refreshMemo();
             // UserScript
-            ${script.code || ""}
+            ${mainCode}
 
             if (__dryRun) {
               __userScriptLogOnce("info", "updateTrackData.dryRun", "dry run skipped sending track data", 10000);
@@ -623,7 +702,11 @@ class UserScriptManager {
           }
         }
       async function startScriptExecution() {
-        __userScriptLog("info", "script.start", { intervalMs: 4000 });
+        __userScriptLog("info", "script.start", { intervalMs: 4000, runAt: ${q(runAt)}, readyState: document.readyState });
+        // initCode (hooks): once, right now, even if the DOM does not exist yet
+        ${initBlock}
+        // everything below reads the DOM, so wait for it (no-op at document_idle)
+        await __domReady();
         if (${Boolean(usesSetMemo)}) {
           // silent first pass: only the setMemo side effects run, nothing is sent to the parser
           __dryRun = true;
@@ -710,6 +793,7 @@ class UserScriptManager {
       const trackingCode = this.buildTrackDataScript(script, await getOrCreateScriptNonce(script.id));
 
       const world = this.resolveWorld(trackingCode);
+      const runAt = resolveRunAt(splitInitCode(script, false).initCode);
 
       if (!browser.userScripts?.register) throw new Error("No compatible userscript API available");
 
@@ -727,7 +811,7 @@ class UserScriptManager {
             id: script.id,
             js: [{ code: trackingCode }],
             matches,
-            runAt: script.runAt || "document_end",
+            runAt,
             world,
           },
         ]);

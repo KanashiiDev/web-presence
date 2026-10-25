@@ -344,6 +344,8 @@
   "userscript.codeEditor.keyboardShortcuts.save": "Kaydet",
   "userscript.codeEditor.executionWorld.label": "Çalıştırma Dünyası:",
   "userscript.codeEditor.executionWorld.note": "Sayfa global değişkenlerine (ör. window) erişim gerekiyorsa betiğinizin en üstüne ekleyin",
+  "userscript.codeEditor.initCodeBlocks.label": "Init Kod Bloğu:",
+  "userscript.codeEditor.initCodeBlocks.note": "Document yüklenmeden önce (document_start) kod içeriği bir kez çalıştırılır.",
   "userscript.codeEditor.castSupport.label": "Yayın Desteği:",
   "userscript.codeEditor.castSupport.note": "Aktif oynatmayı gösteren herhangi bir doğru değer; yayın desteği için kullanılır (opsiyonel)",
   "userscript.iframeSelectors.label": "Iframe Erişimi",

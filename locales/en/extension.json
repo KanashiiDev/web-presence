@@ -344,6 +344,8 @@
   "userscript.codeEditor.keyboardShortcuts.save": "Save",
   "userscript.codeEditor.executionWorld.label": "Execution World:",
   "userscript.codeEditor.executionWorld.note": "Use at the top of your script if you need access to page globals (e.g. window)",
+  "userscript.codeEditor.initCodeBlocks.label": "Init Code Block:",
+  "userscript.codeEditor.initCodeBlocks.note": "Runs once before the document loads (document_start).",
   "userscript.codeEditor.castSupport.label": "Cast Support:",
   "userscript.codeEditor.castSupport.note": "Any truthy value indicating active playback; used for cast support (optional)",
   "userscript.iframeSelectors.label": "Iframe Access",

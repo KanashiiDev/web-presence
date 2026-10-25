@@ -344,6 +344,8 @@
   "userscript.codeEditor.keyboardShortcuts.save": "Enregistrer",
   "userscript.codeEditor.executionWorld.label": "Monde d’Exécution :",
   "userscript.codeEditor.executionWorld.note": "À utiliser en haut de votre script si vous avez besoin d’un accès aux variables globales de la page (ex. : window)",
+  "userscript.codeEditor.initCodeBlocks.label": "Bloc de code d’initialisation :",
+  "userscript.codeEditor.initCodeBlocks.note": "S’exécute une fois avant le chargement du document (document_start).",
   "userscript.codeEditor.castSupport.label": "Prise en Charge du Cast :",
   "userscript.codeEditor.castSupport.note": "Toute valeur véridique indiquant une lecture active ; utilisée pour la prise en charge du cast (optionnel)",
   "userscript.iframeSelectors.label": "Accès iframe",
