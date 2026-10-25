@@ -25,7 +25,7 @@ const CONSTANTS = {
 
 const keepAliveManager = new KeepAliveManager();
 
-// Start watching tab activity and song changes
+// Start watching tab activity changes
 function startWatching() {
   if (state.isUpdating || state.updateTimer) {
     logInfo("[main] startWatching called but already active");
@@ -42,7 +42,7 @@ function startWatching() {
   mainLoop();
 }
 
-// Stop watching tab activity and song changes
+// Stop watching tab activity changes
 function stopWatching() {
   logInfo("%c╔═════════════════════════════════════════╗", "color:#ff5252; font-weight:bold;");
   logInfo("%c║      WEB PRESENCE STOPPED WATCHING      ║", "color:#ff5252; font-weight:bold;");
@@ -78,7 +78,7 @@ function scheduleNextUpdate(interval = CONSTANTS.ACTIVE_INTERVAL, reason = "") {
   }, interval);
 }
 
-// Main loop to check for song changes and update RPC
+// Main loop to check for activity changes and update RPC
 async function mainLoop() {
   if (state.isUpdating) return;
   state.isUpdating = true;
@@ -87,19 +87,19 @@ async function mainLoop() {
   try {
     hostMatch = await waitForHostname();
     if (!hostMatch) {
-      if (rpcState.lastActivity?.lastUpdated) await handleNoSong();
+      if (rpcState.lastActivity?.lastUpdated) await handleNoActivity();
       if (keepAliveManager.initialized) keepAliveManager.destroy();
       scheduleNextUpdate(CONSTANTS.ACTIVE_INTERVAL, "HOST_NOT_MATCH");
       return;
     }
     if (!keepAliveManager.initialized) keepAliveManager.init();
 
-    const song = await safeGetSongInfo();
-    window._lastParsedSong = song && song !== "blocked" ? song : null;
+    const activity = await safeGetActivityInfo();
+    window._lastParsedActivity = activity && activity !== "blocked" ? activity : null;
 
-    if (!song || song === "blocked" || (!song.title && !song.artist)) {
-      if (!song) logOnce("[main]: no song info", "RPC");
-      if (rpcState.lastActivity?.lastUpdated) await handleNoSong();
+    if (!activity || activity === "blocked" || (!activity.title && !activity.artist)) {
+      if (!activity) logOnce("[main]: no activity info", "RPC");
+      if (rpcState.lastActivity?.lastUpdated) await handleNoActivity();
       state.lastRawPosition = null;
       return;
     }
@@ -107,8 +107,8 @@ async function mainLoop() {
     if (!state.lastUpdateTime) state.lastUpdateTime = Date.now();
     if (!state.lastSeekDetected) state.lastSeekDetected = Date.now();
 
-    // Song change detection
-    const isChanged = rpcState.isSongChanged(song);
+    // Activity change detection
+    const isChanged = rpcState.isActivityChanged(activity);
     if (isChanged) {
       rpcState.reset();
       state.lastRawPosition = 0;
@@ -116,16 +116,17 @@ async function mainLoop() {
     }
 
     // Seed position once
-    const isValidPlaybackPos = isValidNumber(song.position) && song.position > 0;
+    const isValidPlaybackPos = isValidNumber(activity.position) && activity.position > 0;
     if (state.lastRawPosition === null && isValidPlaybackPos) {
-      state.lastRawPosition = song.position;
+      state.lastRawPosition = activity.position;
     }
 
     // Derived state flags
-    const hasValidDuration = isValidNumber(song.duration) && song.duration > 0;
-    const hasValidPosition = isValidNumber(song.position) && song.position >= 0;
+    const hasValidDuration = isValidNumber(activity.duration) && activity.duration > 0;
+    const hasValidPosition = isValidNumber(activity.position) && activity.position >= 0;
 
-    const progress = song.progress !== undefined ? song.progress : hasValidDuration && hasValidPosition ? Math.min(100, (song.position / song.duration) * 100) : null;
+    const progress =
+      activity.progress !== undefined ? activity.progress : hasValidDuration && hasValidPosition ? Math.min(100, (activity.position / activity.duration) * 100) : null;
 
     const timeSinceLastUpdate = Date.now() - (state.lastUpdateTime || Date.now());
 
@@ -135,7 +136,7 @@ async function mainLoop() {
       audibleCheck = await browser.runtime.sendMessage({ type: "IS_TAB_AUDIBLE" });
     } catch (_) {}
 
-    const isPlayingAudio = !!song.isPlaying;
+    const isPlayingAudio = !!activity.isPlaying;
     const isAudible = !!audibleCheck?.audible;
 
     // Playing Detection
@@ -143,17 +144,17 @@ async function mainLoop() {
 
     if (isAudible) {
       playerPlaying = true;
-    } else if (song.isPlaying !== undefined) {
-      playerPlaying = song.isPlaying;
+    } else if (activity.isPlaying !== undefined) {
+      playerPlaying = activity.isPlaying;
     } else {
       playerPlaying = false;
     }
 
-    const { isSeeking, isPaused: rawIsPaused } = rpcState.analyzePlayback(song.position, song.duration, playerPlaying);
+    const { isSeeking, isPaused: rawIsPaused } = rpcState.analyzePlayback(activity.position, activity.duration, playerPlaying);
     const isPaused = isAudible ? false : rawIsPaused;
 
-    const rawPositionDiff = isValidNumber(song.position) && isValidNumber(state.lastRawPosition) ? Math.abs(song.position - state.lastRawPosition) : 0;
-    const isRadioOrStream = !isValidNumber(song.duration) || song.duration <= 0;
+    const rawPositionDiff = isValidNumber(activity.position) && isValidNumber(state.lastRawPosition) ? Math.abs(activity.position - state.lastRawPosition) : 0;
+    const isRadioOrStream = !isValidNumber(activity.duration) || activity.duration <= 0;
 
     const seekJustDetected = isSeeking;
     if (seekJustDetected) {
@@ -166,7 +167,7 @@ async function mainLoop() {
 
     if (!rpcState.lastActivity || isChanged) {
       shouldUpdate = true;
-      updateReason = isChanged ? "Song Changed" : "First Update";
+      updateReason = isChanged ? "Activity Changed" : "First Update";
       state.pendingUpdateReason = null;
     } else {
       if (isSeeking) state.pendingUpdateReason = "Seek Detected";
@@ -199,7 +200,7 @@ async function mainLoop() {
     state.lastPauseState = isPaused;
 
     if (!playerPlaying) {
-      if (rpcState.lastActivity?.lastUpdated) await handleNoSong();
+      if (rpcState.lastActivity?.lastUpdated) await handleNoActivity();
       state.lastUpdateStatus = "skipped";
       state.isUpdating = false;
       shouldUpdate = false;
@@ -214,7 +215,7 @@ async function mainLoop() {
         );
       }
       // Keep lastRawPosition in sync even when skipping
-      if (isValidNumber(song.position)) state.lastRawPosition = song.position;
+      if (isValidNumber(activity.position)) state.lastRawPosition = activity.position;
       state.lastUpdateStatus = "skipped";
       return;
     }
@@ -225,10 +226,10 @@ async function mainLoop() {
       logInfo(`[main]: %cRPC Update triggered by:%c ${updateReason}`, "color:#4caf50; font-weight:bold;", "color:#fff;");
     }
 
-    const didUpdate = await processRPCUpdate(song, updatedProgress);
+    const didUpdate = await processRPCUpdate(activity, updatedProgress);
 
-    if (didUpdate && isValidNumber(song.position)) {
-      state.lastRawPosition = song.position;
+    if (didUpdate && isValidNumber(activity.position)) {
+      state.lastRawPosition = activity.position;
       state.lastUpdateTime = state.isFirstUpdate ? Date.now() - CONSTANTS.NORMAL_UPDATE_INTERVAL : Date.now();
       state.isFirstUpdate = false;
       state.lastUpdateStatus = "updated";
@@ -243,17 +244,17 @@ async function mainLoop() {
 
     let statusLabel = "SONG";
     let statusMode = 0;
-    if (song?.mode === "watch" && isRadioOrStream) {
+    if (activity?.mode === "watch" && isRadioOrStream) {
       statusLabel = "STREAM";
       statusMode = 1;
-    } else if (song?.mode === "watch") {
+    } else if (activity?.mode === "watch") {
       statusLabel = "VIDEO";
     } else if (isRadioOrStream) {
       statusLabel = "RADIO";
       statusMode = 1;
     }
 
-    const positionText = statusMode ? statusLabel : `Pos: ${song.position} / ${song.duration}`;
+    const positionText = statusMode ? statusLabel : `Pos: ${activity.position} / ${activity.duration}`;
     const positionColor = statusMode ? "#e91e63" : "#6db9f8";
 
     const colors = {
@@ -275,8 +276,8 @@ async function mainLoop() {
       {
         title: "Current Track",
         lines: [
-          [`${song.title}`, colors.title, colors.neutral],
-          [`${song.artist}`, colors.artist, colors.neutral],
+          [`${activity.title}`, colors.title, colors.neutral],
+          [`${activity.artist}`, colors.artist, colors.neutral],
           [positionText, positionColor, colors.neutral],
           [`Δ: ${rawPositionDiff}s`, colors.accent2, colors.neutral],
           [`Δt: ${timeSinceLastUpdate / 1000}s`, colors.accent2, colors.neutral],
@@ -306,8 +307,8 @@ async function mainLoop() {
         title: "Seek Detection",
         lines: [
           [`Expected: ${timeSinceLastUpdate / 1000}s`, colors.accent1, colors.neutral],
-          [`Actual: ${song.position - (rpcState.lastValidPosition || 0)}s`, colors.accent1, colors.neutral],
-          [`Deviation: ${Math.abs(song.position - (rpcState.lastValidPosition || 0) - timeSinceLastUpdate / 1000)?.toFixed(3)}s`, colors.accent1, colors.neutral],
+          [`Actual: ${activity.position - (rpcState.lastValidPosition || 0)}s`, colors.accent1, colors.neutral],
+          [`Deviation: ${Math.abs(activity.position - (rpcState.lastValidPosition || 0) - timeSinceLastUpdate / 1000)?.toFixed(3)}s`, colors.accent1, colors.neutral],
           [`Last Seek: ${lastSeekSeconds}s`, colors.neutral, colors.neutral],
         ],
       },
@@ -317,9 +318,9 @@ async function mainLoop() {
     if (typeof pushMemoryLog === "function") {
       pushMemoryLog("info", "main", {
         // Track
-        title: song.title,
-        artist: song.artist,
-        source: song.source ?? null,
+        title: activity.title,
+        artist: activity.artist,
+        source: activity.source ?? null,
         // Playback state
         status: statusLabel,
         paused: isPaused,
@@ -328,8 +329,8 @@ async function mainLoop() {
         playing: playerPlaying,
         audible: isAudible,
         // Position
-        position: isValidNumber(song.position) ? song.position : null,
-        duration: isValidNumber(song.duration) ? song.duration : null,
+        position: isValidNumber(activity.position) ? activity.position : null,
+        duration: isValidNumber(activity.duration) ? activity.duration : null,
         progress: isValidNumber(progress) ? +progress.toFixed(2) : null,
         positionDiff: +rawPositionDiff.toFixed(3),
         // Timing
@@ -366,8 +367,8 @@ async function mainLoop() {
     });
 
     console.groupCollapsed(
-      `%c[WEB-PRESENCE - INFO] [main]: %c${statusLabel}%c | %c${song.title.substring(0, 120)}${song.title.length > 120 ? "..." : ""}%c | %c${song.artist.substring(0, 120)}${
-        song.artist.length > 120 ? "..." : ""
+      `%c[WEB-PRESENCE - INFO] [main]: %c${statusLabel}%c | %c${activity.title.substring(0, 120)}${activity.title.length > 120 ? "..." : ""}%c | %c${activity.artist.substring(0, 120)}${
+        activity.artist.length > 120 ? "..." : ""
       }%c | Paused: %c${isPaused}%c | Seek: %c${isSeeking}%c | Δ: %c${rawPositionDiff}s`,
       "color:#2196f3; font-weight:bold;",
       `font-weight:bold; color:${isRadioOrStream ? "#e91e63" : "#4caf50"}`,
@@ -395,7 +396,7 @@ async function mainLoop() {
 
 // Process the RPC update and handle connection
 
-async function processRPCUpdate(song, progress) {
+async function processRPCUpdate(activity, progress) {
   const rpcHealth = await isRpcConnected();
 
   if (!rpcHealth?.ok) {
@@ -413,7 +414,7 @@ async function processRPCUpdate(song, progress) {
     const res = await browser.runtime.sendMessage({
       type: "UPDATE_RPC",
       data: {
-        ...sanitizeSongForRPC(song, progress),
+        ...sanitizeActivityForRPC(activity, progress),
         lastUpdated: Date.now(),
       },
     });
@@ -424,7 +425,7 @@ async function processRPCUpdate(song, progress) {
       }
 
       state.isConnected = true;
-      rpcState.updateLastActivity(song, progress);
+      rpcState.updateLastActivity(activity, progress);
       logInfo("[main]: Rich Presence Updated Successfully!");
       return true;
     }
@@ -453,36 +454,36 @@ async function isRpcConnected() {
   }
 }
 
-// Handle scenario when no song is playing
+// Handle scenario when no activity is playing
 let clearingRpc = false;
 
-async function handleNoSong() {
+async function handleNoActivity() {
   if (clearingRpc) return;
   clearingRpc = true;
 
   try {
-    logInfo(`[main]:%c No song is currently playing - clearing RPC...`, "color:#ff9800; font-weight:bold;");
+    logInfo(`[main]:%c No activity is currently playing - clearing RPC...`, "color:#ff9800; font-weight:bold;");
     await browser.runtime.sendMessage({ type: "CLEAR_RPC" });
     rpcState.reset();
-    window._lastParsedSong = null;
+    window._lastParsedActivity = null;
     logOnce("[main]: RPC cleared successfully", "RPC");
   } catch (e) {
-    logError("[main:handleNoSong]: failed to clear RPC:", e);
+    logError("[main:handleNoActivity]: failed to clear RPC:", e);
     rpcState.reset();
   } finally {
     clearingRpc = false;
   }
 }
 
-// Safely get song info with error handling and caching
-async function safeGetSongInfo() {
+// Safely get activity info with error handling and caching
+async function safeGetActivityInfo() {
   try {
-    if (typeof window.getSongInfo === "function") {
-      return await window.getSongInfo();
+    if (typeof window.getActivityInfo === "function") {
+      return await window.getActivityInfo();
     }
     return null;
   } catch (e) {
-    logError("[main:safeGetSongInfo]:", e);
+    logError("[main:safeGetActivityInfo]:", e);
     return null;
   }
 }
@@ -531,11 +532,11 @@ function isValidNumber(v) {
   return typeof v === "number" && isFinite(v);
 }
 
-function sanitizeSongForRPC(song, progress) {
+function sanitizeActivityForRPC(activity, progress) {
   return {
-    ...song,
-    position: isValidNumber(song.position) ? song.position : undefined,
-    duration: isValidNumber(song.duration) ? song.duration : undefined,
+    ...activity,
+    position: isValidNumber(activity.position) ? activity.position : undefined,
+    duration: isValidNumber(activity.duration) ? activity.duration : undefined,
     progress: isValidNumber(progress) ? progress : undefined,
   };
 }
@@ -594,7 +595,7 @@ function init() {
 // Listen for messages from the background script
 function messageHandler(message, sender, sendResponse) {
   if (message.type === "PING_FOR_DATA") {
-    const cached = window._lastParsedSong;
+    const cached = window._lastParsedActivity;
     const response = cached?.title && cached?.artist ? cached : null;
     sendResponse(response);
     return true;

@@ -514,9 +514,9 @@ class UserScriptManager {
               return;
             }
 
-            const resolvedSongUrl = typeof songUrl === "undefined" || songUrl == null ? null : typeof songUrl === "string" || typeof songUrl === "number" ? String(songUrl) : null;
+            const resolvedActivityUrl = typeof activityUrl === "undefined" || activityUrl == null ? null : typeof activityUrl === "string" || typeof activityUrl === "number" ? String(activityUrl) : null;
             const resolvedLink = typeof link === "undefined" || link == null ? null : typeof link === "string" || typeof link === "number" ? String(link) : null;
-            const finalLink = resolvedSongUrl ?? resolvedLink;
+            const finalLink = resolvedActivityUrl ?? resolvedLink;
             // update trackState
             trackState.title = typeof title === "undefined" || title == null ? null : typeof title === "string" || typeof title === "number" ? String(title) : null;
             if (!trackState.title) {
@@ -525,7 +525,7 @@ class UserScriptManager {
             trackState.artist = typeof artist === "undefined" || artist == null ? null : typeof artist === "string" || typeof artist === "number" ? String(artist) : null;
             trackState.image = typeof image === "undefined" || image == null ? null : typeof image === "string" || typeof image === "number" ? String(image) : null;
             trackState.source = typeof source === "undefined" || source == null ? null : typeof source === "string" || typeof source === "number" ? String(source) : null;
-            trackState.songUrl = finalLink;
+            trackState.activityUrl = finalLink;
             trackState.link = finalLink;
             trackState.timePassed = typeof timePassed === "undefined" || timePassed == null ? null : typeof timePassed === "number" || typeof timePassed === "string" ? timePassed : null;
             trackState.duration = typeof duration === "undefined" || duration == null ? null : typeof duration === "number" || typeof duration === "string" ? duration : null;
@@ -549,7 +549,7 @@ class UserScriptManager {
               watchAutoDetect: ${q(script.watchAutoDetect || "disable")},
               iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},
               isLibraryActivity: ${Boolean(script.storeScriptId)},
-              song: normalizeTrackData({ ...trackState })
+              activity: normalizeTrackData({ ...trackState })
             };
 
             // Debug Mode
@@ -567,29 +567,29 @@ class UserScriptManager {
               console.log("  • Domain:      ", trackData.domain);
               console.log("  • Url Patterns:", trackData.urlPatterns || "—");
               console.log("  • Mode:        ", trackData.mode);
-              const song = trackData.song;
-              console.log("%cSong Information:", "color: #8be9fd; font-weight: bold; font-size: 13px;");
-              console.log("  • Title:      ", song.title || "Unknown");
-              console.log("  • Artist:     ", song.artist || "Unknown");
-              console.log("  • Source:     ", song.source || trackData.title || "Unknown");
-              console.log("  • Song URL:   ", song.link || "N/A");
-              console.log("  • Image:      ", song.image || "Default Image");
-              console.log("  • Duration:   ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.duration ?? "N/A");
-              console.log("  • Time Passed:", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.timePassed ?? "N/A");
-              console.log("  • isPlaying:  ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : song.isPlaying ?? "N/A");
-              console.log("  • Buttons:    ", song.buttons ?? "N/A");
+              const activity = trackData.activity;
+              console.log("%cActivity Information:", "color: #8be9fd; font-weight: bold; font-size: 13px;");
+              console.log("  • Title:      ", activity.title || "Unknown");
+              console.log("  • Artist:     ", activity.artist || "Unknown");
+              console.log("  • Source:     ", activity.source || trackData.title || "Unknown");
+              console.log("  • Activity URL:   ", activity.link || "N/A");
+              console.log("  • Image:      ", activity.image || "Default Image");
+              console.log("  • Duration:   ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : activity.duration ?? "N/A");
+              console.log("  • Time Passed:", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : activity.timePassed ?? "N/A");
+              console.log("  • isPlaying:  ", ${q(script.watchAutoDetect || "disable")} === "enable" ? "Auto-Detect" : activity.isPlaying ?? "N/A");
+              console.log("  • Buttons:    ", activity.buttons ?? "N/A");
               console.groupEnd();
             }
 
             __userScriptLog("info", "trackData.summary", {
               title: Boolean(trackData.title),
-              artist: Boolean(trackData.song?.artist),
-              source: Boolean(trackData.song?.source),
-              link: Boolean(trackData.song?.link),
-              positionSet: trackData.song?.position != null,
-              durationSet: trackData.song?.duration != null,
-              isPlaying: trackData.song?.isPlaying ?? false,
-              buttonCount: trackData.song?.buttons?.length ?? 0,
+              artist: Boolean(trackData.activity?.artist),
+              source: Boolean(trackData.activity?.source),
+              link: Boolean(trackData.activity?.link),
+              positionSet: trackData.activity?.position != null,
+              durationSet: trackData.activity?.duration != null,
+              isPlaying: trackData.activity?.isPlaying ?? false,
+              buttonCount: trackData.activity?.buttons?.length ?? 0,
             });
 
             window.postMessage({ type: "USER_SCRIPT_TRACK_DATA", nonce: __nonce, data: { ...trackData, iframeSelectors: ${JSON.stringify(script.iframeSelectors || null)},}}, "*");

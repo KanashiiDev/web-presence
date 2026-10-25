@@ -12,7 +12,7 @@ async function initFilter() {
     FilterEvents.add(toggleFormBtn, "click", () => FormController.toggle());
   }
 
-  const blockCurrentBtn = document.getElementById("getSongInfoBtn");
+  const blockCurrentBtn = document.getElementById("getActivityInfoBtn");
   if (blockCurrentBtn) {
     FilterEvents.add(blockCurrentBtn, "click", () => QuickActions.blockCurrent());
   }

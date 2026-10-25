@@ -27,17 +27,17 @@ const getEnabledParsers = () => state.parserList.filter((p) => p.isEnabled);
 const historyData = () => loadHistory();
 
 const historyMutex = createMutex();
-async function scheduleHistoryAdd(tabId, songData) {
+async function scheduleHistoryAdd(tabId, activityData) {
   if (!tabId || !Number.isInteger(tabId)) return;
-  if (!songData?.title || !songData?.artist) return;
+  if (!activityData?.title || !activityData?.artist) return;
 
   if (!state.historyCounters) state.historyCounters = new Map();
-  const key = `${songData.title}::${songData.artist}::${songData.source}`;
+  const key = `${activityData.title}::${activityData.artist}::${activityData.source}`;
   const tracker = state.historyCounters.get(tabId);
   const now = Date.now();
 
   if (!tracker || tracker.lastKey !== key) {
-    logInfo("[background:scheduleHistoryAdd]: New song detected for tab:", tabId, "title:", songData.title, "artist:", songData.artist);
+    logInfo("[background:scheduleHistoryAdd]: New activity detected for tab:", tabId, "title:", activityData.title, "artist:", activityData.artist);
     state.historyCounters.set(tabId, { lastKey: key, startTime: now });
     return;
   }
@@ -48,7 +48,7 @@ async function scheduleHistoryAdd(tabId, songData) {
         const history = await historyData();
 
         const last = history[0];
-        const sameAsLast = last && last.t === songData.title && last.a === songData.artist && last.s === songData.source;
+        const sameAsLast = last && last.t === activityData.title && last.a === activityData.artist && last.s === activityData.source;
         const activeTab = state.activeTabMap.get(tabId);
         let saveHistory = true;
 
@@ -59,21 +59,28 @@ async function scheduleHistoryAdd(tabId, songData) {
 
         if (!sameAsLast && saveHistory) {
           // Add to History
-          logInfo("[background:scheduleHistoryAdd]: Adding to history - title:", songData.title, "artist:", songData.artist, "source:", songData.source);
+          logInfo("[background:scheduleHistoryAdd]: Adding to history - title:", activityData.title, "artist:", activityData.artist, "source:", activityData.source);
           await addToHistory({
-            image: songData.image,
-            title: songData.title,
-            artist: songData.artist,
-            source: songData.source,
-            link: songData.link || songData.songUrl,
-            mode: songData.mode,
+            image: activityData.image,
+            title: activityData.title,
+            artist: activityData.artist,
+            source: activityData.source,
+            link: activityData.link || activityData.activityUrl,
+            mode: activityData.mode,
             date: tracker.startTime || now,
           });
         } else {
           if (!saveHistory) {
             logInfo("[background:scheduleHistoryAdd]: Skipped - saveHistory disabled for parser:", activeTab?.parserId);
           } else if (!tracker.skipLogged) {
-            logInfo("[background:scheduleHistoryAdd]: Skipped - song already processed: title:", songData.title, "artist:", songData.artist, "source:", songData.source);
+            logInfo(
+              "[background:scheduleHistoryAdd]: Skipped - activity already processed: title:",
+              activityData.title,
+              "artist:",
+              activityData.artist,
+              "source:",
+              activityData.source,
+            );
             state.historyCounters.set(tabId, { ...tracker, skipLogged: true });
           }
         }
@@ -548,7 +555,7 @@ const scheduleRpcUpdate = (data, tabId) => {
   state.pendingUpdates.set(tabId, { timeout, data });
 };
 
-// Checks the Active Tab. Pings tab content scripts for their last parsed song.
+// Checks the Active Tab. Pings tab content scripts for their last parsed activity.
 async function safePingTab(tabId) {
   try {
     const res = await browser.tabs.sendMessage(tabId, { type: "PING_FOR_DATA" });

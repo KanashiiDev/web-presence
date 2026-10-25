@@ -668,9 +668,9 @@ async function scheduleParserListSave() {
   }
 }
 
-// Get current song info based on website and parser list
-window.getSongInfoLastSong = null;
-window.getSongInfo = async function () {
+// Get current activity info based on website and parser list
+window.getActivityInfoLastActivity = null;
+window.getActivityInfo = async function () {
   try {
     const hostname = location.hostname.replace(/^www\./, "").toLowerCase();
     const pathname = location.pathname;
@@ -691,16 +691,16 @@ window.getSongInfo = async function () {
           const isEnabled = parserEnabledState[`enable_${parser.id}`] !== false;
 
           if (isEnabled) {
-            const song = await parser.parse();
+            const activity = await parser.parse();
 
-            if (song) {
+            if (activity) {
               // String Extraction
-              let dataTitle = String(song.title || "").trim();
-              let dataArtist = String(song.artist || "").trim();
-              let dataSource = String(song.source || "").trim();
+              let dataTitle = String(activity.title || "").trim();
+              let dataArtist = String(activity.artist || "").trim();
+              let dataSource = String(activity.source || "").trim();
 
               // return null if there is no title, no artist and it is a library activity
-              if (!song.title && !song.artist && parser.isLibraryActivity) return null;
+              if (!activity.title && !activity.artist && parser.isLibraryActivity) return null;
 
               // Normalization
               const normalized = await normalizeTitleAndArtist(dataTitle, dataArtist);
@@ -715,17 +715,19 @@ window.getSongInfo = async function () {
 
               const currentData = { title: dataTitle, artist: dataArtist, source: dataSource };
               const isChanged =
-                !window.getSongInfoLastSong ||
-                window.getSongInfoLastSong.title !== currentData.title ||
-                window.getSongInfoLastSong.artist !== currentData.artist ||
-                window.getSongInfoLastSong.source !== currentData.source;
+                !window.getActivityInfoLastActivity ||
+                window.getActivityInfoLastActivity.title !== currentData.title ||
+                window.getActivityInfoLastActivity.artist !== currentData.artist ||
+                window.getActivityInfoLastActivity.source !== currentData.source;
 
               // Apply parser filters and replacements
               const filterResult = await applyParserFilters(parser.id, dataArtist, dataTitle);
               if (filterResult.shouldBlock) {
                 if (isChanged)
-                  logInfo(`[mainParser]: Song blocked: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, { parserId: parser.id });
-                window.getSongInfoLastSong = currentData;
+                  logInfo(`[mainParser]: Activity blocked: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, {
+                    parserId: parser.id,
+                  });
+                window.getActivityInfoLastActivity = currentData;
                 return "blocked";
               }
 
@@ -734,14 +736,16 @@ window.getSongInfo = async function () {
                 dataArtist = filterResult.artist;
                 dataTitle = filterResult.title;
                 if (isChanged)
-                  logInfo(`[mainParser]: Song replaced: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, { parserId: parser.id });
-                window.getSongInfoLastSong = currentData;
+                  logInfo(`[mainParser]: Activity replaced: ${dataArtist} - ${dataTitle} (Parser: ${parser.id} | Filter: ${filterResult.filterId})`, {
+                    parserId: parser.id,
+                  });
+                window.getActivityInfoLastActivity = currentData;
               }
 
-              song.title = dataTitle;
-              song.artist = dataArtist;
-              song.source = dataSource;
-              return song;
+              activity.title = dataTitle;
+              activity.artist = dataArtist;
+              activity.source = dataSource;
+              return activity;
             }
           }
         }
@@ -753,7 +757,7 @@ window.getSongInfo = async function () {
 
     return null;
   } catch (err) {
-    logError("[mainParser]: getSongInfo error:", err);
+    logError("[mainParser]: getActivityInfo error:", err);
     return null;
   }
 };
@@ -792,7 +796,7 @@ async function applyParserFilters(parserId, artist, title) {
           continue;
         }
 
-        // Check if current song matches the filter entry
+        // Check if current activity matches the filter entry
         const artistMatch = !filterArtist || normalizedArtist === filterArtist;
         const titleMatch = !filterTitle || normalizedTitle === filterTitle;
 
@@ -811,7 +815,7 @@ async function applyParserFilters(parserId, artist, title) {
               filterId: filter.id,
             };
           } else {
-            // Block the song
+            // Block the activity
             return {
               shouldBlock: true,
               replaced: false,
@@ -1149,7 +1153,7 @@ window.addEventListener("message", async (event) => {
     // Handle User Script Track Data
     const domain = msg.data.domain || location.host;
 
-    window.latestUserScriptData[domain] = msg.data.song;
+    window.latestUserScriptData[domain] = msg.data.activity;
 
     if (typeof window.registerParser === "function") {
       const autoDetectEnabled = msg.data.mode === "watch" && msg.data.watchAutoDetect && msg.data.watchAutoDetect !== "disable";
@@ -1173,25 +1177,25 @@ window.addEventListener("message", async (event) => {
         }),
         fn: async function ({ iframeData }) {
           try {
-            const song = window.latestUserScriptData[msg.data.domain];
-            if (!song) return null;
-            if (song.__clear) return { __clear: true };
+            const activity = window.latestUserScriptData[msg.data.domain];
+            if (!activity) return null;
+            if (activity.__clear) return { __clear: true };
 
             const videoData = autoDetectEnabled ? getBestVideo(document.querySelectorAll("video")) : null;
             const { duration, currentTime, playing } = iframeData || videoData ? getBestData(iframeData, videoData) : {};
 
             return {
-              title: song.title,
-              artist: song.artist,
-              image: song.image,
-              source: song.source,
-              link: song.link || song.songUrl,
-              timePassed: currentTime || song.timePassed,
-              duration: duration || song.duration,
-              buttons: song.buttons,
+              title: activity.title,
+              artist: activity.artist,
+              image: activity.image,
+              source: activity.source,
+              link: activity.link || activity.activityUrl,
+              timePassed: currentTime || activity.timePassed,
+              duration: duration || activity.duration,
+              buttons: activity.buttons,
               mode: msg.data.mode,
               category: msg.data.category,
-              isPlaying: Boolean(song.isPlaying || playing),
+              isPlaying: Boolean(activity.isPlaying || playing),
             };
           } catch (err) {
             logError("[mainParser:userScript]: User script parser error:", err);
@@ -1260,7 +1264,7 @@ async function loadAllSavedUserParsers() {
           const artist = artistRaw ? artistRaw : "-1";
           const source = getText(data.selectors["source"]) || getPlainText(data.selectors["source"]) || "";
           const image = getImage(data.selectors["image"]);
-          const link = getSafeHref(get, "link", data.link || data.songUrl || location.href);
+          const link = getSafeHref(get, "link", data.link || data.activityUrl || location.href);
           const buttonLink = getSafeHref(get, "buttonLink", data.selectors.buttonLink);
           const buttonText = getSafeText(get, "buttonText", data.selectors.buttonText);
           const buttonLink2 = getSafeHref(get, "buttonLink2", data.selectors.buttonLink2);

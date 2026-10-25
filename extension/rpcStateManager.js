@@ -124,22 +124,22 @@ window.RPCStateManager = class {
     }
   }
 
-  keepActivity(song) {
-    this.lastActivity ??= { ...song, lastUpdated: null };
+  keepActivity(activity) {
+    this.lastActivity ??= { ...activity, lastUpdated: null };
   }
 
-  isSongChanged(newSong) {
+  isActivityChanged(newActivity) {
     const prev = this.lastActivity;
     if (!prev) return false;
 
-    const titleChanged = (newSong.title ?? "").trim() !== (prev.title ?? "").trim();
-    const artistChanged = (newSong.artist ?? "").trim() !== (prev.artist ?? "").trim();
+    const titleChanged = (newActivity.title ?? "").trim() !== (prev.title ?? "").trim();
+    const artistChanged = (newActivity.artist ?? "").trim() !== (prev.artist ?? "").trim();
 
     return titleChanged || artistChanged;
   }
 
-  updateLastActivity(song, progress) {
-    this.lastActivity = { ...song, progress, lastUpdated: Date.now() };
+  updateLastActivity(activity, progress) {
+    this.lastActivity = { ...activity, progress, lastUpdated: Date.now() };
   }
 
   setSeekTimeout(callback, delay) {

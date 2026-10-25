@@ -126,7 +126,7 @@ Open the activity library from the extension popup, install the activities you w
 - Discord Web support
 - Community-supported integrations through the [Activity Library](https://github.com/KanashiiDev/web-presence-activities).
 - Easy to extend - add support for almost any music or video site using selectors or userscripts
-- Filter system - block or replace songs by artist/title, per site or globally
+- Filter system - block or replace activities by artist/title, per site or globally
 - Both listening and watching activity support
 - Live activity output - WebNowPlaying (Rainmeter & OBS), plus plain-text/JSON files on disk
 - Fully customizable Discord status per site - control the artist, source, cover art, buttons, timestamps, and more

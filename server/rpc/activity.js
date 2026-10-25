@@ -1,4 +1,4 @@
-const { saveListeningTime, isSameActivityIgnore } = require("../utils.js");
+const { saveActivityTime, isSameActivityIgnore } = require("../utils.js");
 const { truncate, isValidUrl } = require("../../shared/utils.js");
 const { state, CLIENT_ID, isBridgeConnected } = require("./state.js");
 
@@ -320,38 +320,38 @@ async function clearRpcActivity({ maxRetries = 1, timeoutMs = 5000 } = {}) {
 // (lastActiveClient) only expires via the CLIENT_TIMEOUT check.
 function resetActivityState(historyFilePath) {
   clearWebRPC();
-  if (historyFilePath) flushListeningTime(historyFilePath);
+  if (historyFilePath) flushActivityTime(historyFilePath);
   state.currentActivity = null;
   state.lastUpdateAt = null;
   state.lastActivitySeenAt = null;
-  state.listeningStartTime = null;
+  state.activityStartTime = null;
   // Remove currentActivity files
   if (localActivitySave) activityWriter.clearActivityFiles();
   wnpClient.clearActivity();
 }
 
-// Persists the listening duration for the currently playing track, if any.
-function flushListeningTime(historyFilePath) {
-  if (!state.currentActivity || !state.listeningStartTime) return;
-  const listenedMs = Date.now() - state.listeningStartTime;
-  saveListeningTime(state.currentActivity, listenedMs, historyFilePath);
+// Persists the activity duration for the currently playing track, if any.
+function flushActivityTime(historyFilePath) {
+  if (!state.currentActivity || !state.activityStartTime) return;
+  const elapsedMs = Date.now() - state.activityStartTime;
+  saveActivityTime(state.currentActivity, elapsedMs, historyFilePath);
 }
 
-// Handles listening time tracking whenever an activity update arrives.
+// Handles activity time tracking whenever an activity update arrives.
 // History entry creation is handled by the plugin via POST /add-history.
-function handleListeningTimeUpdate(activity, historyFilePath) {
+function handleActivityTimeUpdate(activity, historyFilePath) {
   const trackChanged = !isSameActivityIgnore(activity, state.currentActivity);
 
   if (trackChanged) {
-    // Flush previous track's listening time before switching
-    flushListeningTime(historyFilePath);
-    state.listeningStartTime = Date.now();
+    // Flush previous track's activity time before switching
+    flushActivityTime(historyFilePath);
+    state.activityStartTime = Date.now();
     return;
   }
 
-  // Same track - start listening timer if not already running
-  if (!state.listeningStartTime) {
-    state.listeningStartTime = Date.now();
+  // Same track - start activity timer if not already running
+  if (!state.activityStartTime) {
+    state.activityStartTime = Date.now();
   }
 }
 
@@ -360,6 +360,6 @@ module.exports = {
   setRpcActivity,
   clearRpcActivity,
   resetActivityState,
-  handleListeningTimeUpdate,
-  flushListeningTime,
+  handleActivityTimeUpdate,
+  flushActivityTime,
 };

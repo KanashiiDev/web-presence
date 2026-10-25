@@ -81,7 +81,7 @@ const state = {
   healthCheckInterval: null,
   lastSavedHistoryEntry: null,
   lastActivitySettings: null,
-  listeningStartTime: null,
+  activityStartTime: null,
   serverInstance: null,
   lastUpdateRequest: null,
   lastClearRpcResult: null,

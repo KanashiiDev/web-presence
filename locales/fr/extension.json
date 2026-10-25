@@ -235,7 +235,7 @@
   "filter.title.new": "Nouveau titre",
   "filter.title.original": "Titre original",
   "filters.tutorial.tabs": "Vous pouvez basculer entre les onglets pour afficher les filtres par type.",
-  "filters.tutorial.getSongInfo": "L’activité média actuelle remplit automatiquement les champs du filtre.",
+  "filters.tutorial.getActivityInfo": "L’activité média actuelle remplit automatiquement les champs du filtre.",
   "filters.tutorial.openHistory": "En ouvrant l’historique des médias, vous pouvez facilement bloquer ou modifier des éléments depuis la liste.",
   "filters.tutorial.toggleForm": "Ouvre ou ferme le formulaire d’ajout d’un nouveau filtre.",
   "filters.tutorial.modeOptions": "Vous pouvez sélectionner le mode de filtre ici.",

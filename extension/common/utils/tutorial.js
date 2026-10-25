@@ -253,7 +253,7 @@ async function showUserScriptTutorial() {
 // Filters Tutorial
 async function showFiltersTutorial() {
   const formContainer = document.getElementById("formContainer");
-  const HEADER_SEL = "#filterTabsContainer, #toggleFormBtn, #openHistoryBtn, #getSongInfoBtn, .filter-item, #btnToggleView";
+  const HEADER_SEL = "#filterTabsContainer, #toggleFormBtn, #openHistoryBtn, #getActivityInfoBtn, .filter-item, #btnToggleView";
   const SECTION_SEL = ".inline-entries-section, .inline-parser-section, .inline-editor-footer, .new-filter-header";
   const filtersList = document.getElementById("filtersList");
   const emptyState = filtersList.querySelector(".empty-state");
@@ -275,8 +275,8 @@ async function showFiltersTutorial() {
       getFadingEls: fadeHeaderBtns,
     },
     {
-      text: i18n.t("filters.tutorial.getSongInfo"),
-      selector: "#getSongInfoBtn",
+      text: i18n.t("filters.tutorial.getActivityInfo"),
+      selector: "#getActivityInfoBtn",
       getFadingEls: fadeHeaderBtns,
     },
     {

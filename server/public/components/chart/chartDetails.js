@@ -14,12 +14,12 @@ export function createDetailsController(p = "", historyMode = "listen") {
     return p ? `${p}${name}` : name;
   }
 
-  function hc_buildSongNode(item) {
+  function hc_buildActivityNode(item) {
     const wrap = document.createElement("div");
-    wrap.className = "song hc-song";
+    wrap.className = "activity hc-activity";
 
     const a = Object.assign(document.createElement("a"), {
-      href: item.songUrl ?? item.link ?? "",
+      href: item.activityUrl ?? item.link ?? "",
       target: "_blank",
       rel: "noopener noreferrer",
       title: i18n.t("history.goToLink"),
@@ -29,7 +29,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
     imgContainer.className = "history-image-container spinner";
 
     const img = Object.assign(document.createElement("img"), {
-      className: "song-image",
+      className: "activity-image",
       alt: item.title ?? "",
       loading: "lazy",
       decoding: "async",
@@ -41,7 +41,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
     loadImage({ target: img, src: item.image });
 
     const info = document.createElement("div");
-    info.className = "song-info";
+    info.className = "activity-info";
 
     const dateP = document.createElement("p");
     dateP.className = "date";
@@ -61,11 +61,11 @@ export function createDetailsController(p = "", historyMode = "listen") {
     return wrap;
   }
 
-  async function hc_toggleSongList(platformRow, songs, platName, chartState) {
+  async function hc_toggleActivityList(platformRow, activities, platName, chartState) {
     if (platformRow.dataset.animating === "true") return;
     platformRow.dataset.animating = "true";
 
-    const wrapperId = `${p}hcSongList`;
+    const wrapperId = `${p}hcActivityList`;
 
     // 1. If a different platform is open, close it
     if (chartState.expandedPlatform && chartState.expandedPlatform !== platName) {
@@ -74,10 +74,10 @@ export function createDetailsController(p = "", historyMode = "listen") {
 
       if (open) open.classList.remove("hc-expanded");
 
-      if (existing?.classList.contains("hc-song-list")) {
+      if (existing?.classList.contains("hc-activity-list")) {
         existing._sbInstance?.unMount();
         existing._sbInstance = null;
-        ScrollManager.cleanupType(`hcSong_${p}${chartState.expandedPlatform}`);
+        ScrollManager.cleanupType(`hcActivity_${p}${chartState.expandedPlatform}`);
         existing.classList.remove("hc-open");
 
         await waitForTransitionEnd(existing, "max-height");
@@ -89,11 +89,11 @@ export function createDetailsController(p = "", historyMode = "listen") {
     const isOpen = platformRow.classList.contains("hc-expanded");
     if (isOpen) {
       platformRow.classList.remove("hc-expanded");
-      ScrollManager.cleanupType(`hcSong_${p}${platName}`);
+      ScrollManager.cleanupType(`hcActivity_${p}${platName}`);
       chartState.expandedPlatform = null;
 
       const listEl = platformRow.nextElementSibling;
-      if (listEl?.classList.contains("hc-song-list")) {
+      if (listEl?.classList.contains("hc-activity-list")) {
         listEl._sbInstance?.unMount();
         listEl._sbInstance = null;
         listEl.classList.remove("hc-open");
@@ -111,12 +111,12 @@ export function createDetailsController(p = "", historyMode = "listen") {
     chartState.expandedPlatform = platName;
 
     const listWrap = Object.assign(document.createElement("div"), {
-      className: "hc-song-list",
+      className: "hc-activity-list",
       id: wrapperId,
     });
     const inner = Object.assign(document.createElement("div"), {
-      className: "hc-song-list-inner",
-      id: `${p}hcSongListInner`,
+      className: "hc-activity-list-inner",
+      id: `${p}hcActivityListInner`,
     });
 
     listWrap.appendChild(inner);
@@ -126,7 +126,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
       listWrap._sbInstance = new SimpleBar(listWrap, { autoHide: false });
     }
 
-    const sorted = [...songs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sorted = [...activities].sort((a, b) => new Date(b.date) - new Date(a.date));
     const PAGE = 8;
     const scrollState = {
       fullData: sorted,
@@ -144,7 +144,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
         }
         const slice = scrollState.fullData.slice(scrollState.currentOffset, scrollState.currentOffset + PAGE);
         const frag = document.createDocumentFragment();
-        for (const item of slice) frag.appendChild(hc_buildSongNode(item));
+        for (const item of slice) frag.appendChild(hc_buildActivityNode(item));
         inner.appendChild(frag);
         scrollState.currentOffset += slice.length;
       },
@@ -152,7 +152,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
 
     try {
       await scrollRenderer.render({ reset: true });
-      ScrollManager.activate(`hcSong_${p}${platName}`, listWrap._sbInstance ?? null, scrollRenderer, scrollState, wrapperId, "songs");
+      ScrollManager.activate(`hcActivity_${p}${platName}`, listWrap._sbInstance ?? null, scrollRenderer, scrollState, wrapperId, "songs");
     } catch (err) {
       listWrap._sbInstance?.unMount();
       listWrap._sbInstance = null;
@@ -203,7 +203,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
         const row = e.target.closest(".chart-detail-row[data-platform]");
         if (!row) return;
         const items = _platformItems.get(row.dataset.platform);
-        if (items) hc_toggleSongList(row, items, row.dataset.platform, chartState);
+        if (items) hc_toggleActivityList(row, items, row.dataset.platform, chartState);
       },
       { signal: _detailsClickController.signal },
     );
@@ -214,14 +214,14 @@ export function createDetailsController(p = "", historyMode = "listen") {
     _detailsClickController = null;
   }
 
-  function _cleanupOpenSongList(chartState) {
-    const orphan = document.querySelector(`#${_id("chartDetails")} .hc-song-list`);
+  function _cleanupOpenActivityList(chartState) {
+    const orphan = document.querySelector(`#${_id("chartDetails")} .hc-activity-list`);
     if (orphan) {
       orphan._sbInstance?.unMount();
       orphan._sbInstance = null;
       orphan.remove();
     }
-    if (chartState.expandedPlatform) ScrollManager.cleanupType(`hcSong_${p}${chartState.expandedPlatform}`);
+    if (chartState.expandedPlatform) ScrollManager.cleanupType(`hcActivity_${p}${chartState.expandedPlatform}`);
     const expandedRow = document.querySelector(`#${_id("chartDetails")} .chart-detail-row.hc-expanded`);
     if (expandedRow) {
       expandedRow.classList.remove("hc-expanded");
@@ -239,7 +239,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
     _isHiding = false;
     panel.style.pointerEvents = "";
     cancelDetailsAnimation();
-    _cleanupOpenSongList(chartState);
+    _cleanupOpenActivityList(chartState);
     chartState.expandedPlatform = null;
     _platformItems.clear();
     totalEl.textContent = "";
@@ -378,7 +378,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
     if (!panel) return;
     _isHiding = true;
     panel.style.pointerEvents = "none";
-    _cleanupOpenSongList(chartState);
+    _cleanupOpenActivityList(chartState);
     _platformItems.clear();
     _animatePanel(panel, {
       fromHeight: panel.offsetHeight,
@@ -398,7 +398,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
   function hc_destroyDetails(chartState) {
     cancelDetailsAnimation();
     destroyDetailsClickHandler();
-    _cleanupOpenSongList(chartState);
+    _cleanupOpenActivityList(chartState);
     _platformItems.clear();
     chartState.expandedPlatform = null;
     chartState.lastClickedBarIndex = null;

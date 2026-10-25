@@ -91,7 +91,7 @@ function createHistoryEntry(entry, historyIndex, type, filteredHistory = []) {
 
   // Link
   const link = Object.assign(document.createElement("a"), {
-    className: "song-link",
+    className: "activity-link",
     title: i18n.t("history.goToLink"),
     target: "_blank",
     rel: "noopener noreferrer",

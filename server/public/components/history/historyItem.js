@@ -1,8 +1,8 @@
 import { fullDateTime, relativeTime, loadImage } from "../../utils.js";
 
 export function createHistoryItem(entry) {
-  const songDiv = document.createElement("div");
-  songDiv.classList.add("song");
+  const activityDiv = document.createElement("div");
+  activityDiv.classList.add("activity");
 
   const imageLink = document.createElement("a");
   if (entry.link) {
@@ -16,7 +16,7 @@ export function createHistoryItem(entry) {
   imgContainer.className = "history-image-container spinner";
 
   const img = document.createElement("img");
-  img.className = "song-image";
+  img.className = "activity-image";
   img.alt = entry.title;
   img.loading = "lazy";
   img.decoding = "async";
@@ -24,7 +24,7 @@ export function createHistoryItem(entry) {
   imgContainer.appendChild(img);
 
   const infoDiv = document.createElement("div");
-  infoDiv.classList.add("song-info");
+  infoDiv.classList.add("activity-info");
 
   const date = document.createElement("p");
   const dateLong = fullDateTime(entry.date);
@@ -48,8 +48,8 @@ export function createHistoryItem(entry) {
 
   imageLink.append(imgContainer);
   infoDiv.append(date, title, artist, source);
-  songDiv.append(imageLink, infoDiv);
+  activityDiv.append(imageLink, infoDiv);
   loadImage({ target: img, src: entry.image });
 
-  return songDiv;
+  return activityDiv;
 }

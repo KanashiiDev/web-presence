@@ -104,13 +104,13 @@ function _buildModeToggle(p, isWatch) {
   minutesBtn.textContent = "Time";
   group.appendChild(minutesBtn);
 
-  const songsBtn = document.createElement("button");
-  songsBtn.className = "chart-mode-btn";
-  songsBtn.dataset.mode = !isWatch ? "songs" : "videos";
-  songsBtn.type = "button";
-  songsBtn.dataset.i18n = !isWatch ? "chart.tab.songs" : "chart.tab.videos";
-  songsBtn.textContent = !isWatch ? "Songs" : "Videos";
-  group.appendChild(songsBtn);
+  const activitiesBtn = document.createElement("button");
+  activitiesBtn.className = "chart-mode-btn";
+  activitiesBtn.dataset.mode = !isWatch ? "songs" : "videos";
+  activitiesBtn.type = "button";
+  activitiesBtn.dataset.i18n = !isWatch ? "chart.tab.songs" : "chart.tab.videos";
+  activitiesBtn.textContent = !isWatch ? "Songs" : "Videos";
+  group.appendChild(activitiesBtn);
 
   return group;
 }

@@ -138,12 +138,12 @@ function updateTrayMenu() {
           { label: "Open Logs", click: () => openLogs() },
           _buildLinuxDiagnosticItem(),
           {
-            label: "Log Song Updates",
+            label: "Log Activity Updates",
             type: "checkbox",
             checked: config?.LOG_MEDIA_UPDATE,
             click: (item) => {
               ConfigManager.updateConfigValue("LOG_MEDIA_UPDATE", !!item.checked);
-              log.info(`Log Song Updates ${config.LOG_MEDIA_UPDATE ? "enabled" : "disabled"} successfully.`);
+              log.info(`Log Activity Updates ${config.LOG_MEDIA_UPDATE ? "enabled" : "disabled"} successfully.`);
               sm.updateServerSettings();
               updateTrayMenu();
             },

@@ -235,7 +235,7 @@
   "filter.title.new": "New Title",
   "filter.title.original": "Original Title",
   "filters.tutorial.tabs": "You can switch between tabs to view filters by type.",
-  "filters.tutorial.getSongInfo": "The current media activity automatically populates the filter fields.",
+  "filters.tutorial.getActivityInfo": "The current media activity automatically populates the filter fields.",
   "filters.tutorial.openHistory": "By opening the media history, you can easily block or modify items from the list.",
   "filters.tutorial.toggleForm": "Opens or closes the form for adding a new filter.",
   "filters.tutorial.modeOptions": "You can select the filter mode here.",

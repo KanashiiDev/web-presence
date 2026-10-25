@@ -235,7 +235,7 @@
   "filter.title.new": "Yeni Başlık",
   "filter.title.original": "Orjinal Başlık",
   "filters.tutorial.tabs": "Filtreleri türe göre görüntülemek için sekmeler arasında geçiş yapabilirsiniz.",
-  "filters.tutorial.getSongInfo": "Mevcut medya etkinliği otomatik olarak filtre alanlarına doldurur.",
+  "filters.tutorial.getActivityInfo": "Mevcut medya etkinliği otomatik olarak filtre alanlarına doldurur.",
   "filters.tutorial.openHistory": "Medya geçmişini açarak listeden kolayca engelleyebilir veya değiştirebilirsiniz.",
   "filters.tutorial.toggleForm": "Yeni filtre ekleme formunu açar veya kapatır.",
   "filters.tutorial.modeOptions": "Buradan filtre modunu seçebilirsiniz.",

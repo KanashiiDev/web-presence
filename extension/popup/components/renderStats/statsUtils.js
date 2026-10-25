@@ -8,7 +8,7 @@ async function getTopSongs(filteredHistory, topN = 5) {
 
   const artistCounts = Object.create(null);
   const artistNameFreq = Object.create(null);
-  const songCounts = Object.create(null);
+  const activityCounts = Object.create(null);
 
   for (const e of filteredHistory) {
     const norm = normalizeArtistName(e?.a);
@@ -25,7 +25,7 @@ async function getTopSongs(filteredHistory, topN = 5) {
     // Song count
     if (e.t && !e.t.includes("_Unknown Title_")) {
       const key = `${e.t} - ${norm}`;
-      songCounts[key] = (songCounts[key] ?? 0) + 1;
+      activityCounts[key] = (activityCounts[key] ?? 0) + 1;
     }
   }
 
@@ -51,7 +51,7 @@ async function getTopSongs(filteredHistory, topN = 5) {
       count,
     }));
 
-  const topSongs = Object.entries(songCounts)
+  const topSongs = Object.entries(activityCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, topN)
     .map(([name, count]) => ({ name, count }));

@@ -7,7 +7,7 @@ function createHistoryRouter(historyFilePath, logFilePath) {
 
   // POST /add-history
   // Called by the extension to add a new history entry.
-  // The server only appends the entry; listening time is tracked separately.
+  // The server only appends the entry; activity time is tracked separately.
   router.post("/add-history", (req, res) => {
     const { title, artist, image, source, link, date, mode } = req.body ?? {};
 

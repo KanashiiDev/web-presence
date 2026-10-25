@@ -867,7 +867,7 @@ span.status-display svg {
   width: calc(100% - 15px);
 }
 
-.song-link,
+.activity-link,
 .del-user-parser,
 .edit-user-script,
 .edit-user-parser {
@@ -883,7 +883,7 @@ span.status-display svg {
     transform var(--transition-reduced) ease;
 }
 
-.song-link,
+.activity-link,
 .del-user-parser,
 .edit-user-script {
   margin-left: auto;
@@ -900,7 +900,7 @@ span.status-display svg {
   transform: scale(1.1);
 }
 
-.song-link {
+.activity-link {
   opacity: 0;
 }
 
@@ -1176,7 +1176,7 @@ footer button.icon-btn {
 
 footer a:hover,
 footer button.icon-btn:hover,
-.history-entry:hover .song-link,
+.history-entry:hover .activity-link,
 #historyToggle:hover,
 #historyStatsToggle:hover,
 .parser-filter:hover,
@@ -1330,7 +1330,7 @@ footer button.icon-btn:hover,
   border-radius: 16px;
 }
 
-body.cleaning-mode .song-link,
+body.cleaning-mode .activity-link,
 .history-checkbox,
 .history-trash {
   display: none;

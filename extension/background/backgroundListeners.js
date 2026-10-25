@@ -912,14 +912,14 @@ const handleSyncDeleteToServer = async (req) => {
   }
 };
 
-// Song Info
-const handleGetSongInfo = async () => {
+// Activity Info
+const handleGetActivityInfo = async () => {
   const map = state.activeTabMap;
   if (map.size === 0) {
     return { ok: false, error: "No active tab map or it's empty" };
   }
 
-  // Iterate over the Map to find the current song
+  // Iterate over the Map to find the current activity
   for (const [key, value] of map.entries()) {
     const current = value;
     if (current && current.title && current.artist) {
@@ -927,7 +927,7 @@ const handleGetSongInfo = async () => {
     }
   }
 
-  return { ok: false, error: "No current song" };
+  return { ok: false, error: "No current activity" };
 };
 
 // Update RPC
@@ -1024,7 +1024,7 @@ const handleUpdateRpc = async (req, sender) => {
       artist: req.data.artist,
       image: req.data.image,
       source: req.data.source || "",
-      link: req.data.link || req.data.songUrl || "",
+      link: req.data.link || req.data.activityUrl || "",
       mode: req.data.mode || "listen",
     });
   }
@@ -1845,8 +1845,8 @@ const setupListeners = () => {
           case "syncDeleteToServer":
             result = await handleSyncDeleteToServer(req);
             break;
-          case "getSongInfo":
-            result = await handleGetSongInfo();
+          case "getActivityInfo":
+            result = await handleGetActivityInfo();
             break;
           case "store_listRepos":
             result = await handleStoreListRepos();

@@ -46,7 +46,7 @@ const defaultConfig = {
     LOG_MEDIA_UPDATE: {
       value: false,
       type: "boolean",
-      note: "Save song change events in the log.",
+      note: "Save activity change events in the log.",
     },
 
     MAX_LOG_SIZE: {

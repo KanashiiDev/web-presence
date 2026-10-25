@@ -3,7 +3,7 @@ const { getCurrentTime } = require("../../shared/utils.js");
 const { state, CLIENT_TIMEOUT, MAX_CLEAR_RETRIES, isAnyConnected, isBridgeConnected } = require("../rpc/state.js");
 const { isSameActivity } = require("../utils.js");
 const { connectRPC, scheduleReconnect } = require("../rpc/client.js");
-const { buildActivity, setRpcActivity, clearRpcActivity, resetActivityState, handleListeningTimeUpdate } = require("../rpc/activity.js");
+const { buildActivity, setRpcActivity, clearRpcActivity, resetActivityState, handleActivityTimeUpdate } = require("../rpc/activity.js");
 
 function createRpcRouter(historyFilePath) {
   const router = Router();
@@ -94,8 +94,8 @@ function createRpcRouter(historyFilePath) {
         console.log(`[RPC] Updated: ${activity.details} - ${getCurrentTime()}`);
       }
 
-      // Listening time tracking
-      handleListeningTimeUpdate(activity, historyFilePath);
+      // Activity time tracking
+      handleActivityTimeUpdate(activity, historyFilePath);
 
       // Deduplicate identical consecutive activities
       const settingsChanged = JSON.stringify(activitySettings) !== JSON.stringify(state.lastActivitySettings || {});
