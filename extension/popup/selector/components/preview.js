@@ -191,7 +191,7 @@ async function updatePreview(shadow, editMode) {
     duration: getText(selectors.duration) || undefined,
     buttonText: getText(selectors.buttonText) || getPlainText(selectors.buttonText) || customActionText(),
     buttonText2: getText(selectors.buttonText2) || getPlainText(selectors.buttonText2) || customActionText(),
-    mode: selectors.mode === "watch" ? t("selector.preview.watchTo") : t("selector.preview.listenTo"),
+    mode: selectors.mode === "watch" ? t("selector.preview.watchTo") : selectors.mode === "play" ? t("selector.preview.playTo") : t("selector.preview.listenTo"),
   };
 
   // Trim texts

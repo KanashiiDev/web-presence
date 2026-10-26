@@ -119,9 +119,9 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
     "svg_paths",
     "svgCache",
     "createSVG",
-    "validateSelectorConfig",
-    "SELECTOR_CSS_FIELDS",
   ]);
+
+  inlineUtilsFunctions("popup/selector/selector.js", ["common/utils/selector-validation.js"]);
 
   // Selector Components
   inlineUtilsFunctions("popup/selector/selector.js", [], [], "start", true, { dir: "popup/selector/components" });

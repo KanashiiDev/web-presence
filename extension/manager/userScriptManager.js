@@ -293,6 +293,7 @@ class UserScriptUI {
       { value: "platform", text: i18n.t("parserFilters.category.platform") },
       { value: "aggregator", text: i18n.t("parserFilters.category.aggregator") },
       { value: "video", text: i18n.t("parserFilters.category.video") },
+      { value: "game", text: i18n.t("parserFilters.category.game") },
       { value: "other", text: i18n.t("parserFilters.category.other") },
     ];
 

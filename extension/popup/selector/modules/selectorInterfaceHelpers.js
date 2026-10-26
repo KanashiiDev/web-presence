@@ -156,6 +156,7 @@ let FIELDS_CONFIG = {
     options: [
       { value: "listen", label: "selector.editor.activityMode.listen" },
       { value: "watch", label: "selector.editor.activityMode.watch" },
+      { value: "play", label: "selector.editor.activityMode.play" },
     ],
     defaultValue: "listen",
   },

@@ -47,6 +47,7 @@ function buildActivity(data, now) {
     }
   }
 
+  const isPlay = data.mode === "play";
   const isWatch = data.mode === "watch";
 
   // Base activity
@@ -55,7 +56,7 @@ function buildActivity(data, now) {
     name: (shouldShowSource && dataSource ? dataSource : shouldShowArtist && dataArtist ? dataArtist : "") || "Web Presence",
     details: dataTitle,
     state: shouldShowArtist ? dataArtist : dataSource,
-    type: isWatch ? 3 : 2,
+    type: isPlay ? 0 : isWatch ? 3 : 2,
     instance: false,
     // Private metadata (not sent to Discord, used for history)
     _artist: dataArtist,

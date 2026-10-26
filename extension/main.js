@@ -249,6 +249,8 @@ async function mainLoop() {
       statusMode = 1;
     } else if (activity?.mode === "watch") {
       statusLabel = "VIDEO";
+    } else if (activity?.mode === "play") {
+      statusLabel = "PLAYING";
     } else if (isRadioOrStream) {
       statusLabel = "RADIO";
       statusMode = 1;

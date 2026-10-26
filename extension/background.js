@@ -870,6 +870,7 @@ function buildActivityLocally(payload) {
 
   const shouldShowArtist = activitySettings.showArtist;
   const shouldShowSource = activitySettings.showSource;
+  const isPlay = data.mode === "play";
   const isWatch = data.mode === "watch";
 
   const activity = {
@@ -877,7 +878,7 @@ function buildActivityLocally(payload) {
     name: (shouldShowSource && dataSource ? dataSource : shouldShowArtist && dataArtist ? dataArtist : "") || "Web Presence",
     details: dataTitle,
     state: shouldShowArtist ? dataArtist : dataSource,
-    type: isWatch ? 3 : 2,
+    type: isPlay ? 0 : isWatch ? 3 : 2,
     instance: false,
   };
 
