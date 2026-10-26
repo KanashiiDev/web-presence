@@ -222,6 +222,16 @@
                 </code>
               </p>
               <p class="note-section">
+                <span class="history-block" data-i18n="userscript.codeEditor.historyBlock.label">History Block:</span>
+                <code>
+                  <code>blockHistorySave(reason) / allowHistorySave()</code>
+                  <span data-i18n="userscript.codeEditor.historyBlock.note">
+                    Call blockHistorySave() inside your script to skip history saves while a condition matches (e.g. if(location.href === "xxx")
+                    blockHistorySave("reason");). Call allowHistorySave() to resume. Only one log is shown per block.
+                  </span>
+                </code>
+              </p>
+              <p class="note-section">
                 <span class="keyboard-shortcuts" data-i18n="userscript.codeEditor.keyboardShortcuts.label">Keyboard Shortcuts:</span>
                 <code>
                   <code>Ctrl+/</code>

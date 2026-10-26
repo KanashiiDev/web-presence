@@ -12,6 +12,7 @@ const state = {
   cleanupQueue: new Set(),
   pendingUpdates: new Map(),
   historyCounters: new Map(),
+  historyBlockMap: new Map(),
   lastLoopTime: 0,
   parserList: [],
   parserListLoaded: false,
@@ -30,6 +31,12 @@ const historyMutex = createMutex();
 async function scheduleHistoryAdd(tabId, activityData) {
   if (!tabId || !Number.isInteger(tabId)) return;
   if (!activityData?.title || !activityData?.artist) return;
+
+  const block = state.historyBlockMap.get(tabId);
+  if (block?.blocked) {
+    if (state.historyCounters) state.historyCounters.delete(tabId);
+    return;
+  }
 
   if (!state.historyCounters) state.historyCounters = new Map();
   const key = `${activityData.title}::${activityData.artist}::${activityData.source}`;
@@ -318,6 +325,7 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
       state.pendingClear.delete(tabId);
       state.cleanupQueue.delete(tabId);
       state.historyCounters.delete(tabId);
+      state.historyBlockMap.delete(tabId);
       if (state.activeTabMap.size === 0) {
         if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
         setTimeout(mainLoop, 0);

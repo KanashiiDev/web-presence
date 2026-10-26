@@ -1107,6 +1107,22 @@ const handleClearRpc = async (sender) => {
   return { ok: true };
 };
 
+const handleHistoryBlock = async (sender, req) => {
+  const tab = await getSenderTab(sender);
+  if (!tab) {
+    return { ok: false, error: "No tab info" };
+  }
+  const tabId = tab.id;
+  const blocked = Boolean(req.blocked);
+  const reason = typeof req.reason === "string" ? req.reason : null;
+  if (blocked) {
+    state.historyBlockMap.set(tabId, { blocked: true, reason, since: Date.now() });
+  } else {
+    state.historyBlockMap.delete(tabId);
+  }
+  return { ok: true };
+};
+
 const handleIsRpcConnected = async () => {
   const mode = state.webOnlyMode ? "web-only" : "default";
 
@@ -1992,6 +2008,9 @@ const setupListeners = () => {
             break;
           case "CLEAR_RPC":
             result = await handleClearRpc(sender);
+            break;
+          case "HISTORY_BLOCK":
+            result = await handleHistoryBlock(sender, req);
             break;
           case "IS_RPC_CONNECTED":
             result = await handleIsRpcConnected();

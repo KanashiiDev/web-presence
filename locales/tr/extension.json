@@ -348,6 +348,8 @@
   "userscript.codeEditor.initCodeBlocks.note": "Document yüklenmeden önce (document_start) kod içeriği bir kez çalıştırılır.",
   "userscript.codeEditor.castSupport.label": "Yayın Desteği:",
   "userscript.codeEditor.castSupport.note": "Aktif oynatmayı gösteren herhangi bir doğru değer; yayın desteği için kullanılır (opsiyonel)",
+  "userscript.codeEditor.historyBlock.label": "Geçmiş Engeli:",
+  "userscript.codeEditor.historyBlock.note": "Geçmiş kaydını atlamak veya devam ettirmek için kullanılır.",
   "userscript.iframeSelectors.label": "Iframe Erişimi",
   "userscript.iframeSelectors.configure": "Düzenle",
   "userscript.iframeSelectors.help": "Sitedeki iframe player'larından veriyi almak için kullanılır.",

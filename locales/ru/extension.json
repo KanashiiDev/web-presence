@@ -348,6 +348,8 @@
   "userscript.codeEditor.initCodeBlocks.note": "Выполняется один раз до загрузки документа (document_start).",
   "userscript.codeEditor.castSupport.label": "Поддержка трансляции:",
   "userscript.codeEditor.castSupport.note": "Любое истинное значение, указывающее на активное воспроизведение; используется для поддержки трансляции (необязательно)",
+  "userscript.codeEditor.historyBlock.label": "Блокировка истории:",
+  "userscript.codeEditor.historyBlock.note": "Используется для пропуска или возобновления записи истории.",
   "userscript.iframeSelectors.label": "Доступ к iframe",
   "userscript.iframeSelectors.configure": "Настроить",
   "userscript.iframeSelectors.help": "Используется для получения данных из iframe-плееров на сайте.",

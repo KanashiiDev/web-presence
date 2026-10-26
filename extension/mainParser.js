@@ -972,6 +972,7 @@ const USER_SCRIPT_NONCE_VALIDATED_TYPES = new Set([
   "USER_SCRIPT_MEMO_GET",
   "USER_SCRIPT_IFRAME_DATA_REQUEST",
   "USER_SCRIPT_LOG",
+  "USER_SCRIPT_HISTORY_BLOCK",
 ]);
 let userScriptNonceMap = null;
 let userScriptNonceMapReady = getUserScriptNonceMap();
@@ -1148,6 +1149,16 @@ window.addEventListener("message", async (event) => {
         "*",
       );
     });
+  } else if (msg?.type === "USER_SCRIPT_HISTORY_BLOCK") {
+    const { blocked, reason, id } = msg;
+    browser.runtime
+      .sendMessage({
+        type: "HISTORY_BLOCK",
+        blocked: Boolean(blocked),
+        reason: typeof reason === "string" ? reason : null,
+        scriptId: typeof id === "string" ? id : null,
+      })
+      .catch(() => {});
   }
   if (msg?.type === "USER_SCRIPT_TRACK_DATA") {
     // Handle User Script Track Data

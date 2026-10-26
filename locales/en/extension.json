@@ -348,6 +348,8 @@
   "userscript.codeEditor.initCodeBlocks.note": "Runs once before the document loads (document_start).",
   "userscript.codeEditor.castSupport.label": "Cast Support:",
   "userscript.codeEditor.castSupport.note": "Any truthy value indicating active playback; used for cast support (optional)",
+  "userscript.codeEditor.historyBlock.label": "History Block:",
+  "userscript.codeEditor.historyBlock.note": "Used to skip or resume history saves.",
   "userscript.iframeSelectors.label": "Iframe Access",
   "userscript.iframeSelectors.configure": "Configure",
   "userscript.iframeSelectors.help": "Used to retrieve data from iframe players on the site.",

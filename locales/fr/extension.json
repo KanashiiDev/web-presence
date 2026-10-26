@@ -348,6 +348,8 @@
   "userscript.codeEditor.initCodeBlocks.note": "S’exécute une fois avant le chargement du document (document_start).",
   "userscript.codeEditor.castSupport.label": "Prise en Charge du Cast :",
   "userscript.codeEditor.castSupport.note": "Toute valeur véridique indiquant une lecture active ; utilisée pour la prise en charge du cast (optionnel)",
+  "userscript.codeEditor.historyBlock.label": "Bloc de l'historique:",
+  "userscript.codeEditor.historyBlock.note": "Utilisé pour ignorer ou reprendre les enregistrements d'historique.",
   "userscript.iframeSelectors.label": "Accès iframe",
   "userscript.iframeSelectors.configure": "Configurer",
   "userscript.iframeSelectors.help": "Utilisé pour récupérer les données des lecteurs iframe du site.",

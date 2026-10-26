@@ -17,6 +17,8 @@ const lintOptions = {
     "querySelectorDeep",
     "getIframeData",
     "clearActivity",
+    "blockHistorySave",
+    "allowHistorySave",
   ],
 };
 

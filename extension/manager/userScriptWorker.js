@@ -366,6 +366,38 @@ class UserScriptManager {
         const __memoCache = Object.create(null);
         let __dryRun = false;
         let __memoLoaded = false;
+        // History save block state (per script/tab). Userscript can call
+        // blockHistorySave(reason) / allowHistorySave() to skip history writes
+        // while a condition matches (e.g. location.href). Only one log per block.
+        let __historyBlocked = false;
+        let __historyBlockReason = null;
+        let __historyBlockLogged = false;
+        function blockHistorySave(reason) {
+          __historyBlocked = true;
+          __historyBlockReason = typeof reason === "string" ? reason : null;
+          __sendHistoryBlock();
+          if (!__historyBlockLogged) {
+            __historyBlockLogged = true;
+            __userScriptLogOnce("info", "history.blocked", "History save blocked by script", 0, {
+              reason: __historyBlockReason,
+            });
+          }
+        }
+        function allowHistorySave() {
+          __historyBlocked = false;
+          __historyBlockReason = null;
+          __historyBlockLogged = false;
+          __sendHistoryBlock();
+        }
+        function __sendHistoryBlock() {
+          __send({
+            type: "USER_SCRIPT_HISTORY_BLOCK",
+            nonce: __nonce,
+            id: ${q(script.id)},
+            blocked: __historyBlocked,
+            reason: __historyBlockReason,
+          });
+        }
         // Userscript logging bridge
         const __userScriptLogOnceKeys = Object.create(null);
         const __userScriptLogLastContent = Object.create(null);
