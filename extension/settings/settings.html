@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title data-i18n="settings.title">Web Presence - Settings</title>
+    <link rel="stylesheet" href="../shared/page-common.css" />
     <link rel="stylesheet" href="settings.css" />
     <link rel="stylesheet" href="../libs/simplebar.css" />
   </head>
@@ -34,10 +35,10 @@
       <div class="filter-actions-header">
         <div id="filterTabsContainer"></div>
         <div id="filterSearchContainer"></div>
-        <div>
-          <button class="btn btn-primary" id="toggleFormBtn" data-i18n="filter.addNew">+ Add New Filter</button>
-          <button class="btn btn-primary" id="openHistoryBtn" data-i18n="button.open_history">Open History</button>
-          <button class="btn btn-primary" id="getActivityInfoBtn">
+        <div id="filterActionsContainer">
+          <button class="btn" id="toggleFormBtn" data-i18n="filter.addNew">+ Add New Filter</button>
+          <button class="btn" id="openHistoryBtn" data-i18n="button.open_history">Open History</button>
+          <button class="btn" id="getActivityInfoBtn">
             <span class="btn-text" data-i18n="filter.blockCurrent">Block Current Activity</span>
           </button>
         </div>

@@ -301,8 +301,7 @@ const popupModule = {
         query: historySearchBox.value,
       });
 
-      const hasText = historySearchBox.value.trim() !== "";
-      historyFilterResetBtn?.classList.toggle("filter-active", hasText);
+      updateHistoryFilterResetVisibility(historyFilterResetBtn, historyState, historySearchBox);
 
       await activateSimpleBar("historyPanel");
       await activateHistoryScroll();
@@ -333,15 +332,26 @@ const popupModule = {
         const currentTheme = await applyThemeSettings();
         let blurMode = false;
         const { colorSettings } = await browser.storage.local.get("colorSettings");
+
         if (colorSettings) {
           blurMode = colorSettings.applyFgBlur;
         }
+
         clearTimeout(buttonDisableTimeout);
 
         const isEdit = button.getAttribute("editMode");
-        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        const [tab] = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
 
-        if (tab && tab.status !== "complete") {
+        if (!tab?.url || /^(chrome-extension|moz-extension):\/\//i.test(tab.url) || tab.url === "about:blank" || tab.url === "about:newtab") {
+          showPopupMessage(i18n.t("popupMessage.notSupported"), "error", 2000);
+          enableButton();
+          return;
+        }
+
+        if (tab.status !== "complete") {
           showPopupMessage(i18n.t("popupMessage.waitForLoad"), "warning", 2000);
           enableButton();
           return;

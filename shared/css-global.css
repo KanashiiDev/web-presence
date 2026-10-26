@@ -1087,12 +1087,12 @@ html.setup-dialog-open #mainFooterButtons {
   transition: var(--transition-slow);
 }
 
-/* ============= Shared Page Styles (deduplicated) ============= */
-/* Shared page styles (previously duplicated across pages; page CSS keeps the
-   differing declarations only). */
-
 #historyPanel h3:first-of-type {
   margin-top: 0;
+}
+
+.history-entry {
+  margin-bottom: 8px;
 }
 
 .history-entry img {

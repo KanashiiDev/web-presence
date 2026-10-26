@@ -210,6 +210,10 @@ const HistoryModal = {
     HistoryState.isFiltering = false;
     HistoryState.filteredHistory = [];
     HistoryState.lastRenderedHeader = null;
+    HistoryState.activeMode = "all";
+    updateHistoryFilterResetVisibility(HistoryDOM.resetBtn, HistoryState, HistoryDOM.searchBox);
+
+    HistoryDOM.modeSwitch.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === "all"));
 
     HistoryDOM.filterMenu.classList.remove("open");
     HistoryDOM.filterMenu.style.height = "0";

@@ -34,7 +34,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["locales/*", "icons/*", "popup/selector/selector.css"],
+      "resources": ["locales/*", "icons/*", "popup/selector/selector.css", "shared/page-common.css"],
       "matches": ["<all_urls>"]
     }
   ]

@@ -518,24 +518,37 @@ function disableTransitionsTemporarily(shadowRoot) {
 
 // Inject Selector CSS
 async function injectStyles(shadowRoot) {
+  // Shared tokens + components live in one central file bundled at build time; page CSS after it
+  const urls = [browser.runtime.getURL("shared/page-common.css"), browser.runtime.getURL("popup/selector/selector.css")];
+
   try {
-    const url = browser.runtime.getURL("popup/selector/selector.css");
-    const response = await fetch(url);
-    const css = await response.text();
+    const cssTexts = await Promise.all(
+      urls.map(async (url) => {
+        const response = await fetch(url);
+        return response.text();
+      }),
+    );
 
     try {
-      const sheet = new CSSStyleSheet();
-      await sheet.replace(css);
+      const sheets = await Promise.all(
+        cssTexts.map(async (css) => {
+          const sheet = new CSSStyleSheet();
+          await sheet.replace(css);
+          return sheet;
+        }),
+      );
 
       if ("adoptedStyleSheets" in shadowRoot) {
-        shadowRoot.adoptedStyleSheets = [...(shadowRoot.adoptedStyleSheets || []), sheet];
+        shadowRoot.adoptedStyleSheets = [...(shadowRoot.adoptedStyleSheets || []), ...sheets];
         return;
       }
     } catch (_) {}
 
-    const style = document.createElement("style");
-    style.textContent = css;
-    shadowRoot.appendChild(style);
+    for (const css of cssTexts) {
+      const style = document.createElement("style");
+      style.textContent = css;
+      shadowRoot.appendChild(style);
+    }
   } catch (err) {
     console.error("injectStyles failed:", err);
   }

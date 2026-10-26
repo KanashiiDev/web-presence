@@ -1,6 +1,5 @@
 /* Shared UI Components - opt-in via class selectors only */
-/* This file is injected at the /*CSS-COMPONENTS*/
-/* marker in each page CSS file */
+/* This file is bundled with css-config.css and css-global.css into shared/page-common.css at build time */
 /* It provides reusable component styles that page CSS can override via specificity */
 
 /* Utility - prevent text selection */
@@ -147,9 +146,19 @@
   color: var(--red-color);
 }
 
+.icon-btn-danger:hover svg {
+  stroke: var(--text-color-btn);
+}
+
 .icon-btn-danger:hover {
   background: var(--alert-color);
   color: var(--text-color-btn);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  opacity: 1;
 }
 
 /* Input - shared text input styles */
@@ -300,6 +309,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--foreground-color-400);
 }
 
+button:focus-visible,
 .btn:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
@@ -500,6 +510,68 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text-color-primary);
 }
 
+.history-search-controls {
+  width: 100%;
+  position: relative;
+  z-index: 5;
+}
+
+#historySearchBox {
+  padding: 8px 10px;
+}
+
+#parserTagFilterBtn,
+#historyFilterResetBtn,
+.history-filter {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  opacity: 0.7;
+  z-index: 6;
+  transition: opacity var(--transition-normal) ease;
+}
+
+#historyFilterResetBtn.filter-active:hover,
+.history-filter:hover {
+  opacity: 1;
+}
+
+#historyFilterResetBtn.filter-active {
+  position: absolute;
+  display: block !important;
+  right: 32px;
+}
+
+.history-mode-switch {
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.history-mode-switch .segmented-option {
+  flex: 1;
+  width: calc(100% / 3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.6;
+  border: 1px solid var(--border-color);
+  background: var(--background-color);
+  color: var(--text-color-primary);
+  font-size: var(--font-md);
+  white-space: nowrap;
+}
+
+.history-mode-switch .segmented-option.active {
+  opacity: 1;
+  border-color: var(--accent-color);
+}
+
 /* Modal - overlay + content container for dialogs */
 .modal {
   display: flex;
@@ -580,4 +652,121 @@ input[type="range"]::-moz-range-thumb {
 
 .modal .button-group .active:hover {
   background: var(--accent-color);
+}
+
+/* History filter menu - shared between popup and settings */
+.parser-filter-menu,
+.history-filter-menu {
+  position: absolute;
+  padding: 0 6px;
+  top: 33px;
+  left: 5px;
+  border-bottom-left-radius: var(--radius-default);
+  border-bottom-right-radius: var(--radius-default);
+  box-shadow: 0 1px 3px var(--shadow-color);
+  background: var(--foreground-color-300);
+  border: 1px solid var(--border-color);
+  z-index: 4;
+  height: 0;
+  overflow: hidden;
+  transition:
+    height var(--transition-reduced) ease,
+    padding var(--transition-reduced) ease,
+    top var(--transition-reduced) ease,
+    opacity var(--transition-reduced) ease;
+  width: calc(100% - 28px);
+  opacity: 0;
+}
+
+#historyModal .history-filter-menu {
+  width: calc(100% - 12px);
+}
+
+.parser-filter-menu.open,
+.history-filter-menu.open {
+  padding: 2px 6px 4px;
+  max-height: 160px;
+  opacity: 1;
+}
+
+.parser-filter-menu-content,
+.history-filter-menu-content {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.parser-filter-menu-content .filter-section-header,
+.history-filter-menu-content .filter-section-header {
+  padding: 5px;
+  margin: 5px 0;
+  background: var(--foreground-color-400);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.parser-filter-menu-content label,
+.history-filter-menu-content label {
+  display: block;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-normal) ease;
+}
+
+.parser-filter-menu-content label:hover,
+.history-filter-menu-content label:hover {
+  background: var(--foreground-color-400);
+}
+
+.parser-filter-menu-content label:first-child,
+.history-filter-menu-content label:first-child {
+  margin-top: 2px;
+}
+
+.parser-filter-menu-content label:last-child,
+.history-filter-menu-content label:last-child {
+  margin-bottom: 0;
+}
+
+.parser-filter-menu-content label > input,
+.history-filter-menu-content label > input {
+  width: 22px;
+  height: 22px;
+  color: var(--accent-color);
+  vertical-align: middle;
+  appearance: none;
+  background: none;
+  border: 0;
+  outline: 0;
+  flex-grow: 0;
+  border-radius: 50%;
+  background: var(--foreground-color-400);
+  transition: background var(--transition-normal) ease;
+  cursor: pointer;
+}
+
+.parser-filter-menu-content label > input::before,
+.history-filter-menu-content label > input::before {
+  content: "";
+  color: transparent;
+  display: block;
+  width: inherit;
+  height: inherit;
+  border-radius: inherit;
+  border: 0;
+  background: transparent;
+  background-size: contain;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+}
+
+.parser-filter-menu-content label > input:checked,
+.history-filter-menu-content label > input:checked {
+  background: var(--accent-color);
+}
+
+.parser-filter-menu-content label > input:checked::before,
+.history-filter-menu-content label > input:checked::before {
+  box-shadow: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E %3Cpath d='M15.88 8.29L10 14.17l-1.88-1.88a.996.996 0 1 0-1.41 1.41l2.59 2.59c.39.39 1.02.39 1.41 0L17.3 9.7a.996.996 0 0 0 0-1.41c-.39-.39-1.03-.39-1.42 0z' fill='%23fff'/%3E %3C/svg%3E");
 }

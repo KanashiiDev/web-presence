@@ -44,13 +44,6 @@ async function buildPortButtons(container) {
     }, 300),
   );
 
-  // Indicator - this setting only takes effect after Apply
-  const applyHint = document.createElement("span");
-  applyHint.className = "apply-required-hint";
-  applyHint.textContent = "*";
-  applyHint.title = i18n.t("settings.apply");
-  portLabel.appendChild(applyHint);
-
   // Apply Button
   const btnApply = document.createElement("span");
   btnApply.appendChild(createSVG(svg_paths.penIconPaths));
@@ -122,12 +115,6 @@ async function buildPortButtons(container) {
       }
     }, 300),
   );
-
-  const webBridgeApplyHint = document.createElement("span");
-  webBridgeApplyHint.className = "apply-required-hint";
-  webBridgeApplyHint.textContent = "*";
-  webBridgeApplyHint.title = i18n.t("settings.apply");
-  webBridgeLabel.appendChild(webBridgeApplyHint);
 
   const btnWebBridgeApply = document.createElement("span");
   btnWebBridgeApply.appendChild(createSVG(svg_paths.penIconPaths));

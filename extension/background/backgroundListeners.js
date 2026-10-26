@@ -865,6 +865,7 @@ const handleSyncHistory = async () => {
               s: source,
               u: entry.link || "",
               p: entry.date,
+              m: entry.mode,
               ms: entry.total_listened_ms || 0,
             });
           }

@@ -17,7 +17,7 @@ function initHistoryHandlers() {
     historyFilterResetBtn.addEventListener("click", async () => {
       historyState.selectedSources.clear();
       document.getElementById("historySearchBox").value = "";
-      historyFilterResetBtn?.classList.remove("filter-active");
+      updateHistoryFilterResetVisibility(historyFilterResetBtn, historyState, document.getElementById("historySearchBox"));
       historyState.activeScrollCleanup?.();
       historyState.activeScrollCleanup = null;
       await renderHistory({ reset: true, query: "" });
@@ -34,30 +34,13 @@ function initHistoryModeSwitch() {
   const existing = document.getElementById("historyModeSwitch");
   if (existing) return;
 
-  const wrapper = document.createElement("div");
-  wrapper.id = "historyModeSwitch";
-  wrapper.className = "history-mode-switch segmented-toggle";
-
-  const modes = [
-    { value: "listen", i18n: "history.mode.music" },
-    { value: "watch", i18n: "history.mode.video" },
-    { value: "all", i18n: "common.all" },
-  ];
-
-  modes.forEach(({ value, i18n: key }) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "segmented-option";
-    btn.dataset.mode = value;
-    btn.dataset.i18n = key;
-    btn.textContent = i18n.t(key);
-    if (value === historyState.activeMode) btn.classList.add("active");
-
-    btn.addEventListener("click", async () => {
+  const wrapper = createHistoryModeSwitch({
+    activeMode: historyState.activeMode,
+    onModeChange: async (value, modeSwitch) => {
       if (historyState.activeMode === value) return;
       historyState.activeMode = value;
 
-      wrapper.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === value));
+      modeSwitch.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === value));
 
       historyState.activeScrollCleanup?.();
       historyState.activeScrollCleanup = null;
@@ -65,9 +48,7 @@ function initHistoryModeSwitch() {
       await renderHistory({ reset: true, query: document.getElementById("historySearchBox")?.value ?? "" });
       await activateSimpleBar("historyPanel");
       await activateHistoryScroll();
-    });
-
-    wrapper.appendChild(btn);
+    },
   });
 
   const historyControls = document.querySelector(".history-controls");
@@ -222,7 +203,7 @@ const handleClearButtonClick = async () => {
   historyState.selectedSources.clear();
   historyState.filteredHistory = [];
   document.querySelector("#historySearchBox").value = "";
-  historyFilterResetBtn?.classList.remove("filter-active");
+  updateHistoryFilterResetVisibility(historyFilterResetBtn, historyState, document.querySelector("#historySearchBox"));
   await sendAction("saveHistory", { data: historyState.fullHistory });
 
   historyPanel._cleanupCheckboxListener?.();
@@ -241,51 +222,21 @@ function buildHistorySourceCache() {
 }
 
 function renderSourceFilterMenu() {
-  const { selectedSources } = historyState;
-  filterMenuContent.innerHTML = "";
+  renderSourceFilterMenuContent({
+    content: filterMenuContent,
+    state: historyState,
+    emptyMessageKey: "sourceFilter.notFound",
+    onSelectionChange: async () => {
+      historyState.activeScrollCleanup?.();
+      historyState.activeScrollCleanup = null;
 
-  const sources = [...new Set(historyState.fullHistory.map((e) => e.s))].sort((a, b) => {
-    const diff = (selectedSources.has(a) ? 0 : 1) - (selectedSources.has(b) ? 0 : 1);
-    return diff !== 0 ? diff : a.localeCompare(b);
+      updateHistoryFilterResetVisibility(historyFilterResetBtn, historyState, document.getElementById("historySearchBox"));
+
+      await renderHistory({ reset: true, query: document.getElementById("historySearchBox").value });
+      await activateSimpleBar(["historyPanel", "historyFilterMenuContent"]);
+      await activateHistoryScroll();
+    },
   });
-
-  if (filterMenuContent._sourceChangeListener) {
-    filterMenuContent.removeEventListener("change", filterMenuContent._sourceChangeListener);
-  }
-
-  const handleSourceCheckboxChange = async (e) => {
-    if (e.target.type !== "checkbox") return;
-    e.target.checked ? selectedSources.add(e.target.value) : selectedSources.delete(e.target.value);
-
-    historyState.activeScrollCleanup?.();
-    historyState.activeScrollCleanup = null;
-
-    historyFilterResetBtn?.classList.toggle("filter-active", selectedSources.size > 0);
-
-    await renderHistory({ reset: true, query: document.getElementById("historySearchBox").value });
-    await activateSimpleBar(["historyPanel", "historyFilterMenuContent"]);
-    await activateHistoryScroll();
-  };
-
-  filterMenuContent._sourceChangeListener = handleSourceCheckboxChange;
-  filterMenuContent.addEventListener("change", handleSourceCheckboxChange);
-
-  const fragment = document.createDocumentFragment();
-  sources.forEach((src) => {
-    const label = document.createElement("label");
-    const cb = Object.assign(document.createElement("input"), {
-      type: "checkbox",
-      value: src,
-      checked: selectedSources.has(src),
-    });
-    const span = Object.assign(document.createElement("span"), { textContent: src });
-    label.append(cb, " ", span);
-    fragment.appendChild(label);
-  });
-  if (!fragment.childNodes.length) {
-    fragment.appendChild(Object.assign(document.createElement("i"), { textContent: i18n.t("sourceFilter.notFound") }));
-  }
-  filterMenuContent.appendChild(fragment);
 
   historyState.sourceMenuBuilt = true;
 }
@@ -302,7 +253,7 @@ const handleFilterButtonClick = async (e) => {
   filterMenu.style.height = filterMenu.classList.contains("open") ? `${Math.min(filterMenuContent.scrollHeight, 160)}px` : "0";
 
   // Sync reset button visibility on every toggle
-  historyFilterResetBtn?.classList.toggle("filter-active", historyState.selectedSources.size > 0);
+  updateHistoryFilterResetVisibility(historyFilterResetBtn, historyState, document.getElementById("historySearchBox"));
 
   await destroyOtherSimpleBars("historyPanel");
   await activateSimpleBar("historyFilterMenuContent");

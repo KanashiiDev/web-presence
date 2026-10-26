@@ -8,6 +8,7 @@ const HistoryState = {
   selectedSources: new Set(),
   lastRenderedHeader: null,
   activeScrollCleanup: null,
+  activeMode: "all",
 };
 
 // UTILS

@@ -253,7 +253,7 @@ async function showUserScriptTutorial() {
 // Filters Tutorial
 async function showFiltersTutorial() {
   const formContainer = document.getElementById("formContainer");
-  const HEADER_SEL = "#filterTabsContainer, #toggleFormBtn, #openHistoryBtn, #getActivityInfoBtn, .filter-item, #btnToggleView";
+  const HEADER_SEL = "#filterTabsContainer, #filterSearchContainer, #toggleFormBtn, #openHistoryBtn, #getActivityInfoBtn, .filter-item, #btnToggleView";
   const SECTION_SEL = ".inline-entries-section, .inline-parser-section, .inline-editor-footer, .new-filter-header";
   const filtersList = document.getElementById("filtersList");
   const emptyState = filtersList.querySelector(".empty-state");

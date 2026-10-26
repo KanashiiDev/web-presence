@@ -216,10 +216,11 @@ const QuickActions = {
 
     if (!activityData) {
       activityInfoBtn.textContent = i18n.t("filter.blockCurrent.empty");
-      const originalBg = parentBtn.style.backgroundColor;
       parentBtn.style.backgroundColor = "var(--red-color-dark)";
+      parentBtn.style.color = "var(--text-color-btn)";
       this.blockTimeout = setTimeout(() => {
-        parentBtn.style.backgroundColor = originalBg;
+        parentBtn.style.backgroundColor = "";
+        parentBtn.style.color = "";
         resetWithParent();
       }, 2000);
       return;

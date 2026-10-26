@@ -4,7 +4,7 @@ const path = require("path");
 const { prefixCssFiles } = require("./steps/prefixCss");
 const { copyExtensionFiles, buildManifest, writeManifest } = require("./steps/copyAndManifest");
 const { createInlineUtils } = require("./steps/inlineUtils");
-const { applyCssConfig } = require("./steps/applyCssConfig");
+const { buildPageCommonCss } = require("./steps/buildPageCommonCss");
 const registerInlines = require("./inlineConfig");
 const { copyLocales } = require("./steps/copyLocales");
 const { checkMissingTranslations, generateLanguages } = require("../checkMissingTranslations");
@@ -19,8 +19,6 @@ const LOCALES_DIR = path.join(ROOT_DIR, "locales");
 const DIST_DIR = path.join(ROOT_DIR, "extensionBuilds", TARGET);
 const DIST_LOCALES_DIR = path.join(DIST_DIR, "locales");
 const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, "package.json"), "utf8")).version;
-
-const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/userScriptManager.css", "settings/settings.css", "activityLibrary/library.css"];
 
 (async () => {
   // 1. Clean dist folder
@@ -46,28 +44,22 @@ const CSS_TARGETS = ["popup/popup.css", "popup/selector/selector.css", "manager/
   registerInlines(inlineUtilsFunctions);
   buildInlineFunctions();
 
-  // 6. Apply CSS config
-  applyCssConfig(SHARED_DIR, DIST_DIR, "css-config.css", CSS_TARGETS);
+  // 6. Shared page CSS
+  buildPageCommonCss(SHARED_DIR, DIST_DIR);
 
-  // Shared CSS (global styles + components) injected to provide consistent cross-page styles
-  applyCssConfig(SHARED_DIR, DIST_DIR, "css-global.css", CSS_TARGETS, "/*CSS-GLOBAL*/");
-
-  // 7. Apply CSS components
-  applyCssConfig(SHARED_DIR, DIST_DIR, "css-components.css", CSS_TARGETS, "/*CSS-COMPONENTS*/");
-
-  // 8. Copy locales
+  // 7. Copy locales
   checkMissingTranslations(LOCALES_DIR, ["extension"]);
   generateLanguages(LOCALES_DIR);
 
   fs.mkdirSync(DIST_LOCALES_DIR, { recursive: true });
   copyLocales(LOCALES_DIR, DIST_LOCALES_DIR);
 
-  // 9. Write manifest
+  // 8. Write manifest
   writeManifest(DIST_DIR, manifest);
 
   console.log(`✅ ${TARGET} build completed: ${DIST_DIR}`);
 
-  // 10. Scope audit of the freshly generated bundle for this target
+  // 9. Scope audit of the freshly generated bundle for this target
   const report = renderText(auditAll({ targets: [TARGET] }));
   process.stdout.write(`${report.text}\n`);
   if (report.summary.errors > 0) {

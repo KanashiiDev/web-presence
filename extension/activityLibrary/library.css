@@ -12,10 +12,6 @@ body {
   min-width: 420px;
 }
 
-/*CSS-CONFIG*/
-/*CSS-GLOBAL*/
-/*CSS-COMPONENTS*/
-
 [hidden] {
   visibility: hidden;
   display: none !important;
