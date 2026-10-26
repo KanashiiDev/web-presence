@@ -72,6 +72,7 @@ async function injectSelectorUI(editMode = false, theme = "dark", style = {}, bg
   await populateExistingData(shadow);
 
   setupEventListeners(shadow);
+  setupEventIsolation(container, shadow);
   startPreviewLoop(shadow, editMode);
 }
 
@@ -92,6 +93,7 @@ function startSelectorMode(field, shadowDoc) {
     overlay.remove();
     highlight.remove();
     lastHighlightedElement = null;
+    shadowDoc.wpSelectorEscape = null;
     showStatusMsg("", 0, 0, shadowDoc);
     document.removeEventListener("mousemove", moveHighlightThrottled);
     document.removeEventListener("click", clickHandler, true);
@@ -115,4 +117,6 @@ function startSelectorMode(field, shadowDoc) {
   document.addEventListener("mousemove", moveHighlightThrottled);
   document.addEventListener("click", clickHandler, true);
   document.addEventListener("keydown", escHandler);
+  // Escape driven by setupEventIsolation when focus stays inside the selector UI
+  shadowDoc.wpSelectorEscape = cleanup;
 }

@@ -605,22 +605,6 @@ function setupEventListeners(shadow) {
     });
   });
 
-  // Prevent page shortcuts inside inputs
-  shadow.querySelectorAll("input").forEach((input) => {
-    ["keydown", "keyup", "keypress"].forEach((eventType) => {
-      input.addEventListener(eventType, (e) => e.stopPropagation(), true);
-    });
-  });
-
-  // Track unsaved edits so the close button can ask for confirmation
-  shadow.addEventListener(
-    "input",
-    () => {
-      shadow._selectorDirty = true;
-    },
-    true,
-  );
-
   // Save User Add RPC
   shadow.getElementById("saveSelectors").addEventListener("click", async () => {
     const fields = ALL_FIELDS;
@@ -777,6 +761,61 @@ function setupEventListeners(shadow) {
   }
   updateWatchAutoDetectVisibility();
   shadow.getElementById("modeSelector")?.addEventListener("change", updateWatchAutoDetectVisibility);
+}
+
+// Isolate typing inside the selector UI from the host page
+// Events fired inside the shadow root still cross the boundary (retargeted to the container
+// host), so keyboard, text-entry and focus events are intercepted at window capture level -
+// the earliest point of the propagation path - and stopped before any page listener on the
+// document or window, capture or bubble phase, can observe them.
+const SELECTOR_ISOLATION_EVENTS = [
+  "keydown",
+  "keyup",
+  "keypress",
+  "input",
+  "beforeinput",
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+  "paste",
+  "cut",
+  "focus",
+  "focusin",
+  "focusout",
+  "blur",
+];
+
+// Setup Selector UI Event Isolation
+function setupEventIsolation(container, shadow) {
+  const guard = (e) => {
+    let path;
+    try {
+      path = e.composedPath();
+    } catch (_) {
+      return;
+    }
+
+    if (!path.includes(container)) return;
+
+    // Escape must still exit selection mode while focus is inside the UI: the mode handler
+    // lives on the document, which this listener blocks, so run its cleanup from here.
+    if (e.key === "Escape" && typeof shadow.wpSelectorEscape === "function") {
+      const escapeCleanup = shadow.wpSelectorEscape;
+      shadow.wpSelectorEscape = null;
+      escapeCleanup();
+    }
+
+    // Track unsaved edits so the close button can ask for confirmation
+    if (e.type === "input" || e.type === "beforeinput") {
+      shadow._selectorDirty = true;
+    }
+
+    e.stopImmediatePropagation();
+  };
+
+  SELECTOR_ISOLATION_EVENTS.forEach((type) => {
+    window.addEventListener(type, guard, true);
+  });
 }
 
 // Clean Selector Elements
