@@ -2065,6 +2065,14 @@ const setupListeners = () => {
     if (area !== "local") return;
 
     for (const [key, change] of Object.entries(changes)) {
+      // Update the priority order and re-evaluate the active tab quickly so a priority site takes over
+      if (key === "activityPriority") {
+        state.activityPriority = Array.isArray(change.newValue) ? change.newValue.filter((id) => typeof id === "string") : [];
+        state.lastLoopTime = 0;
+        if (state.mainLoopTimer) clearTimeout(state.mainLoopTimer);
+        setTimeout(mainLoop, 0);
+      }
+
       // Update enabled state directly; the debounced loadParserList() syncs the rest.
       if (key === "parserEnabledState") {
         const enabledState = change.newValue || {};

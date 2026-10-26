@@ -40,6 +40,7 @@ function startSettings() {
   }
   if (currentSection === "debug") initDebug();
   if (currentSection === "backup") initBackupButtons();
+  if (currentSection === "priority") initActivityPriority();
 }
 
 window.addEventListener("load", async () => {

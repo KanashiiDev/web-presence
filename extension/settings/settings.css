@@ -628,7 +628,7 @@ label {
 }
 
 .icon-btn.icon-btn-danger:hover {
-  color: var(--red-color, #e24b4a);
+  color: var(--red-color);
 }
 
 .filter-card-body {
@@ -1366,4 +1366,132 @@ button.history-modal-close {
 }
 .minimap-dot.level-init {
   background: var(--foreground-color-200);
+}
+
+/* Activity Priority Section */
+#prioritySearchContainer {
+  flex: 1;
+}
+
+.content.priority {
+  background: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 20px 0;
+}
+
+.priority-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.priority-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.priority-column-title {
+  margin: 0;
+  font-size: var(--font-md-lg);
+  font-weight: 600;
+  color: var(--text-color-muted);
+}
+
+.priority-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.priority-list.dropzone {
+  flex: 1;
+  min-height: 160px;
+  padding: 10px;
+  border: 1.5px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.priority-list.dropzone .empty-state {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: 0 12px;
+  color: var(--text-color-muted);
+  text-align: center;
+}
+
+.priority-list .empty-state {
+  color: var(--text-color-muted);
+  text-align: center;
+}
+
+.priority-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--foreground-color-400);
+  border: 0.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: grab;
+  transition:
+    background var(--transition-reduced) ease,
+    border-color var(--transition-reduced) ease,
+    opacity var(--transition-reduced) ease;
+}
+
+.priority-item:hover {
+  background: var(--foreground-color-500);
+}
+
+.priority-item.dragging {
+  opacity: 0.4;
+}
+
+.priority-grip {
+  display: flex;
+  align-items: center;
+  color: var(--text-color-muted);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.priority-rank {
+  min-width: 22px;
+  text-align: center;
+  color: var(--text-color-muted);
+  font-size: var(--font-md-lg);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.priority-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.priority-domain {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: var(--font-xs);
+  color: var(--text-color-muted);
+}
+
+.priority-item .parser-icon-container.spinner {
+  height: 24px;
+  width: 24px;
+  margin: 0;
+}
+
+.priority-action {
+  flex-shrink: 0;
 }

@@ -22,6 +22,7 @@ const state = {
   pendingFetches: new Map(),
   mainLoopTimer: null,
   parserReloadDebounce: null,
+  activityPriority: [],
 };
 
 const getEnabledParsers = () => state.parserList.filter((p) => p.isEnabled);
@@ -225,6 +226,30 @@ const parserReady = async (force = false) => {
 };
 
 const activeTabMutex = createMutex();
+
+// Activity priority: parsers listed first (by saved order) outrank unlisted ones
+const getParserPriorityRank = (parserId) => {
+  const index = state.activityPriority.indexOf(parserId);
+  return index === -1 ? state.activityPriority.length : index;
+};
+
+const getMatchedPriorityRank = (matchedParsers) => Math.min(...matchedParsers.map((p) => getParserPriorityRank(p.id)), state.activityPriority.length);
+
+const getBestPriorityParser = (matchedParsers) =>
+  matchedParsers.reduce((best, parser) => (getParserPriorityRank(parser.id) < getParserPriorityRank(best.id) ? parser : best), matchedParsers[0]);
+
+// Chooses the best matched tab: lowest priority rank first, focused (active) tab preferred on ties.
+const pickPriorityTab = (matchedTabsMap) => {
+  let best = null;
+  matchedTabsMap.forEach((value, tabId) => {
+    const rank = getMatchedPriorityRank(value.matched);
+    const active = !!value.tab.active;
+    if (!best || rank < best.rank || (rank === best.rank && active && !best.active)) {
+      best = { tabId, rank, active };
+    }
+  });
+  return best;
+};
 // RPC and Tab Cleaning operations
 const clearRpcForTab = async (tabId, reason = "Tab closed") => {
   return activeTabMutex(async () => {
@@ -390,7 +415,7 @@ const updateActiveTabMap = async (state, tabs) => {
 
     if (matchedTabsMap.size === 0) return;
 
-    const matchedTabs = Array.from(matchedTabsMap.values()).map((v) => v.tab);
+    const best = pickPriorityTab(matchedTabsMap);
 
     // 2) If there is an active tab in activeTabMap
     if (state.activeTabMap.size > 0) {
@@ -398,30 +423,52 @@ const updateActiveTabMap = async (state, tabs) => {
       const winnerTab = tabs.find((t) => t.id === firstWinnerId);
 
       if (winnerTab) {
-        // If the active tab is still open, send the others to cleanup
-        markOtherTabsForCleanup(firstWinnerId);
-        return winnerTab;
+        // A tab that no longer matches any parser ranks lowest, so a priority site can take over
+        const winnerMatched = matchedTabsMap.get(firstWinnerId);
+        const winnerRank = winnerMatched ? getMatchedPriorityRank(winnerMatched.matched) : Infinity;
+
+        if (winnerRank <= best.rank) {
+          // If the active tab is still open, send the others to cleanup
+          markOtherTabsForCleanup(firstWinnerId);
+          return winnerTab;
+        }
+
+        // A higher priority activity site is open: release the old one and switch
+        logInfo(
+          "[background:updateActiveTabMap]: Higher priority activity site open, switching active tab:",
+          best.tabId,
+          "from:",
+          firstWinnerId,
+          "priorityRank:",
+          best.rank,
+          "previousRank:",
+          winnerRank,
+          { tabId: best.tabId },
+        );
+        markOtherTabsForCleanup(best.tabId);
+        state.activeTabMap.clear();
       } else {
         // The active tab has been closed or released with clear-rpc
         state.activeTabMap.clear();
       }
     }
 
-    // 3️) Choose a new active tab
-    const mainTab = matchedTabs.find((t) => t.active) || matchedTabs[0];
+    // 3️) Choose a new active tab (activity priority decides when multiple sites are open)
+    const mainTab = matchedTabsMap.get(best.tabId).tab;
     const matchedData = matchedTabsMap.get(mainTab.id);
+    const bestParser = getBestPriorityParser(matchedData.matched);
 
-    logInfo("[background:updateActiveTabMap]: New active tab selected:", mainTab.id, "parser:", matchedData?.matched[0]?.id ?? "none", {
+    logInfo("[background:updateActiveTabMap]: New active tab selected:", mainTab.id, "parser:", bestParser?.id ?? "none", {
       tabId: mainTab.id,
       hostname: mainTab.url ? new URL(mainTab.url).hostname : null,
-      parserId: matchedData?.matched[0]?.id ?? null,
+      parserId: bestParser?.id ?? null,
     });
 
     state.activeTabMap.set(mainTab.id, {
       lastUpdated: Date.now(),
       lastKey: "",
       isAudioPlaying: !!mainTab.audible,
-      parserId: matchedData?.matched[0]?.id ?? null,
+      parserId: bestParser?.id ?? null,
     });
 
     // Send the other tabs to cleanup
@@ -1008,10 +1055,11 @@ setupIframeListeners();
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
 
-  const storageData = await browser.storage.local.get(["serverPort", "webOnlyMode", "discordWebPort"]);
+  const storageData = await browser.storage.local.get(["serverPort", "webOnlyMode", "discordWebPort", "activityPriority"]);
   if (storageData.serverPort !== undefined) state.serverPort = storageData.serverPort;
   if (storageData.webOnlyMode !== undefined) state.webOnlyMode = storageData.webOnlyMode;
   if (storageData.discordWebPort !== undefined) state.discordWebPort = storageData.discordWebPort;
+  if (Array.isArray(storageData.activityPriority)) state.activityPriority = storageData.activityPriority;
 
   setupListeners();
   await debugLogCleanup();
