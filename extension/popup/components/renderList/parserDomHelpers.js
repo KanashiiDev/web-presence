@@ -155,10 +155,9 @@ function createCategoryTagsSection(category, tags) {
 }
 
 function createDeleteButton(id, title, domain, addListener, onDeleted) {
-  const btn = createEl("a", {
-    className: "del-user-parser",
-    attrs: { title: i18n.t("common.delete") },
-  });
+  const btn = document.createElement("a");
+  btn.className = "del-user-parser";
+  btn.setAttribute("title", i18n.t("common.delete"));
   btn.appendChild(createSVG(svg_paths.trashIconPaths));
   Object.assign(btn.dataset, { parserId: id, parserTitle: title, parserDomain: domain });
 
@@ -200,10 +199,9 @@ function createDeleteButton(id, title, domain, addListener, onDeleted) {
 }
 
 function createEditParserButton(id, addListener) {
-  const btn = createEl("a", {
-    className: "edit-user-parser",
-    attrs: { title: i18n.t("common.edit") },
-  });
+  const btn = document.createElement("a");
+  btn.className = "edit-user-parser";
+  btn.setAttribute("title", i18n.t("common.edit"));
   btn.dataset.parserId = id;
   btn.appendChild(createSVG(svg_paths.gearIconPaths));
   addListener(btn, "click", (e) => {
@@ -214,10 +212,9 @@ function createEditParserButton(id, addListener) {
 }
 
 function createEditScriptButton(id, addListener) {
-  const btn = createEl("a", {
-    className: "edit-user-script",
-    attrs: { title: i18n.t("common.edit") },
-  });
+  const btn = document.createElement("a");
+  btn.className = "edit-user-script";
+  btn.setAttribute("title", i18n.t("common.edit"));
   btn.dataset.parserId = id;
   btn.appendChild(createSVG(svg_paths.gearIconPaths));
   addListener(btn, "click", (e) => {

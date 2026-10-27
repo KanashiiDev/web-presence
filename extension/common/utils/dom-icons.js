@@ -44,37 +44,6 @@ function createSVG(paths, options = {}) {
   return svg;
 }
 
-// Generic element creation helper
-function createEl(tag, options = {}) {
-  const el = document.createElement(tag);
-  if (options.className) el.className = options.className;
-  if (options.textContent) el.textContent = options.textContent;
-  if (options.html) el.innerHTML = options.html;
-  if (options.attrs) {
-    for (const [key, value] of Object.entries(options.attrs)) {
-      if (value != null) el.setAttribute(key, value);
-    }
-  }
-  if (options.dataset) {
-    for (const [key, value] of Object.entries(options.dataset)) {
-      el.dataset[key] = value;
-    }
-  }
-  if (options.style) {
-    Object.assign(el.style, options.style);
-  }
-  if (options.hidden) el.hidden = true;
-  if (options.on) {
-    for (const [event, handler] of Object.entries(options.on)) {
-      el.addEventListener(event, handler);
-    }
-  }
-  if (options.appendTo) {
-    options.appendTo.appendChild(el);
-  }
-  return el;
-}
-
 // Create an SVG icon from svg_paths key
 function iconSVG(key, size = 14) {
   return createSVG(svg_paths[key], { width: size, height: size });

@@ -1741,7 +1741,8 @@ ${codeIndented}
       // Commit Message Input Field
       const defaultCommitMsg = githubContributeService.getDefaultCommitMessage(script, isUpdate);
 
-      const commitGroup = createEl("div", { className: "form-row contribute-commit-group" });
+      const commitGroup = document.createElement("div");
+      commitGroup.className = "form-row contribute-commit-group";
       commitGroup.style.margin = "12px 0";
 
       const commitLabel = document.createElement("label");
