@@ -973,6 +973,7 @@ const USER_SCRIPT_NONCE_VALIDATED_TYPES = new Set([
   "USER_SCRIPT_IFRAME_DATA_REQUEST",
   "USER_SCRIPT_LOG",
   "USER_SCRIPT_HISTORY_BLOCK",
+  "QUERY_PARSER_READY",
 ]);
 let userScriptNonceMap = null;
 let userScriptNonceMapReady = getUserScriptNonceMap();
@@ -1109,6 +1110,10 @@ window.addEventListener("message", async (event) => {
         "*",
       );
     }
+  }
+  if (msg?.type === "QUERY_PARSER_READY") {
+    if (window.__parserSystemReady) window.postMessage({ type: "PARSER_READY" }, "*");
+    return;
   }
   if (msg?.type === "USER_SCRIPT_MEMO_SET") {
     const { id, scope, data } = msg;
