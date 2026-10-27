@@ -36,7 +36,16 @@ function detectElectronMode() {
 }
 
 function isSameActivity(a, b) {
-  return a && b && a.details === b.details && a.state === b.state && a.startTimestamp === b.startTimestamp && a.endTimestamp === b.endTimestamp;
+  return (
+    a &&
+    b &&
+    a.details === b.details &&
+    a.state === b.state &&
+    a.startTimestamp === b.startTimestamp &&
+    a.endTimestamp === b.endTimestamp &&
+    a.largeImageKey === b.largeImageKey &&
+    a.mode === b.mode
+  );
 }
 
 function isSameActivityIgnore(a, b) {
