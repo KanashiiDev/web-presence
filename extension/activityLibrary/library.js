@@ -1209,6 +1209,8 @@ const LOG_SOURCE_NOISE_BLOCKLIST = [
   "[GitHubStore]",
   "[mainParser:initParsers]",
   "[main:scheduleNextUpdate]",
+  "cleanup timer started",
+  "cleanup timer cancelled",
 ];
 
 const isNoiseLine = (text) => LOG_SOURCE_NOISE_BLOCKLIST.some((prefix) => text.includes(prefix));
@@ -1228,9 +1230,9 @@ const mergeAllEntries = (logEntries, activityEntries) => {
   return tagged.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
 };
 
-const readDebugLogsForReport = async (hostname) => {
+const readDebugLogsForReport = async () => {
   try {
-    const [logRes, memRes] = await Promise.all([msg("debug_read_logs", { hostname }), msg("debug_read_memory_logs", { hostname })]);
+    const [logRes, memRes] = await Promise.all([msg("debug_read_logs"), msg("debug_read_memory_logs")]);
     const logEntries = Array.isArray(logRes?.entries) ? logRes.entries : [];
     const memEntries = Array.isArray(memRes?.entries) ? memRes.entries : [];
     return mergeAllEntries(logEntries, memEntries);
@@ -1246,6 +1248,7 @@ const formatReportLogTimestamp = (ts) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+const REPORT_LOG_MESSAGE_MAX = 500;
 const sanitizeReportLogMessage = (message) => {
   let text;
   if (message === null || message === undefined) text = "";
@@ -1258,24 +1261,35 @@ const sanitizeReportLogMessage = (message) => {
   } else {
     text = String(message);
   }
-  return text.replace(/\s+/g, " ").replace(/`{3,}/g, "'''").trim();
+  const cleaned = text.replace(/\s+/g, " ").replace(/`{3,}/g, "'''").trim();
+  return cleaned.length > REPORT_LOG_MESSAGE_MAX ? cleaned.slice(0, REPORT_LOG_MESSAGE_MAX) + "… [truncated]" : cleaned;
 };
+
+const REPORT_LOG_CHAR_BUDGET = 40000;
 
 const formatReportLogs = (entries, limit = REPORT_LOG_ENTRY_LIMIT) => {
   if (!entries.length) return "_No logs available._";
 
-  const recent = limit > 0 ? [...entries].reverse().slice(0, limit).reverse() : entries;
-  const omitted = entries.length - recent.length;
+  const recent = limit > 0 ? entries.slice(-limit) : entries;
+
   const lines = recent.map((entry) => {
     const date = formatReportLogTimestamp(entry.ts);
     const level = String(entry.level ?? "info").toUpperCase();
     const source = entry.source ? ` ${entry.source}` : "";
-    const count = entry.count > 1 ? ` (x${entry.count})` : "";
+    const count = entry.count > 1 ? ` (x${entry.count}${entry.lastTs ? `, until ${formatReportLogTimestamp(entry.lastTs).slice(11)}` : ""})` : "";
     return `${date}  [${level}]${source}: ${sanitizeReportLogMessage(entry.msg)}${count}`;
   });
 
-  if (omitted > 0) lines.unshift(`... showing the ${recent.length} most recent of ${entries.length} entries (${omitted} older omitted) ...`);
-  return lines.join("\n");
+  let total = 0;
+  let start = lines.length;
+  while (start > 0 && total + lines[start - 1].length + 1 <= REPORT_LOG_CHAR_BUDGET) {
+    total += lines[--start].length + 1;
+  }
+
+  const kept = lines.slice(start);
+  const omitted = entries.length - kept.length;
+  if (omitted > 0) kept.unshift(`... showing the ${kept.length} most recent of ${entries.length} entries (${omitted} older omitted) ...`);
+  return kept.join("\n");
 };
 
 const getReportBrowserInfo = () => {
@@ -1357,7 +1371,7 @@ const filterReportLogs = (entries, tokens, hostname) => {
   if (!tokens.length && !hostname) return entries;
 
   return entries.filter((entry) => {
-    const text = typeof entry.msg === "string" ? entry.msg : "";
+    const text = getEntryText(entry);
     const level = String(entry.level ?? "info").toLowerCase();
 
     if (text.includes("[selector:")) return false;
@@ -1366,8 +1380,7 @@ const filterReportLogs = (entries, tokens, hostname) => {
 
     if (hostname) {
       const entryHostname = String(entry.hostname ?? "").toLowerCase();
-      if (!entryHostname) return false;
-      if (entryHostname !== hostname && !entryHostname.endsWith("." + hostname)) return false;
+      if (entryHostname && entryHostname !== hostname && !entryHostname.endsWith("." + hostname)) return false;
     }
 
     const isDomainLine = text.includes("[isAllowedDomain]:");
@@ -1382,37 +1395,93 @@ const filterReportLogs = (entries, tokens, hostname) => {
   });
 };
 
-const filterReportLogsByActiveTab = (entries, parserId) => {
-  let refEntry = null;
-  for (const entry of entries) {
-    const text = typeof entry.msg === "string" ? entry.msg : String(entry.msg ?? "");
-    if (!text.includes("New active tab selected")) continue;
-    if (entry.parserId != null && entry.parserId !== parserId) continue;
-    if (entry.parserId == null && !text.includes(parserId)) continue;
-    if (refEntry === null || entry.ts >= refEntry.ts) refEntry = entry;
+const keepLastRegistrationLog = (entries) => {
+  const isRegLine = (e) => getEntryText(e).includes("[userScriptWorker]:");
+  let lastIdx = -1;
+  entries.forEach((e, i) => {
+    if (isRegLine(e)) lastIdx = i;
+  });
+  return entries.filter((e, i) => !isRegLine(e) || i === lastIdx);
+};
+
+const normalizeLogKey = (entry) => `${entry.source ?? ""}|${getEntryText(entry).replace(/(:\s*)-?\d+(?:\.\d+)?/g, "$1#")}`;
+
+const collapseRepeatedInfoLogs = (entries, minRepeat = 3) => {
+  const isInfo = (e) => ["info", "debug"].includes(String(e.level ?? "info").toLowerCase());
+
+  const totals = new Map();
+  for (const e of entries) {
+    if (!isInfo(e)) continue;
+    const key = normalizeLogKey(e);
+    totals.set(key, (totals.get(key) ?? 0) + 1);
   }
 
-  if (!refEntry) return entries;
+  const heads = new Map();
+  const result = [];
+  for (const e of entries) {
+    if (!isInfo(e)) {
+      result.push(e);
+      continue;
+    }
+    const key = normalizeLogKey(e);
+    if (totals.get(key) < minRepeat) {
+      result.push(e);
+      continue;
+    }
+    const head = heads.get(key);
+    if (head) {
+      head.count = (head.count ?? 1) + (e.count ?? 1);
+      head.lastTs = e.ts;
+    } else {
+      const copy = { ...e };
+      heads.set(key, copy);
+      result.push(copy);
+    }
+  }
+  return result;
+};
 
-  const refTs = refEntry.ts;
-  const selectedTabId = refEntry.tabId != null ? String(refEntry.tabId) : null;
+const getEntryText = (entry) => {
+  const m = entry.msg;
+  if (typeof m === "string") return m;
+  if (m == null) return "";
+  try {
+    return JSON.stringify(m);
+  } catch {
+    return String(m);
+  }
+};
 
-  return entries.filter((entry) => {
-    if (entry.ts < refTs) return false;
-    const text = typeof entry.msg === "string" ? entry.msg : String(entry.msg ?? "");
-    const tabMatch = selectedTabId != null && (String(entry.tabId ?? "") === selectedTabId || text.includes(selectedTabId));
-    const parserMatch = (entry.parserId != null && entry.parserId === parserId) || text.includes(parserId);
-    return tabMatch || parserMatch;
-  });
+const filterReportLogsByParserTabs = (entries, parserId) => {
+  const isParserEntry = (entry) => entry.parserId === parserId || getEntryText(entry).includes(parserId);
+
+  const ownedTabs = new Set();
+  const result = [];
+
+  for (const entry of entries) {
+    const tab = entry.tabId != null ? String(entry.tabId) : null;
+
+    if (isParserEntry(entry)) {
+      if (tab) ownedTabs.add(tab);
+      result.push(entry);
+    } else if (tab && entry.parserId != null) {
+      ownedTabs.delete(tab);
+    } else if (tab && ownedTabs.has(tab)) {
+      result.push(entry);
+    }
+  }
+  return result;
 };
 
 const buildTechnicalDetailsMarkdown = async (meta, sid) => {
   const { browser: browserName, platform, language, userAgent } = getReportBrowserInfo();
   const hostname = extractReportHostname(meta);
   const tokens = getScriptLogTokens(meta, sid);
-  let entries = await readDebugLogsForReport(hostname);
-  entries = filterReportLogsByActiveTab(entries, sid);
+  let entries = await readDebugLogsForReport();
+  entries = filterReportLogsByParserTabs(entries, sid);
   entries = filterReportLogs(entries, tokens, hostname);
+  entries = keepLastRegistrationLog(entries);
+  entries = collapseRepeatedInfoLogs(entries);
   const fence = "`".repeat(3);
   const logsBlock = entries.length ? [fence, formatReportLogs(entries), fence].join("\n") : "_No logs captured._";
 

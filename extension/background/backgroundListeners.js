@@ -1908,11 +1908,12 @@ const setupListeners = () => {
                   senderHostname = new URL(senderUrl).hostname;
                 } catch {}
               }
+              const trackedParserId = senderTabId != null ? state.activeTabMap.get(senderTabId)?.parserId : null;
               const meta = {
                 tabId: senderTabId != null ? senderTabId : tabId != null ? tabId : null,
                 tabUrl: senderUrl != null ? senderUrl : tabUrl != null ? tabUrl : null,
                 hostname: senderHostname != null ? senderHostname : hostname != null ? hostname : null,
-                parserId: parserId != null ? parserId : null,
+                parserId: parserId ?? trackedParserId ?? null,
               };
               debugLog(level, source, args, meta);
             }
@@ -1955,6 +1956,7 @@ const setupListeners = () => {
                 tabId: entry.tabId != null ? entry.tabId : senderTabId != null ? senderTabId : null,
                 hostname: entry.hostname != null ? entry.hostname : senderHostname != null ? senderHostname : null,
                 tabUrl: entry.tabUrl != null ? entry.tabUrl : senderUrl != null ? senderUrl : null,
+                parserId: entry.parserId != null ? entry.parserId : senderTabId != null ? (state.activeTabMap.get(senderTabId)?.parserId ?? null) : null,
               }));
               state._memoryLogs.push(...enriched);
 
