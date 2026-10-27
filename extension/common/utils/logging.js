@@ -116,6 +116,7 @@ function _writeDebugLog(level, args, meta) {
   _wpLogEnsureInit();
   const _LOG_SOURCE = (() => {
     if (typeof window === "undefined") return "background";
+    if (location.protocol === "moz-extension:" && location.pathname === "/_generated_background_page.html") return "background";
     return "content";
   })();
 

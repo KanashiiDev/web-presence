@@ -13,7 +13,7 @@ function _isMemoryOnly(msg) {
   return MEMORY_ONLY_TAGS.some((tag) => msg.startsWith(tag));
 }
 
-const _IS_BACKGROUND_CTX = typeof window === "undefined";
+const _IS_BACKGROUND_CTX = typeof window === "undefined" || (location.protocol === "moz-extension:" && location.pathname === "/_generated_background_page.html");
 let isSyncing = false;
 
 function _metaValue(v) {
