@@ -389,6 +389,7 @@
   "userscript.import.conflict.skip.text": "Tüm çakışmaları atla",
   "userscript.import.conflict.add": "Ekle",
   "userscript.import.confirm": "Seçimleri Onayla",
+  "userscript.import.noValidBlocks": "Dosyada geçerli registerParser({ ... }) bloğu bulunamadı.",
   "userscript.export.asJSON": "JSON olarak dışa aktar",
   "userscript.export.asJS": "JavaScript olarak dışa aktar",
   "userscript.export.warn.noScripts": "Dışa aktarılacak kullanıcı betiği yok",

@@ -1069,6 +1069,14 @@ ${codeIndented}
       const callIdx = jsText.indexOf("registerParser(", i);
       if (callIdx === -1) break;
 
+      const afterCall = callIdx + "registerParser(".length;
+      let k = afterCall;
+      while (k < jsText.length && (jsText[k] === " " || jsText[k] === "\t" || jsText[k] === "\n" || jsText[k] === "\r")) k++;
+      if (jsText[k] !== "{") {
+        i = callIdx + 1;
+        continue;
+      }
+
       let depth = 0;
       let blockStart = -1;
       let blockEnd = -1;
@@ -1260,6 +1268,10 @@ ${codeIndented}
       const scripts = file.name.endsWith(".js") ? this.importFromRegisterParser(text) : JSON.parse(text);
 
       if (!Array.isArray(scripts)) throw new Error("Invalid format: expected array");
+      if (scripts.length === 0) {
+        showAlert("Import failed", i18n.t("userscript.import.noValidBlocks"), "warn");
+        return;
+      }
 
       const existingResp = await sendAction("listUserScripts");
       const existing = existingResp?.list || [];

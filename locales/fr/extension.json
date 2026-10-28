@@ -389,6 +389,7 @@
   "userscript.import.conflict.skip.text": "Ignorer tous les conflits",
   "userscript.import.conflict.add": "Ajouter",
   "userscript.import.confirm": "Confirmer les sélections",
+  "userscript.import.noValidBlocks": "Aucun bloc registerParser({ ... }) valide trouvé dans le fichier.",
   "userscript.export.asJSON": "Exporter en JSON",
   "userscript.export.asJS": "Exporter en JavaScript",
   "userscript.export.warn.noScripts": "Aucun script à exporter",

@@ -389,6 +389,7 @@
   "userscript.import.conflict.skip.text": "Пропустить все конфликты",
   "userscript.import.conflict.add": "Добавить",
   "userscript.import.confirm": "Подтвердить выбор",
+  "userscript.import.noValidBlocks": "Не найдено допустимых блоков registerParser({ ... }) в файле.",
   "userscript.export.asJSON": "Экспортировать как JSON",
   "userscript.export.asJS": "Экспортировать как JavaScript",
   "userscript.export.warn.noScripts": "Нет пользовательских скриптов для экспорта",
