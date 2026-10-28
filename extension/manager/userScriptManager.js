@@ -1508,7 +1508,8 @@ ${codeIndented}
 
   // Export userScript
   async handleExport(options = { type: "all", scriptId: null }) {
-    const resp = await sendAction("listUserScripts");
+    const params = this.activeTab === "repo" ? { showOnlyStore: true } : {};
+    const resp = await sendAction("listUserScripts", params);
     let scripts = resp?.list || [];
 
     if (!scripts.length) {
