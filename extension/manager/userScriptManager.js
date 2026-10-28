@@ -998,25 +998,53 @@ class UserScriptUI {
       .map((script) => {
         const codeIndented = script.code
           .split("\n")
-          .map((line) => line.trimStart())
           .map((line) => (line ? "    " + line : ""))
           .join("\n");
         const domains = [script.domain].flat().filter(Boolean);
         const domainStr = domains.length === 1 ? this._jsString(domains[0]) : `[${domains.map((d) => this._jsString(d)).join(", ")}]`;
         const urlPatterns = (script.urlPatterns || []).map((p) => (p.startsWith("/") ? p : `/${p}/`)).join(", ");
-        const authorsStr = [script.authors].flat().filter(Boolean).join(",");
-        const authorsLinksStr = [script.authorsLinks].flat().filter(Boolean).join(",");
+        const authors = Array.isArray(script.authors)
+          ? script.authors
+          : script.authors
+            ? String(script.authors)
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean)
+            : [];
+        const authorsLinks = Array.isArray(script.authorsLinks)
+          ? script.authorsLinks
+          : script.authorsLinks
+            ? String(script.authorsLinks)
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean)
+            : [];
+        const authorsStr = authors.length ? `\n  authors: [${authors.map((a) => this._jsString(a)).join(", ")}],` : "";
+        const authorsLinksStr = authorsLinks.length ? `\n  authorsLinks: [${authorsLinks.map((a) => this._jsString(a)).join(", ")}],` : "";
         const iframeSelectorsStr = script.iframeSelectors ? `\n  iframeSelectors: ${JSON.stringify(script.iframeSelectors, null, 2).split("\n").join("\n  ")},` : "";
-        const tags = Array.isArray(script.tags) && script.tags.length ? script.tags : [];
+        const tags = Array.isArray(script.tags)
+          ? script.tags
+          : script.tags
+            ? String(script.tags)
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : [];
         const tagsStr = tags.length ? `\n  tags: [${tags.map((t) => this._jsString(t)).join(", ")}],` : "";
-        const categoryStr = script.category ? `\n  category: ${this._jsString(script.category)},` : "";
+        const category = Array.isArray(script.category)
+          ? script.category
+          : script.category
+            ? String(script.category)
+                .split(",")
+                .map((c) => c.trim())
+                .filter(Boolean)
+            : [];
+        const categoryStr = category.length ? `\n  category: [${category.map((c) => this._jsString(c)).join(", ")}],` : "";
         const homepageStr = script.homepage ? `\n  homepage: ${this._jsString(script.homepage)},` : "";
 
         return `registerParser({
   id: ${this._jsString(script.id)},
-  domain: ${domainStr},
-  authors: ${this._jsString(authorsStr)},
-  authorsLinks: ${this._jsString(authorsLinksStr)},
+  domain: ${domainStr},${authorsStr}${authorsLinksStr}
   title: ${this._jsString(script.title)},
   version: ${this._jsString(script.version || "1.0.0")},
   description: ${this._jsString(script.description || "")},
@@ -1105,8 +1133,19 @@ ${codeIndented}
           .filter(Boolean);
       }
 
-      // category: string
-      const category = extractStr("category");
+      // category: string or array
+      let category = extractStr("category");
+      const categoryArrayMatch = /\bcategory:\s*\[([\s\S]*?)\]/i.exec(block);
+      if (categoryArrayMatch?.[1] !== undefined) {
+        category = categoryArrayMatch[1]
+          .split(",")
+          .map((c) => c.trim().replace(/^["'`]|["'`]$/g, ""))
+          .filter(Boolean);
+      } else if (category) {
+        category = [category];
+      } else {
+        category = [];
+      }
 
       // iframeSelectors: balanced brace match
       let iframeSelectors = null;
@@ -1159,19 +1198,41 @@ ${codeIndented}
         }
       }
 
-      const authors = extractStr("authors");
-      const authorsLinks = extractStr("authorsLinks");
+      // authors: string or array
+      let authors = extractStr("authors");
+      const authorsArrayMatch = /\bauthors:\s*\[([\s\S]*?)\]/i.exec(block);
+      if (authorsArrayMatch?.[1] !== undefined) {
+        authors = authorsArrayMatch[1]
+          .split(",")
+          .map((a) => a.trim().replace(/^["'`]|["'`]$/g, ""))
+          .filter(Boolean);
+      } else if (authors) {
+        authors = splitAndTrim(authors);
+      } else {
+        authors = [];
+      }
 
-      const authorsStr = splitAndTrim(authors);
-      const authorsLinksStr = splitAndTrim(authorsLinks);
+      // authorsLinks: string or array
+      let authorsLinks = extractStr("authorsLinks");
+      const authorsLinksArrayMatch = /\bauthorsLinks:\s*\[([\s\S]*?)\]/i.exec(block);
+      if (authorsLinksArrayMatch?.[1] !== undefined) {
+        authorsLinks = authorsLinksArrayMatch[1]
+          .split(",")
+          .map((a) => a.trim().replace(/^["'`]|["'`]$/g, ""))
+          .filter(Boolean);
+      } else if (authorsLinks) {
+        authorsLinks = splitAndTrim(authorsLinks);
+      } else {
+        authorsLinks = [];
+      }
 
       scripts.push({
         title: extractStr("title"),
         description: extractStr("description"),
         domain,
         homepage: extractStr("homepage"),
-        authors: authorsStr,
-        authorsLinks: authorsLinksStr,
+        authors,
+        authorsLinks,
         urlPatterns,
         mode: extractStr("mode") || "listen",
         watchAutoDetect: extractStr("watchAutoDetect") || "disable",
@@ -1179,7 +1240,7 @@ ${codeIndented}
         tags,
         iframeSelectors,
         code,
-        id: extractStr("id") || generateParserKey(domain, urlPatterns, authorsStr),
+        id: extractStr("id") || generateParserKey(domain, urlPatterns, authors),
         lastUpdated: extractStr("lastUpdated"),
         runAt: "document_idle",
         registered: false,
