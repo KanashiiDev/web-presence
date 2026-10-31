@@ -3,7 +3,7 @@ const path = require("path");
 
 module.exports = async function (context) {
   const appOutDir = context.appOutDir;
-  const platform = process.platform;
+  const platform = context.electronPlatformName || process.platform;
 
   const tryRemove = (fileOrDir) => {
     const fullPath = path.join(appOutDir, fileOrDir);

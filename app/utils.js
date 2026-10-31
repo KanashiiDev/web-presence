@@ -1,5 +1,6 @@
-const { dialog, shell } = require("electron");
+const { app, dialog, shell } = require("electron");
 const { spawn } = require("child_process");
+const { state } = require("./state");
 const path = require("path");
 const fs = require("fs");
 
@@ -107,22 +108,39 @@ const icons = {
 };
 
 // File Logging
+const MAX_LOG_ENTRIES = 3000;
+let _logToFileWarned = false;
+
 function logToFile(error, type = "UnknownError") {
-  let entries = [];
-  if (fs.existsSync(_logFilePath)) {
+  try {
+    if (!_logFilePath) return;
+
+    let entries = [];
     try {
-      entries = JSON.parse(fs.readFileSync(_logFilePath, "utf-8"));
+      const parsed = JSON.parse(fs.readFileSync(_logFilePath, "utf-8"));
+      if (Array.isArray(parsed)) entries = parsed;
     } catch {
       entries = [];
     }
+
+    entries.push({
+      timestamp: new Date().toISOString(),
+      type,
+      message: error?.message ?? String(error),
+      stack: error?.stack ?? null,
+    });
+    if (entries.length > MAX_LOG_ENTRIES) entries = entries.slice(-MAX_LOG_ENTRIES);
+
+    fs.writeFileSync(_logFilePath, JSON.stringify(entries, null, 2));
+  } catch (err) {
+    // Logging must never take the app down; report once instead of once per line.
+    if (!_logToFileWarned) {
+      _logToFileWarned = true;
+      try {
+        _log?.warn(`[Log] Cannot write ${_logFilePath} (${err.code ?? err.message})`);
+      } catch (_) {}
+    }
   }
-  entries.push({
-    timestamp: new Date().toISOString(),
-    type,
-    message: error?.message ?? String(error),
-    stack: error?.stack ?? null,
-  });
-  fs.writeFileSync(_logFilePath, JSON.stringify(entries, null, 2));
 }
 
 async function openUrl(url) {
@@ -213,20 +231,41 @@ function openConfig() {
 }
 
 // Error Handling
+let _criticalErrorShown = false;
+
+// Reports a critical error without taking the app down. Quits only if, after the dialog, there is no tray
+// left for the user to interact with (nothing to stay alive for).
 function handleCriticalError(message, error) {
-  _log.error(message, error);
-  dialog
-    .showMessageBox({
-      type: "error",
-      buttons: ["OK", "Open Logs"],
-      title: "Application Error",
-      message: `${message}: ${error.message}`,
-      detail: error.stack,
-      icon: icons.message,
-    })
+  try {
+    (_log ?? console).error(message, error);
+  } catch (_) {}
+
+  // One dialog per session: a burst of errors must not stack modal dialogs.
+  if (_criticalErrorShown) return;
+  _criticalErrorShown = true;
+
+  Promise.resolve()
+    .then(() =>
+      dialog.showMessageBox({
+        type: "error",
+        buttons: ["OK", "Open Logs"],
+        title: "Application Error",
+        message: `${message}: ${error?.message ?? String(error)}`,
+        detail: error?.stack ?? undefined,
+        icon: icons.message,
+      }),
+    )
     .then(({ response }) => {
-      if (response === 1) openLogs();
-      require("electron").app.quit();
+      if (response === 1 && _log) openLogs();
+    })
+    .catch(() => {})
+    .finally(() => {
+      // Evaluated after the dialog closes: on Linux the tray is created with a delayed retry.
+      let hasTray = false;
+      try {
+        hasTray = !!state.tray && !state.tray.isDestroyed();
+      } catch (_) {}
+      if (!hasTray) app.quit();
     });
 }
 

@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const JSONdb = require("simple-json-db");
 let store = null;
 let log = console;
@@ -202,6 +203,24 @@ const syncConfigSchema = (current, defaults) => {
 // Config object
 const config = {};
 
+// Opens the config store. If config.json is corrupted (e.g. interrupted write), the bad file is kept
+// as config.json.bak and the app starts from defaults instead of failing initialization.
+const openStore = (file) => {
+  try {
+    return new JSONdb(file);
+  } catch (err) {
+    log.error(`[Config] config.json unreadable (${err?.message ?? err}) - backing up and recreating with defaults`);
+    try {
+      fs.renameSync(file, `${file}.bak`);
+    } catch (_) {
+      try {
+        fs.rmSync(file, { force: true });
+      } catch (_) {}
+    }
+    return new JSONdb(file);
+  }
+};
+
 /**
  * Initializes the config system
  * @param {string} userDataPath - Electron app.getPath("userData")
@@ -220,7 +239,7 @@ const initialize = (userDataPath, logger = console) => {
 
   // Create the DB path and start the store
   dbPath = path.join(userDataPath, "config.json");
-  store = new JSONdb(dbPath);
+  store = openStore(dbPath);
 
   log.info(`[Config] Initializing with database at: ${dbPath}`);
 

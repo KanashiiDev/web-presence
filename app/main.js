@@ -38,6 +38,7 @@ if (process.platform === "linux") {
 const path = require("path");
 const fs = require("fs");
 
+const runtimeInfo = require("./runtime-info");
 const ConfigManager = require("./scripts/configManagement");
 const { log, configureLogging } = require("./scripts/electron-log");
 const { state } = require("./state");
@@ -48,12 +49,6 @@ const Updater = require("./managers/updater");
 
 // CONSOLE SAFETY
 Utils.safeConsoleWrap(log);
-
-// SINGLE-INSTANCE LOCK
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-  process.exit(0);
-}
 app.on("second-instance", () => state.tray?.popUpContextMenu());
 
 // APP READY
@@ -100,8 +95,49 @@ async function initializeApp() {
 
     Updater.setupAutoUpdater();
     _startServer();
+
+    // Prove this code version: marks userData/runtime/healthy.json so bootstrap trusts this bundle on next launch.
+    if (app.isPackaged) {
+      runtimeInfo.markHealthy(app.getPath("userData"), process.versions.electron, app.getVersion());
+    }
   } catch (err) {
+    if (restartIfUnprovenRuntime(err)) return;
     Utils.handleCriticalError("Initialization failed", err);
+  }
+}
+
+// Unproven runtime failed to initialize: restart immediately so bootstrap's attempt counter advances
+// (rollback to shipped code happens on the launch after MAX_FAILED_ATTEMPTS) without waiting for a manual relaunch.
+// Never triggers for shipped code, for an already proven runtime, or when the counter is not demonstrably
+// advancing (attempts.json unwritable), so it cannot loop forever.
+function restartIfUnprovenRuntime(err) {
+  try {
+    if (!app.isPackaged) return false;
+
+    if (!runtimeInfo.isRuntimeBundle()) return false; // running shipped code
+
+    const userData = app.getPath("userData");
+    const version = runtimeInfo.getCodeVersion();
+    const healthy = runtimeInfo.readHealthyMarker(userData);
+    // Same "proven" definition as bootstrap.selectCodeEntry: version AND Electron must match,
+    // otherwise bootstrap still counts this launch as an attempt (re-proving) and a restart is safe.
+    if (healthy?.version === version && healthy.electron === process.versions.electron) return false;
+
+    // Only restart while bootstrap's counter is demonstrably advancing toward rollback (tries 1..MAX_FAILED_ATTEMPTS).
+    // If attempts.json could not be written, the counter never moves and restarts would loop forever.
+    // Keep in sync with MAX_FAILED_ATTEMPTS in bootstrap.js.
+    let attempts = null;
+    try {
+      attempts = JSON.parse(runtimeInfo.rawFs.readFileSync(path.join(userData, "attempts.json"), "utf8"));
+    } catch (_) {}
+    if (attempts?.version !== version || !(attempts.tries >= 1 && attempts.tries <= 2)) return false;
+
+    log.error(`[Runtime] Unproven runtime ${version} failed to initialize (${err?.message}) - restarting`);
+    setTimeout(() => Updater.restartToApply(), 1500);
+    return true;
+  } catch (e) {
+    log.error("[Runtime] Auto-restart guard failed:", e);
+    return false;
   }
 }
 
@@ -129,6 +165,7 @@ function _startServer() {
 // QUIT HANDLING
 app.on("before-quit", async (event) => {
   event.preventDefault();
+  setTimeout(() => app.exit(0), 10000);
   log.info("Application is quitting, cleaning up...");
   TrayManager.destroyTray();
   if (state.serverProcess) {
@@ -145,5 +182,5 @@ app.on("before-quit", async (event) => {
 app.on("will-quit", () => TrayManager.destroyTray());
 
 // PROCESS ERROR HANDLERS
-process.on("uncaughtException", (err) => Utils.handleCriticalError("Uncaught Exception", err));
+process.on("uncaughtException", (err) => log.error("Uncaught Exception:", err));
 process.on("unhandledRejection", (reason, promise) => log.error("Unhandled rejection at:", promise, "reason:", reason));

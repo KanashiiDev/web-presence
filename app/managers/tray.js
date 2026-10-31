@@ -1,9 +1,9 @@
 const { app, Tray, Menu, Notification, nativeImage, dialog, shell } = require("electron");
 const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
+const runtimeInfo = require("../runtime-info");
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 
 const { state } = require("../state");
 const ConfigManager = require("../scripts/configManagement");
@@ -24,7 +24,7 @@ const updateMenuState = {
 };
 
 function setUpdateMenuState(options) {
-  Object.assign(updateMenuState, options);
+  Object.assign(updateMenuState, { releaseUrl: null, isInstallable: false }, options);
   updateTrayMenu();
 }
 
@@ -100,9 +100,9 @@ function updateTrayMenu() {
 
   try {
     currentMenu = null;
-
+    const codeVersion = runtimeInfo.getCodeVersion() ?? app.getVersion();
     const menuTemplate = [
-      { label: `Version: ${app.getVersion()}`, enabled: false },
+      { label: `Version: ${codeVersion}`, enabled: false },
       { type: "separator" },
       {
         label: state.isServerRunning ? "Stop Server" : "Start Server",
@@ -188,7 +188,9 @@ function _buildLinuxDiagnosticItem() {
     click: () => {
       const scriptPath = getResourcePath("discord_ipc_diagnostic.sh");
       const outputFile = path.join(app.getPath("userData"), "discord_ipc_diagnostic_result.txt");
-      const tempScript = path.join(os.tmpdir(), "discord_ipc_diagnostic_temp.sh");
+      // userData is private to the current user; a fixed path in the shared /tmp
+      // could be pre-created or swapped by another local user before execution.
+      const tempScript = path.join(app.getPath("userData"), "discord_ipc_diagnostic_temp.sh");
 
       try {
         const fixed = fs.readFileSync(scriptPath, "utf8").replace(/\r\n|\r/g, "\n");

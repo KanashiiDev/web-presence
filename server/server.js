@@ -33,7 +33,7 @@ const PORT = IS_ELECTRON ? Number(process.env.PORT) || 3000 : 3000;
 const settingsFilePath = process.env.SETTINGS_FILE_PATH;
 const logFilePath = process.env.LOG_FILE_PATH;
 const historyFilePath = process.env.HISTORY_FILE_PATH;
-const settings = readSettings(settingsFilePath)?.settings?.server;
+const settings = readSettings(settingsFilePath)?.settings?.server ?? {};
 
 // Proxy token - generated once per server start
 const PROXY_TOKEN = crypto.randomBytes(24).toString("hex");
@@ -385,6 +385,16 @@ if (IS_ELECTRON) {
       state.serverSettings = { ...state.serverSettings, ...msg.value };
     }
   });
+
+  const PARENT_PID = process.ppid;
+  process.on("disconnect", () => shutdown());
+  setInterval(() => {
+    try {
+      process.kill(PARENT_PID, 0);
+    } catch (err) {
+      if (err.code === "ESRCH") shutdown();
+    }
+  }, 5000).unref();
 }
 
 // Start Server

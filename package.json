@@ -3,7 +3,7 @@
   "version": "3.3.0",
   "description": "Web Presence Bridge for Discord",
   "homepage": "https://github.com/KanashiiDev/web-presence",
-  "main": "app/main.js",
+  "main": "app/bootstrap.js",
   "keywords": [
     "web",
     "discord",
@@ -29,6 +29,7 @@
     "start": "node server/server.js",
     "start:app": "electron .",
     "clean": "rimraf dist",
+    "fingerprint": "node scripts/writeBinaryFingerprint.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:strict": "eslint . --max-warnings=0",
@@ -85,6 +86,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@electron/asar": "^4.3.1",
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "archiver": "^8.0.0",
@@ -207,6 +209,7 @@
     "asarUnpack": [
       "**/*.node"
     ],
+    "beforePack": "./scripts/beforePack.js",
     "afterPack": "./scripts/buildCleanup.js"
   }
 }

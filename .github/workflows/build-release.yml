@@ -254,6 +254,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Write update signing key
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::error::UPDATE_SIGNING_KEY secret is not set - releases must be signed"
+            exit 1
+          fi
+          mkdir -p keys
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > keys/update-signing-private.pem
+
       - name: Prepare Release
         run: npm run prepare-release
 
