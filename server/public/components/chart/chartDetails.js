@@ -19,7 +19,7 @@ export function createDetailsController(p = "", historyMode = "listen") {
     wrap.className = "activity hc-activity";
 
     const a = Object.assign(document.createElement("a"), {
-      href: item.activityUrl ?? item.link ?? "",
+      href: item.songUrl ?? item.link ?? "",
       target: "_blank",
       rel: "noopener noreferrer",
       title: i18n.t("history.goToLink"),

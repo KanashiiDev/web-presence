@@ -737,7 +737,7 @@ function setupEventListeners(shadow) {
     savedFragment.appendChild(document.createElement("br"));
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
-    refreshBtn.className = "userRpc-refresh-page";
+    refreshBtn.className = "userRpc-refresh-page btn btn-primary";
     refreshBtn.textContent = t("selector.editor.refreshPage");
     refreshBtn.addEventListener("click", () => location.reload());
     savedFragment.appendChild(refreshBtn);

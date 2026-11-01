@@ -1205,7 +1205,7 @@ window.addEventListener("message", async (event) => {
               artist: activity.artist,
               image: activity.image,
               source: activity.source,
-              link: activity.link || activity.activityUrl,
+              link: activity.link || activity.songUrl,
               timePassed: currentTime || activity.timePassed,
               duration: duration || activity.duration,
               buttons: activity.buttons,
@@ -1280,7 +1280,7 @@ async function loadAllSavedUserParsers() {
           const artist = artistRaw ? artistRaw : "-1";
           const source = getText(data.selectors["source"]) || getPlainText(data.selectors["source"]) || "";
           const image = getImage(data.selectors["image"]);
-          const link = getSafeHref(get, "link", data.link || data.activityUrl || location.href);
+          const link = getSafeHref(get, "link", data.link || data.songUrl || location.href);
           const buttonLink = getSafeHref(get, "buttonLink", data.selectors.buttonLink);
           const buttonText = getSafeText(get, "buttonText", data.selectors.buttonText);
           const buttonLink2 = getSafeHref(get, "buttonLink2", data.selectors.buttonLink2);

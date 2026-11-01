@@ -397,6 +397,11 @@ br[id*="buttonLink"] {
   color: var(--red-color);
 }
 
+.userRpc-refresh-page {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .rpc-preview .card {
   background: var(--foreground-color-200);
   border-radius: var(--radius-md);

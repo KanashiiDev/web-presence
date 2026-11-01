@@ -933,6 +933,13 @@ const handleGetActivityInfo = async () => {
 
 // Update RPC
 const handleUpdateRpc = async (req, sender) => {
+  // While the custom status is enabled it owns Discord RPC - tab activities are suppressed, but each
+  // incoming update acts as a heartbeat to re-assert the custom activity (survives server restarts).
+  if (state.customStatusEnabled) {
+    await sendCustomStatusUpdate();
+    return { ok: true, suppressed: true };
+  }
+
   const tab = await getSenderTab(sender);
   if (!tab) {
     logInfo("[background]: No tab info from sender, skipping:", req);
@@ -1025,7 +1032,7 @@ const handleUpdateRpc = async (req, sender) => {
       artist: req.data.artist,
       image: req.data.image,
       source: req.data.source || "",
-      link: req.data.link || req.data.activityUrl || "",
+      link: req.data.link || req.data.songUrl || "",
       mode: req.data.mode || "listen",
     });
   }
@@ -1087,6 +1094,11 @@ const handleIsTabAudible = async (sender) => {
 };
 
 const handleClearRpc = async (sender) => {
+  // Custom status owns Discord RPC - tab clears must not reset it
+  if (state.customStatusEnabled) {
+    return { ok: true, suppressed: true };
+  }
+
   const tab = await getSenderTab(sender);
   if (!tab) {
     logInfo("[background]: No tab info from sender, skipping");
@@ -2068,6 +2080,25 @@ const setupListeners = () => {
     if (area !== "local") return;
 
     for (const [key, change] of Object.entries(changes)) {
+      // Keep the custom status state in sync; re-assert or release the custom activity on changes
+      if (key === "customStatusEnabled" || key === "customStatusProfiles" || key === "customStatusActiveProfileId") {
+        (async () => {
+          const wasEnabled = state.customStatusEnabled;
+          await loadCustomStatusState();
+          if (state.customStatusEnabled) {
+            // Ensure the ~10s re-assert interval is running while the custom status is enabled;
+            // the send itself defers briefly while the fresh media-owner identity gets adopted
+            startCustomStatusInterval();
+            scheduleCustomStatusSend();
+          } else {
+            stopCustomStatusInterval();
+            if (wasEnabled) {
+              await clearCustomStatus();
+            }
+          }
+        })().catch((err) => logError("[background:customStatusChange]:", err));
+      }
+
       // Update the priority order and re-evaluate the active tab quickly so a priority site takes over
       if (key === "activityPriority") {
         state.activityPriority = Array.isArray(change.newValue) ? change.newValue.filter((id) => typeof id === "string") : [];

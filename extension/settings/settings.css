@@ -60,7 +60,6 @@ button[data-level-action="replace"].edit-mode {
 }
 
 .content {
-  margin: 12px;
   padding: 20px;
 }
 
@@ -75,7 +74,6 @@ button[data-level-action="replace"].edit-mode {
 .content.filter {
   background: none;
   box-shadow: none;
-  margin: 0;
   padding: 20px 0;
 }
 
@@ -1258,7 +1256,6 @@ button.history-modal-close {
 .content.priority {
   background: none;
   box-shadow: none;
-  margin: 0;
   padding: 20px 0;
 }
 
@@ -1376,4 +1373,204 @@ button.history-modal-close {
 
 .priority-action {
   flex-shrink: 0;
+}
+
+/* Custom Status */
+.cs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cs-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+.cs-form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cs-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-toggle-text {
+  color: var(--text-color-primary);
+  min-width: 120px;
+}
+
+#csProfilesContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-profile-row button.icon-btn {
+  height: 32px;
+  width: 32px;
+}
+
+.cs-profile-row .select,
+.cs-profile-row .input,
+.cs-profile-row .ts-wrapper,
+.cs-profile-row .ts-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-field-label {
+  flex: none;
+  min-width: 120px;
+  color: var(--text-color-secondary);
+  font-size: var(--font-md);
+}
+
+.cs-field-row .input,
+.cs-field-row .select {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-field-row .ts-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-button-row {
+  align-items: flex-start;
+}
+
+.cs-button-url {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-button-url .input {
+  width: 100%;
+}
+
+.cs-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cs-column-title {
+  margin: 0;
+  font-size: var(--font-md-lg);
+  font-weight: 600;
+  color: var(--text-color-muted);
+}
+
+.cs-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--foreground-color-300);
+  color: var(--text-color-primary);
+  font-size: var(--font-sm);
+  border: 1px solid var(--border-color);
+}
+
+.cs-preview-top {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-color-primary);
+}
+
+.cs-preview-verb {
+  color: var(--text-color-secondary);
+}
+
+.cs-preview-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cs-preview-image {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex: none;
+}
+
+.cs-preview-image img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  display: block;
+}
+
+.cs-preview-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cs-preview-details {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color-primary);
+  overflow-wrap: anywhere;
+}
+
+.cs-preview-name {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-color-secondary);
+  overflow-wrap: anywhere;
+}
+
+.cs-preview-clickable {
+  cursor: pointer;
+}
+
+.cs-preview-clickable:hover {
+  text-decoration: underline;
+}
+
+.cs-preview-state {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-color-secondary);
+  overflow-wrap: anywhere;
+}
+
+.cs-preview-buttons {
+  display: flex;
+  gap: 8px;
+  flex-direction: column;
 }

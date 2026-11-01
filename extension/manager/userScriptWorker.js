@@ -681,7 +681,7 @@ class UserScriptManager {
 
       // Takes the values the script left in scope (see updateTrackData) and normalizes them.
       function __applyTrackState(raw) {
-        const finalLink = __asText(raw.activityUrl) ?? __asText(raw.link);
+        const finalLink = __asText(raw.songUrl) ?? __asText(raw.link);
 
         trackState.title = __asText(raw.title);
         if (!trackState.title) {
@@ -690,7 +690,7 @@ class UserScriptManager {
         trackState.artist = __asText(raw.artist);
         trackState.image = __asText(raw.image);
         trackState.source = __asText(raw.source);
-        trackState.activityUrl = finalLink;
+        trackState.songUrl = finalLink;
         trackState.link = finalLink;
         trackState.timePassed = __asNumberOrString(raw.timePassed);
         trackState.duration = __asNumberOrString(raw.duration);
@@ -772,7 +772,7 @@ class UserScriptManager {
             artist: typeof artist === "undefined" ? null : artist,
             image: typeof image === "undefined" ? null : image,
             source: typeof source === "undefined" ? null : source,
-            activityUrl: typeof activityUrl === "undefined" ? null : activityUrl,
+            songUrl: typeof songUrl === "undefined" ? null : songUrl,
             link: typeof link === "undefined" ? null : link,
             timePassed: typeof timePassed === "undefined" ? null : timePassed,
             duration: typeof duration === "undefined" ? null : duration,

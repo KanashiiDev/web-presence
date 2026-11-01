@@ -6,6 +6,7 @@
     <link rel="stylesheet" href="../shared/page-common.css" />
     <link rel="stylesheet" href="settings.css" />
     <link rel="stylesheet" href="../libs/simplebar.css" />
+    <link rel="stylesheet" href="../libs/tom-select.css" />
   </head>
   <div id="bg-layer"></div>
   <body data-theme="dark">
@@ -87,6 +88,30 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Custom Status Section -->
+    <div class="container" data-section="customstatus">
+      <div class="content card card-md customstatus cs-card">
+        <div id="csProfilesContainer"></div>
+        <div class="cs-layout">
+          <div class="cs-form-column">
+            <div class="cs-toggle-row">
+              <span class="cs-toggle-text" data-i18n="settings.customstatus.enabled"></span>
+              <label class="switch-label no-select" id="csEnabledToggle">
+                <input type="checkbox" id="csEnabledInput" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="cs-fields" id="csFields"></div>
+          </div>
+          <div class="cs-preview-column">
+            <h3 class="cs-column-title" data-i18n="settings.customstatus.previewTitle"></h3>
+            <div class="cs-preview" id="csPreview"></div>
+          </div>
+        </div>
+        <div id="csSaveButtons"></div>
       </div>
     </div>
 
@@ -189,6 +214,7 @@
     <script src="../libs/browser-polyfill.js"></script>
     <script src="../libs/simplebar.js"></script>
     <script src="../libs/pako.js"></script>
+    <script src="../libs/tom-select.js"></script>
     <script src="../common/utils.js"></script>
     <script src="settings-debug.js"></script>
     <script src="settings.js"></script>

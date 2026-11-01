@@ -207,7 +207,6 @@ async function refreshPopupState(connectionMode) {
         const newBanner = document.createElement("div");
         newBanner.className = "popup-connection-banner";
 
-        // The key lives on the span: applyTranslations() would wipe the close button otherwise.
         const text = document.createElement("span");
         text.className = "popup-connection-banner-text";
         text.textContent = i18n.t(bannerKey);
@@ -223,7 +222,6 @@ async function refreshPopupState(connectionMode) {
         });
 
         newBanner.append(text, closeBtn);
-        // The key must live on the span: applyTranslations() would wipe the close button otherwise.
         text.dataset.i18n = bannerKey;
         document.body.prepend(newBanner);
       } else if (wantBanner && banner) {
@@ -235,6 +233,42 @@ async function refreshPopupState(connectionMode) {
       }
     } catch (refreshError) {
       logWarn("[popup]: Bridge status refresh failed:", refreshError);
+    }
+
+    // Custom status banner
+    try {
+      const { customStatusEnabled = false } = await browser.storage.local.get("customStatusEnabled");
+      const existingCsBanner = document.querySelector(".popup-customstatus-banner");
+      if (customStatusEnabled) {
+        if (!existingCsBanner) {
+          const newCsBanner = document.createElement("div");
+          newCsBanner.className = "popup-customstatus-banner";
+
+          const text = document.createElement("span");
+          text.className = "popup-customstatus-banner-text";
+          text.textContent = i18n.t("popup.customStatusActive");
+          newCsBanner.appendChild(text);
+
+          // Clicking the banner opens the custom status settings page
+          newCsBanner.addEventListener("click", async () => {
+            await openSettingsPage("customstatus");
+          });
+
+          // The custom status banner always sits at the very top of the popup
+          const connectionBanner = document.querySelector(".popup-connection-banner");
+          if (connectionBanner) {
+            document.body.insertBefore(newCsBanner, connectionBanner);
+          } else {
+            document.body.prepend(newCsBanner);
+          }
+        }
+        const connBanner = document.querySelector(".popup-connection-banner");
+        if (connBanner) connBanner.style.marginTop = "10px";
+      } else if (existingCsBanner) {
+        existingCsBanner.remove();
+      }
+    } catch (bannerError) {
+      logWarn("[popup]: Custom status banner refresh failed:", bannerError);
     }
 
     // Library badge dot (new store scripts)
@@ -538,12 +572,15 @@ domLoadedListener = async () => {
 
     // Initialize Filter and Dashboard Buttons
     const btnFilter = document.querySelector("#openFiltersBtn");
+    const btnCustomStatus = document.querySelector("#openCustomStatusBtn");
     const btnDashboard = document.querySelector("#openDashboardBtn");
     const btnStore = document.querySelector("#openLibraryBtn");
     btnFilter.onclick = () => openSettingsPage("filter");
+    btnCustomStatus.onclick = () => openSettingsPage("customstatus");
     btnDashboard.onclick = () => openDashboardPage();
     btnStore.onclick = () => openStorePage();
     document.querySelector("#openFiltersBtn").appendChild(createSVG(svg_paths.filtersIconPaths));
+    document.querySelector("#openCustomStatusBtn").appendChild(createSVG(svg_paths.customStatusIconPaths));
     document.querySelector("#openDashboardBtn").appendChild(createSVG(svg_paths.dashboardIconPaths));
     document.querySelector("#openLibraryBtn").appendChild(createSVG(svg_paths.storeIconPaths));
 

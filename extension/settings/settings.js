@@ -27,6 +27,7 @@ function applySectionFromUrl() {
 
 function startSettings() {
   // General launches
+  applyTsPlugins();
   applyTranslations();
   initMotionPreference();
   initApplyAttrs();
@@ -41,6 +42,7 @@ function startSettings() {
   if (currentSection === "debug") initDebug();
   if (currentSection === "backup") initBackupButtons();
   if (currentSection === "priority") initActivityPriority();
+  if (currentSection === "customstatus") initCustomStatus();
 }
 
 window.addEventListener("load", async () => {

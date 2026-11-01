@@ -368,6 +368,23 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   color: var(--red-color);
 }
 
+.popup-customstatus-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-color-border);
+  border-radius: 8px;
+  background-color: var(--accent-color);
+  color: var(--text-color-btn);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.popup-customstatus-banner-text {
+  flex: 1;
+}
+
 .popup-load-note {
   display: block;
   margin: 6px 10px;

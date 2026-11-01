@@ -23,6 +23,14 @@ const state = {
   mainLoopTimer: null,
   parserReloadDebounce: null,
   activityPriority: [],
+  customStatusEnabled: false,
+  customStatusProfile: null,
+  customStatusLastSend: 0,
+  customStatusSendTimer: null,
+  customStatusSendInterval: null,
+  customStatusClientId: null,
+  customStatusIdentityLocked: false,
+  customStatusCaptureTimer: null,
 };
 
 const getEnabledParsers = () => state.parserList.filter((p) => p.isEnabled);
@@ -30,6 +38,8 @@ const historyData = () => loadHistory();
 
 const historyMutex = createMutex();
 async function scheduleHistoryAdd(tabId, activityData) {
+  // No history entries while the custom status owns the activity
+  if (state.customStatusEnabled) return;
   if (!tabId || !Number.isInteger(tabId)) return;
   if (!activityData?.title || !activityData?.artist) return;
 
@@ -73,7 +83,7 @@ async function scheduleHistoryAdd(tabId, activityData) {
             title: activityData.title,
             artist: activityData.artist,
             source: activityData.source,
-            link: activityData.link || activityData.activityUrl,
+            link: activityData.link || activityData.songUrl,
             mode: activityData.mode,
             date: tracker.startTime || now,
           });
@@ -318,7 +328,10 @@ const clearRpcForTab = async (tabId, reason = "Tab closed") => {
           console.groupEnd();
         }
         logInfo(`[background:clearRpcForTab]: Clearing RPC for tab ${tabId} - reason: ${reason}`, { tabId, hostname: domain, tabUrl: url });
-        if (state.webOnlyMode) {
+        // While the custom status is enabled it owns Discord RPC - tab clears must not reset it
+        if (state.customStatusEnabled) {
+          logInfo(`[background:clearRpcForTab]: Custom status enabled, clear skipped for tab ${tabId}`, { tabId, hostname: domain, tabUrl: url });
+        } else if (state.webOnlyMode) {
           await sendToWebOnlyBridge({ activity: null });
           logInfo(`[background:clearRpcForTab]: Cleared RPC for tab ${tabId} via web-only`, { tabId, hostname: domain, tabUrl: url });
         } else {
@@ -478,8 +491,239 @@ const updateActiveTabMap = async (state, tabs) => {
   });
 };
 
+// ==== Custom Status ====
+// Reads the custom status config from storage into the state cache.
+const loadCustomStatusState = async () => {
+  try {
+    const stored = await browser.storage.local.get(["customStatusEnabled", "customStatusProfiles", "customStatusActiveProfileId"]);
+    const profiles = Array.isArray(stored.customStatusProfiles) ? stored.customStatusProfiles.filter((p) => p?.id) : [];
+    const profile = profiles.find((p) => p.id === stored.customStatusActiveProfileId) || null;
+    state.customStatusEnabled = stored.customStatusEnabled === true && !!profile;
+    state.customStatusProfile = profile;
+  } catch (err) {
+    logError("[background:loadCustomStatusState]: Failed to load custom status state:", err);
+    state.customStatusEnabled = false;
+    state.customStatusProfile = null;
+  }
+};
+
+// Sends (or re-asserts) the custom status activity so it takes over Discord RPC while enabled.
+const sendCustomStatusUpdate = async () => {
+  try {
+    if (!state.customStatusEnabled || !state.customStatusProfile?.data) return false;
+    // Default mode: wait until the client identity is adopted/locked (scheduleCustomStatusSend
+    // resolves it). Web-only mode has no server-side ownership, nothing to wait for.
+    if (!state.webOnlyMode && !state.customStatusIdentityLocked) return false;
+
+    const now = Date.now();
+    // The server rate-limits updates per client every 2000 ms - defer within that window
+    if (now - state.customStatusLastSend < 2500) {
+      if (!state.customStatusSendTimer) {
+        state.customStatusSendTimer = setTimeout(
+          () => {
+            state.customStatusSendTimer = null;
+            sendCustomStatusUpdate().catch(() => {});
+          },
+          2500 - (now - state.customStatusLastSend),
+        );
+      }
+      return true;
+    }
+    // Only send while the RPC target is reachable (Discord connected / Discord Web tab open)
+    const rpcHealth = await handleIsRpcConnected();
+    if (!rpcHealth?.ok) {
+      logInfo("[background:sendCustomStatusUpdate]: RPC not connected, custom status send skipped", { reason: rpcHealth?.reason, webOnlyMode: state.webOnlyMode });
+      return false;
+    }
+    state.customStatusLastSend = now;
+
+    // The custom status rides the NORMAL /update-rpc contract: the profile is encoded into the
+    // same `data` + `data.settings` shape a parser activity uses (see server buildActivity),
+    // so the stock server renders it without any server-side special case.
+    const cs = state.customStatusProfile.data;
+    const name = String(cs.name ?? "").trim() || "Web Presence";
+    const details = String(cs.details ?? "").trim();
+    const statusText = String(cs.state ?? "").trim();
+    const largeImage = String(cs.largeImage ?? "").trim();
+    const csTypeMap = { play: "play", listen: "listen", watch: "watch" };
+    const mode = csTypeMap[cs.type] ?? "listen";
+    const buttons = (Array.isArray(cs.buttons) ? cs.buttons : [])
+      .filter((btn) => btn?.text && String(btn.text).trim() && isValidUrl(btn.link))
+      .slice(0, 2)
+      .map((btn) => ({ text: truncate(String(btn.text).trim(), 32), link: String(btn.link) }));
+
+    // statusDisplayType follows the normal flow: root storage key, defaulting to "1" (STATE)
+    const { statusDisplayType } = await browser.storage.local.get("statusDisplayType");
+
+    const payload = {
+      data: {
+        status: true,
+        title: truncate(details, 128),
+        artist: statusText ? truncate(statusText, 128) : "-1",
+        source: truncate(name, 32),
+        mode,
+        image: "",
+        link: String(cs.link ?? ""),
+        buttons,
+        position: 0,
+        duration: 0,
+        settings: {
+          showArtist: true,
+          showSource: true,
+          showCover: false,
+          customCover: !!largeImage,
+          customCoverUrl: largeImage || "key-default",
+          customPlaceholder: false,
+          showFavIcon: false,
+          showButtons: true,
+          customButton1: false,
+          customButton2: false,
+          showTimeLeft: false,
+          statusDisplayType: statusDisplayType || "1",
+        },
+      },
+      clientId: state.customStatusClientId || "customStatus",
+      timestamp: now,
+    };
+
+    if (state.webOnlyMode) {
+      const rawActivity = buildActivityLocally(payload);
+      const webOnlyActivity = formatForWebConnection(rawActivity);
+      await sendToWebOnlyBridge({ activity: webOnlyActivity });
+    } else {
+      const response = await fetchWithTimeout(
+        `http://localhost:${state.serverPort}/update-rpc`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        CONFIG.requestTimeout,
+      );
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const detail = errorBody && typeof errorBody === "object" && errorBody.error ? String(errorBody.error) : "unknown";
+        throw new Error(`RPC ${response.status}: ${detail}`);
+      }
+      await response.text();
+    }
+
+    return true;
+  } catch (err) {
+    logError("[background:sendCustomStatusUpdate]: Failed to send custom status:", err);
+    return false;
+  }
+};
+
+// Releases the Discord activity claimed by the custom status (toggle off).
+const clearCustomStatus = async () => {
+  // A pending capture window resolves nothing once the custom status is disabled
+  if (state.customStatusCaptureTimer) {
+    clearTimeout(state.customStatusCaptureTimer);
+    state.customStatusCaptureTimer = null;
+  }
+  // Clear with the identity the custom status owns on the server, so the stock single-client
+  // rule accepts the clear immediately and the media tab (same "tab_<id>" id) can resume.
+  const clientId = state.customStatusClientId || "customStatus";
+  try {
+    state.customStatusLastSend = 0;
+    if (state.customStatusSendTimer) {
+      clearTimeout(state.customStatusSendTimer);
+      state.customStatusSendTimer = null;
+    }
+    if (state.webOnlyMode) {
+      await sendToWebOnlyBridge({ activity: null });
+    } else {
+      await fetchWithTimeout(
+        `http://localhost:${state.serverPort}/clear-rpc`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId }),
+        },
+        CONFIG.requestTimeout,
+      );
+    }
+    logInfo("[background:clearCustomStatus]: Custom status activity cleared", { clientId, webOnlyMode: state.webOnlyMode });
+    return true;
+  } catch (err) {
+    logError("[background:clearCustomStatus]: Failed to clear custom status:", err);
+    return false;
+  } finally {
+    // Reset the adopted identity so a later enable re-adopts the then-current owner
+    state.customStatusClientId = null;
+    state.customStatusIdentityLocked = false;
+  }
+};
+
+// The activity provider marks the presence stale unless it is refreshed at least every ~10s.
+// A self-managed interval keeps the re-assert cadence independent of content-script heartbeats.
+const CUSTOM_STATUS_SEND_INTERVAL_MS = 10000;
+const startCustomStatusInterval = () => {
+  if (state.customStatusSendInterval) return;
+  state.customStatusSendInterval = setInterval(() => {
+    if (!state.customStatusEnabled) {
+      stopCustomStatusInterval();
+      return;
+    }
+    sendCustomStatusUpdate();
+  }, CUSTOM_STATUS_SEND_INTERVAL_MS);
+};
+
+const stopCustomStatusInterval = () => {
+  if (state.customStatusSendInterval) {
+    clearInterval(state.customStatusSendInterval);
+    state.customStatusSendInterval = null;
+  }
+};
+
+// Window during which a media tab update can be adopted as the custom status client identity.
+const CUSTOM_STATUS_CAPTURE_WINDOW_MS = 6000;
+
+// The freshest media reporter so far - the best guess for the client the server currently owns.
+const adoptRecentMediaClientId = () => {
+  let recent = null;
+  for (const [tabId, tabData] of state.activeTabMap.entries()) {
+    if (!recent || (tabData.lastUpdated ?? 0) > recent.lastUpdated) recent = { tabId, lastUpdated: tabData.lastUpdated ?? 0 };
+  }
+  return recent ? `tab_${recent.tabId}` : null;
+};
+
+// Sends the custom status, deferring it first when the client identity still needs adoption:
+// enabled while a media client is the fresh owner on the server, a "customStatus" id would be
+// silently ignored for up to 30s (stuck old activity). Adopting the owner's id avoids that.
+const scheduleCustomStatusSend = () => {
+  // Web-only mode has no server-side client ownership - nothing to adopt, send as usual
+  if (state.webOnlyMode) {
+    sendCustomStatusUpdate();
+    return;
+  }
+  if (state.customStatusIdentityLocked) {
+    sendCustomStatusUpdate();
+    return;
+  }
+  if (state.customStatusCaptureTimer) return;
+  state.customStatusCaptureTimer = setTimeout(() => {
+    state.customStatusCaptureTimer = null;
+    if (!state.customStatusEnabled) return;
+    if (!state.customStatusIdentityLocked) {
+      // No media reported within the window (nothing playing): the sentinel identity is
+      // accepted only once the previous owner goes stale, so takeover may idle up to 30s.
+      state.customStatusClientId = adoptRecentMediaClientId() || "customStatus";
+      state.customStatusIdentityLocked = true;
+    }
+    sendCustomStatusUpdate().catch(() => {});
+  }, CUSTOM_STATUS_CAPTURE_WINDOW_MS);
+};
+
 // RPC Update
 const updateRpc = async (data, tabId) => {
+  // While the custom status is enabled it owns Discord RPC entirely - other activities are suppressed
+  if (state.customStatusEnabled) {
+    adoptPendingClientId(tabId);
+    logInfo(`[background:updateRpc]: Custom status enabled, tab update suppressed`, { tabId });
+    return;
+  }
   try {
     await browser.tabs.get(tabId);
   } catch (err) {
@@ -574,8 +818,20 @@ const updateRpc = async (data, tabId) => {
   }
 };
 
+// Adopts the reporting tab's client identity while the custom status has not locked one yet.
+// The server ignores clients other than its current fresh owner, so the custom status must
+// ride the owning media client id ("tab_<id>") to take over without being rejected.
+const adoptPendingClientId = (tabId) => {
+  if (!state.customStatusIdentityLocked && state.activeTabMap.has(tabId)) state.customStatusClientId = `tab_${tabId}`;
+};
+
 // Schedule RPC Update - It is used on the backgroundListeners.js SetupListeners side.
 const scheduleRpcUpdate = (data, tabId) => {
+  if (state.customStatusEnabled) {
+    adoptPendingClientId(tabId);
+    logInfo(`[background:scheduleRpcUpdate]: Custom status enabled, tab update suppressed`, { tabId });
+    return;
+  }
   if (state.pendingClear.has(tabId)) {
     logInfo(`[background:scheduleRpcUpdate]: tab ${tabId} is being cleared, skipping`, { tabId });
     return;
@@ -721,6 +977,12 @@ const keepAliveBackground = () => {
             port.postMessage({ type: "ping" });
           } catch {}
         }
+
+        // Re-assert the custom status periodically so it survives server restarts or presence resets
+        (async () => {
+          await loadCustomStatusState();
+          if (state.customStatusEnabled) await sendCustomStatusUpdate();
+        })().catch((err) => logError("[background:keepAlive]: Custom status re-assert failed:", err));
       }
     });
   }
@@ -757,6 +1019,9 @@ const handleKeepAliveConnect = (port) => {
         if (msg.mainActive === false) {
           logInfo(`[background:keepAlive]: Tab ${tabId} heartbeat reports override inactive`, { tabId });
         }
+        // Piggy-back a custom status re-assert: heartbeats arrive every ~16s, well within the
+        // server's inactivity window, so the custom status stays alive without dedicated timers.
+        if (state.customStatusEnabled) await sendCustomStatusUpdate();
         break;
     }
   };
@@ -1052,6 +1317,28 @@ keepAliveBackground();
 // Setup Iframe Listeners
 setupIframeListeners();
 
+// React to custom status storage changes from the settings page so toggles and
+// profile switches take effect immediately instead of waiting up to ~60s for the
+// next keep-alive cycle. Prevents stuck Discord activity when custom status is
+// disabled while media is playing, and ensures the active profile is broadcast
+// without delay after a save.
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (!("customStatusEnabled" in changes) && !("customStatusProfiles" in changes) && !("customStatusActiveProfileId" in changes)) {
+    return;
+  }
+
+  (async () => {
+    await loadCustomStatusState();
+    if (state.customStatusEnabled) {
+      startCustomStatusInterval();
+      scheduleCustomStatusSend();
+    } else {
+      await clearCustomStatus();
+    }
+  })().catch((err) => logError("[background:customStatusStorage]: Reacting to custom status storage change failed:", err));
+});
+
 // Start
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
@@ -1061,6 +1348,15 @@ const init = async () => {
   if (storageData.webOnlyMode !== undefined) state.webOnlyMode = storageData.webOnlyMode;
   if (storageData.discordWebPort !== undefined) state.discordWebPort = storageData.discordWebPort;
   if (Array.isArray(storageData.activityPriority)) state.activityPriority = storageData.activityPriority;
+
+  // Restore the custom status state and re-assert its activity if enabled
+  await loadCustomStatusState();
+  if (state.customStatusEnabled) {
+    // First send waits for client identity adoption, then re-asserts on the ~10s cadence
+    // the activity provider expects, independent of heartbeats
+    startCustomStatusInterval();
+    scheduleCustomStatusSend();
+  }
 
   setupListeners();
   await debugLogCleanup();

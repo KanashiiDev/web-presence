@@ -4,6 +4,7 @@
 // caller's responsibility (querySelectorDeep and friends).
 
 const SELECTOR_CSS_FIELDS = ["artist", "source", "image", "link", "isPlaying", "buttonText", "buttonLink", "buttonText2", "buttonLink2", "timePassed", "duration"];
+const SELECTOR_URL_FIELDS = ["image", "buttonLink", "buttonLink2"];
 
 const SELECTOR_LABEL_PATTERN = "selector.editor";
 
@@ -15,6 +16,15 @@ function isValidSelectorSyntax(selector) {
   try {
     document.createDocumentFragment().querySelector(selector);
     return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function isValidAbsoluteUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch (_) {
     return false;
   }
@@ -46,7 +56,10 @@ function validateSelectorConfig(selectors, { urlPatterns = [], hasDomain = true,
 
   for (const field of SELECTOR_CSS_FIELDS) {
     const value = typeof selectors?.[field] === "string" ? selectors[field].trim() : selectors?.[field];
-    if (value && !isValidSelectorSyntax(value)) invalidFields.push(labelOf(field));
+    if (!value) continue;
+    const isUrlField = SELECTOR_URL_FIELDS.includes(field);
+    const ok = isUrlField ? isValidSelectorSyntax(value) || isValidAbsoluteUrl(value) : isValidSelectorSyntax(value);
+    if (!ok) invalidFields.push(labelOf(field));
   }
 
   const regexSource = selectors?.regex;

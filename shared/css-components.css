@@ -120,47 +120,6 @@
   color: var(--text-color-muted);
 }
 
-/* Icon Button - compact button for icon actions */
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-color-muted);
-  cursor: pointer;
-  transition:
-    background var(--transition-normal) ease,
-    color var(--transition-normal) ease;
-}
-
-.icon-btn:hover {
-  color: var(--text-color-primary);
-}
-
-.icon-btn-danger {
-  color: var(--red-color);
-}
-
-.icon-btn-danger:hover svg {
-  stroke: var(--text-color-btn);
-}
-
-.icon-btn-danger:hover {
-  background: var(--alert-color);
-  color: var(--text-color-btn);
-}
-
-.icon-btn:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-  opacity: 1;
-}
-
 /* Input - shared text input styles */
 .ts-control,
 input[type="text"]:not(.ts-control),
@@ -358,11 +317,12 @@ button:focus-visible,
 .btn-secondary {
   background: var(--foreground-color-400);
   color: var(--text-color-primary);
-  border: 1px solid var(--border-color);
+  border-color: transparent;
 }
 
 .btn-secondary:hover {
   background: var(--foreground-color-500);
+  border-color: transparent;
 }
 
 .btn-danger {
@@ -393,6 +353,47 @@ button:focus-visible,
 .btn.disabled {
   pointer-events: none;
   opacity: 0.7;
+}
+
+/* Icon Button - compact button for icon actions */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.icon-btn:hover {
+  color: var(--text-color-primary);
+}
+
+.icon-btn-danger {
+  color: var(--red-color);
+}
+
+.icon-btn-danger:hover svg {
+  stroke: var(--text-color-btn);
+}
+
+.icon-btn-danger:hover {
+  background: var(--alert-color);
+  color: var(--text-color-btn);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  opacity: 1;
 }
 
 /* List Item - card-style container for history entries and similar */
