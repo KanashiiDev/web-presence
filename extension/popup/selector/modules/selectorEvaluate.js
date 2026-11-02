@@ -129,6 +129,15 @@ function getSelectorPenalty(selector, parts, testAttrFlag) {
   return penalty;
 }
 
+function isFieldResolvable(field, selector) {
+  if (field === "image") return Boolean(getImage(selector));
+  if (field === "link" || field === "buttonLink" || field === "buttonLink2") {
+    const el = querySelectorDeep(selector);
+    return Boolean(el?.href || el?.getAttribute("href"));
+  }
+  return true;
+}
+
 // Selector Filtering and Sorting
 function normalizeSelectorStructure(selector) {
   return (
@@ -245,7 +254,7 @@ function filterAndSortSelectors(selectors, targetElement, maxResults = SELECTOR_
   const evaluated = selectors
     .map((selector) => {
       const result = { selector, ...evaluateSelector(selector, targetElement) };
-      if (field === "image" && (result.isUnique || result.isFirstMatchFallback) && !getImage(selector)) result.score = 0;
+      if ((result.isUnique || result.isFirstMatchFallback) && !isFieldResolvable(field, selector)) result.score = 0;
       return result;
     })
     .filter((item) => (item.isUnique || item.isFirstMatchFallback) && item.score > SELECTOR_CONSTANTS.SCORE_THRESHOLDS.MIN_SELECTOR_SCORE)
