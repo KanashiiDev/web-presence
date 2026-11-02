@@ -37,14 +37,14 @@
 }:
 
 let
-  version = "3.3.0";
+  version = "3.4.0";
   # Source URLs & hashes 
   # Update these when releasing a new version.
   # Get hash with: nix-prefetch-url <url>
   sources = {
     x86_64-linux = fetchurl {
       url = "https://github.com/KanashiiDev/web-presence/releases/download/${version}/web-presence-${version}-x86_64.AppImage";
-      sha256 = "sha256-sAi3D425wOKzyLKs6bEzo//JXYLZ7OaZoKyIzjTDPyk=";
+      sha256 = "sha256-KThia0mIxFb1KJOU2tQ+yAyZ3H3Hgwy4ZRJk3tQJIO4=";
     };
   };
 
