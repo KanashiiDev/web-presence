@@ -946,7 +946,7 @@ function handleElementClick(e, field, shadowDoc, cleanup) {
       showStatusMsg(t("selector.warn.noImage"), 1, 1, shadowDoc);
       return;
     }
-  } else if (field === "link") {
+  } else if (field === "link" || field === "buttonLink" || field === "buttonLink2") {
     targetEl = findLinkElement(el);
     if (!targetEl) {
       showStatusMsg(t("selector.warn.noLink"), 1, 1, shadowDoc);
