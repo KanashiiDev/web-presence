@@ -39,6 +39,7 @@ async function loadFavIcons(icons, concurrency = 3, delayMs = 150, slowAfter = 8
         }
       };
 
+      icon.loading = "eager";
       icon.src = proxyUrl;
       if (icon.complete && icon.naturalWidth !== 0) {
         finish();
