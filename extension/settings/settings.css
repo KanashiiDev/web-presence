@@ -22,8 +22,15 @@
 }
 
 html,
+body:not([active-section="filter"]) {
+  width: 100%;
+  height: 100vh;
+}
+
 body {
-  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 body {
@@ -36,7 +43,21 @@ body {
   min-height: 100vh;
 }
 
+body > .container {
+  min-height: 500px;
+  min-width: 500px;
+  display: flex;
+  flex-direction: column;
+}
+
+.container > .content.card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .fg-blur {
+  .container,
   .header,
   .content.backup,
   .filter-actions-header,
@@ -948,14 +969,35 @@ button.history-modal-close {
   color: var(--yellow-color);
 }
 
+.debug-section > .debug-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-panel > .debug-toolbar,
+.debug-panel > #summaryErrorList,
+.debug-panel > .debug-stats {
+  flex-shrink: 0;
+}
+
+.debug-log-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
 .debug-log-container {
   overflow-y: auto;
-  max-height: 560px;
   background: var(--foreground-color-100);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   border-top: none;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: var(--font-xs);
+  min-width: 0;
+  height: 100%;
 }
 
 .debug-empty {

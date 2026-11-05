@@ -133,6 +133,17 @@ function _buildRow(entry, lineNum) {
 
 const _colMinWidth = { time: 60, level: 24, source: 40, meta: 60 };
 
+const _maxColWidth = (col, container) => {
+  const computed = getComputedStyle(container);
+  let others = 0;
+  for (const c of Object.keys(_colMinWidth)) {
+    if (c === col) continue;
+    const raw = computed.getPropertyValue(`--wp-log-col-${c}`).trim();
+    others += raw ? parseFloat(raw) : _colMinWidth[c];
+  }
+  return Math.max(_colMinWidth[col], container.clientWidth - others - 120);
+};
+
 async function _initColResize(listId) {
   const list = document.getElementById(listId);
   if (!list || list.dataset.wpColResize === "1") return;
@@ -173,7 +184,7 @@ async function _initColResize(listId) {
     const computed = getComputedStyle(container);
     const raw = computed.getPropertyValue(`--wp-log-col-${col}`).trim();
     const startWidth = raw ? parseFloat(raw) : _colMinWidth[col];
-    return { col, startX: null, startWidth, container };
+    return { col, startX: null, startWidth, container, maxWidth: _maxColWidth(col, container) };
   };
 
   list.addEventListener("mousedown", (e) => {
@@ -191,6 +202,7 @@ async function _initColResize(listId) {
     if (!active || active.startX === null) return;
     let width = active.startWidth + (e.clientX - active.startX);
     width = Math.max(_colMinWidth[active.col], width);
+    width = Math.min(width, active.maxWidth);
     active.pendingWidth = width;
     if (!rafId) {
       rafId = requestAnimationFrame(() => {
