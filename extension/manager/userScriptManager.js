@@ -3,20 +3,22 @@
 class UserScriptUI {
   constructor() {
     this.editingId = null;
-    this.activeTab = "my"; // "my" | "repo"
+    this.editingScript = null;
+    this.activeTab = "my"; // "my" | "repo" | "edited"
     this.searchQuery = "";
     this.init();
   }
 
   async fetchScriptById(id) {
+    const paramsFor = (tab) => (tab === "repo" ? { showOnlyStore: true } : tab === "edited" ? { showStoreParsers: true } : {});
+
     // First check the list of the active tab
-    const activeParams = this.activeTab === "repo" ? { showOnlyStore: true } : {};
-    let resp = await sendAction("listUserScripts", activeParams);
+    let resp = await sendAction("listUserScripts", paramsFor(this.activeTab));
     let found = (resp?.list || []).find((x) => x.id === id);
 
     // If not found, search in the other tab
     if (!found) {
-      const otherParams = this.activeTab === "repo" ? {} : { showOnlyStore: true };
+      const otherParams = paramsFor(this.activeTab === "repo" ? "my" : "repo");
       resp = await sendAction("listUserScripts", otherParams);
       found = (resp?.list || []).find((x) => x.id === id);
     }
@@ -75,6 +77,7 @@ class UserScriptUI {
     // Header Tab
     document.getElementById("tabMyScripts")?.addEventListener("click", () => this.switchTab("my"));
     document.getElementById("tabRepoScripts")?.addEventListener("click", () => this.switchTab("repo"));
+    document.getElementById("tabEditedScripts")?.addEventListener("click", () => this.switchTab("edited"));
 
     // List events
     document.getElementById("scriptList").addEventListener("click", (e) => this.handleListClick(e));
@@ -362,7 +365,7 @@ class UserScriptUI {
   }
 
   async refreshList() {
-    const params = this.activeTab === "repo" ? { showOnlyStore: true } : {};
+    const params = this.activeTab === "repo" ? { showOnlyStore: true } : this.activeTab === "edited" ? { showStoreParsers: true } : {};
     const listResp = await sendAction("listUserScripts", params);
 
     if (!listResp || !listResp.ok) {
@@ -370,7 +373,9 @@ class UserScriptUI {
       return;
     }
 
-    const filteredList = this.filterList(listResp.list || []);
+    let list = listResp.list || [];
+    if (this.activeTab === "edited") list = list.filter((script) => script._localEdited);
+    const filteredList = this.filterList(list);
     this.renderList(filteredList);
     await this.restoreContext();
   }
@@ -400,7 +405,12 @@ class UserScriptUI {
       if (this.searchQuery) {
         emptyMsg.textContent = i18n.t("userscript.list.noResults");
       } else {
-        emptyMsg.textContent = this.activeTab === "repo" ? i18n.t("userscript.list.empty.repo") : i18n.t("userscript.list.empty.my");
+        emptyMsg.textContent =
+          this.activeTab === "repo"
+            ? i18n.t("userscript.list.empty.repo")
+            : this.activeTab === "edited"
+              ? i18n.t("userscript.list.empty.edited")
+              : i18n.t("userscript.list.empty.my");
       }
       ul.appendChild(emptyMsg);
       return;
@@ -466,6 +476,14 @@ class UserScriptUI {
       status.textContent = inactiveStatus || i18n.t("userscript.status.active");
 
       header.append(title, status);
+
+      if (script._localEdited) {
+        const editedBadge = document.createElement("span");
+        editedBadge.className = "badge badge-sm badge-rounded status-edited";
+        editedBadge.title = i18n.t("userscript.status.edited.title");
+        editedBadge.textContent = i18n.t("userscript.status.edited");
+        header.append(editedBadge);
+      }
 
       // script-details
       const details = document.createElement("div");
@@ -567,6 +585,7 @@ class UserScriptUI {
 
   async showEditor(script = null, insertAfterEl = null) {
     this.editingId = script?.id || null;
+    this.editingScript = script || null;
     const editor = document.getElementById("editor");
     const listContainer = document.getElementById("scriptList");
     if (!editor || !listContainer) return;
@@ -696,6 +715,7 @@ class UserScriptUI {
     editor.setAttribute("current", "0");
     document.getElementById("editorMsg").classList = "";
     this.editingId = null;
+    this.editingScript = null;
     const params = new URLSearchParams(window.location.search);
     const target = params.get("target");
     if (btn && target) {
@@ -823,6 +843,21 @@ class UserScriptUI {
       debug: document.getElementById("inDebug").checked,
       settings: extractSettingsFromCode(this.codeEditor.getValue()),
     };
+
+    // Preserve store (repo) tracking fields of the script being edited so it
+    // stays recognized as a repo script (list filtering, locked authors, sync)
+    const originalScript = this.editingScript;
+    if (originalScript?.storeFilePath) {
+      script.source = originalScript.source ?? "store";
+      script.storeSource = originalScript.storeSource;
+      script.storeRepoId = originalScript.storeRepoId;
+      script.storeRepoUrl = originalScript.storeRepoUrl;
+      script.storeScriptId = originalScript.storeScriptId;
+      script.storeFilePath = originalScript.storeFilePath;
+      // Persisted marker that the user edited this repo script locally; stripped
+      // on GitHub contribute (githubContributeService) and lost on repo updates
+      script._localEdited = true;
+    }
 
     // Validation
     if (!script.title) {
@@ -1520,9 +1555,10 @@ ${codeIndented}
 
   // Export userScript
   async handleExport(options = { type: "all", scriptId: null }) {
-    const params = this.activeTab === "repo" ? { showOnlyStore: true } : {};
+    const params = this.activeTab === "repo" ? { showOnlyStore: true } : this.activeTab === "edited" ? { showStoreParsers: true } : {};
     const resp = await sendAction("listUserScripts", params);
     let scripts = resp?.list || [];
+    if (this.activeTab === "edited") scripts = scripts.filter((script) => script._localEdited);
 
     if (!scripts.length) {
       showAlert(i18n.t("userscript.export.warn.noScripts"), "", "warn");

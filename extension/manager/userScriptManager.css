@@ -107,14 +107,14 @@ ul {
 .script-tabs {
   display: flex;
   border-bottom: 1px solid var(--border-color);
-  margin-top: -20px;
+  margin-top: 0;
   background: var(--foreground-color-100);
 }
 
 .script-tab {
   padding: 8px 16px;
   background: transparent;
-  border: none;
+  border-right: 1px solid var(--border-color);
   color: var(--text-color-secondary);
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -194,6 +194,10 @@ ul {
   color: var(--red-color);
 }
 
+.status-edited {
+  color: var(--yellow-color);
+}
+
 .script-details,
 .parser-domain {
   margin-bottom: 2px;
@@ -225,7 +229,7 @@ ul {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 20px;
-  margin: 20px 0;
+  margin-bottom: 20px;
   box-shadow: 0 4px 12px var(--shadow-color);
 }
 

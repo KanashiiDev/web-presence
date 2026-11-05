@@ -498,6 +498,8 @@ class GitHubContributeService {
     // SPAM PROTECTION: Has the same version + same content already been sent?
     // First process the authors and generate the updated fileContent
     const contributeScript = JSON.parse(JSON.stringify(script));
+    // Internal UI markers must not leak into the upstream contribution payload
+    delete contributeScript._localEdited;
     const { authors, authorsLinks } = this.processAuthorsAndLinks(contributeScript, upstreamInfo, forkOwner);
     contributeScript.authors = authors;
     contributeScript.authorsLinks = authorsLinks;
