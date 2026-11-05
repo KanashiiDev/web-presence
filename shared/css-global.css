@@ -12,9 +12,6 @@
   opacity: 1;
   min-height: 30px;
   min-width: 5px;
-  -webkit-transition:
-    opacity var(--transition-normal) ease,
-    background-color var(--transition-normal) ease !important;
   transition:
     opacity var(--transition-normal) ease,
     background-color var(--transition-normal) ease !important;
@@ -34,7 +31,6 @@
   min-height: 10px;
   min-width: 5px;
   border-radius: var(--radius-sm);
-  -webkit-animation: var(--transition-reduced) ease-out;
   animation: fadeInUp var(--transition-reduced) ease-out;
 }
 
@@ -53,7 +49,6 @@
 }
 
 .simplebar-track.smooth .simplebar-scrollbar.simplebar-visible {
-  -webkit-transition: var(--transition-reduced) ease-out;
   transition: var(--transition-reduced) ease-out;
 }
 
@@ -76,14 +71,11 @@
   background-position: center;
   background-position-x: var(--backgroundPositionX);
   background-repeat: no-repeat;
-  -webkit-filter: var(--filter);
   filter: var(--filter);
 }
 
 /* Switch */
 .switch-label {
-  -webkit-box-flex: 0 !important;
-  -ms-flex: 0 !important;
   flex: 0 !important;
   cursor: pointer;
   display: block;
@@ -100,7 +92,6 @@
   height: 20px;
   background: var(--foreground-color-500);
   border-radius: 20px;
-  -webkit-transition: var(--transition-normal) ease;
   transition: var(--transition-normal) ease;
   padding: 0;
 }
@@ -116,12 +107,9 @@
   height: 13px;
   left: 4px;
   top: 50%;
-  -webkit-transform: translateY(-50%);
-  -ms-transform: translateY(-50%);
   transform: translateY(-50%);
   background: var(--switch-toggle-color);
   border-radius: 50%;
-  -webkit-transition: var(--transition-normal) ease;
   transition: var(--transition-normal) ease;
 }
 
@@ -130,8 +118,6 @@
 }
 
 .switch-label input:checked + .slider::before {
-  -webkit-transform: translateX(13px) translateY(-50%);
-  -ms-transform: translateX(13px) translateY(-50%);
   transform: translateX(13px) translateY(-50%);
 }
 
@@ -141,7 +127,6 @@
   border-radius: 50% !important;
   width: 40px;
   height: 40px;
-  -webkit-animation: spin 1s linear infinite;
   animation: spin 1s linear infinite;
   margin: 40px auto;
 }
@@ -150,9 +135,7 @@
 svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   display: block;
   place-self: center;
-  transition:
-    transform var(--transition-reduced) ease,
-    -webkit-transform var(--transition-reduced) ease;
+  transition: transform var(--transition-reduced) ease;
 }
 
 .popup-message {
@@ -166,9 +149,7 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   width: calc(100% - 20px);
   top: -85px;
   z-index: 22222;
-  -webkit-box-shadow: 0 0 8px var(--shadow-color);
   box-shadow: 0 0 8px var(--shadow-color);
-  -webkit-animation: fadeInUp var(--transition-reduced) ease-out;
   animation: fadeInUp var(--transition-reduced) ease-out;
   padding: 6px;
 }
@@ -178,7 +159,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 }
 
 .popup-message.hide {
-  -webkit-animation: fadeOutDown var(--transition-reduced) ease-out both;
   animation: fadeOutDown var(--transition-reduced) ease-out both;
 }
 
@@ -197,7 +177,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   width: calc(100% + 13px);
   height: 3px;
   background: var(--text-color-muted);
-  -webkit-animation: loadingBar 3s ease-in-out;
   animation: loadingBar 3s ease-in-out;
   display: none;
 }
@@ -418,7 +397,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   top: 0;
   left: 0;
   font-size: 20px;
-  -ms-flex-line-pack: center;
   align-content: center;
   text-align: center;
   z-index: 10;
@@ -431,7 +409,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   padding: 20px;
   margin: 20px;
   border-radius: 10px;
-  -webkit-box-shadow: 0 4px 12px var(--shadow-color);
   box-shadow: 0 4px 12px var(--shadow-color);
   display: inline-block;
   position: relative;
@@ -451,7 +428,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   background: var(--foreground-color-200);
   padding: 20px;
   border-radius: var(--radius-md);
-  -webkit-box-shadow: 0 4px 8px var(--shadow-color);
   box-shadow: 0 4px 8px var(--shadow-color);
   z-index: 1000;
 }
@@ -462,8 +438,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 
 .setup-dialog-buttons {
   gap: 5px;
-  display: -webkit-inline-box;
-  display: -ms-inline-flexbox;
   display: inline-flex;
 }
 
@@ -486,7 +460,6 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   padding: 10px 15px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  -webkit-transition: background-color var(--transition-normal) ease;
   transition: background-color var(--transition-normal) ease;
 }
 
@@ -558,7 +531,6 @@ html.setup-dialog-open #mainFooterButtons {
   font-weight: 500;
   text-align: center;
   font-size: var(--font-lg);
-  -webkit-box-shadow: 0 1px 5px var(--shadow-color);
   box-shadow: 0 1px 5px var(--shadow-color);
 }
 
@@ -585,7 +557,6 @@ html.setup-dialog-open #mainFooterButtons {
   background: var(--foreground-color-300);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  -webkit-box-shadow: 0 4px 6px var(--shadow-color);
   box-shadow: 0 4px 6px var(--shadow-color);
   min-width: 120px;
   z-index: 1000;
@@ -603,7 +574,6 @@ html.setup-dialog-open #mainFooterButtons {
   padding: 6px 10px;
   text-decoration: none;
   color: var(--text-color-primary);
-  -webkit-transition: background-color var(--transition-normal) ease;
   transition: background-color var(--transition-normal) ease;
   white-space: nowrap;
   text-align: start;
@@ -623,7 +593,6 @@ html.setup-dialog-open #mainFooterButtons {
   color: var(--text-color-primary);
   padding: 10px;
   border-radius: var(--radius-default);
-  -webkit-box-shadow: 0 0 4px var(--text-color-muted);
   box-shadow: 0 0 4px var(--text-color-muted);
 }
 
@@ -637,8 +606,6 @@ html.setup-dialog-open #mainFooterButtons {
 
 .fading {
   opacity: 0.3 !important;
-  -webkit-transform: scale(0.95);
-  -ms-transform: scale(0.95);
   transform: scale(0.95);
   pointer-events: none;
 }
@@ -653,16 +620,12 @@ html.setup-dialog-open #mainFooterButtons {
 }
 
 .tutorial-actions {
-  display: -webkit-box;
-  display: -ms-flexbox;
   display: flex;
   gap: 6px;
 }
 
 .tutorial-button.next.finish,
 .tutorial-button.next {
-  -webkit-box-flex: 1;
-  -ms-flex: 1;
   flex: 1;
 }
 
@@ -896,131 +859,54 @@ html.setup-dialog-open #mainFooterButtons {
   padding: 7px 10px !important;
 }
 
-@-webkit-keyframes loadingBar {
-  0% {
-    -webkit-transform: scaleX(0);
-    transform: scaleX(0);
-    -webkit-transform-origin: left;
-    transform-origin: left;
-  }
-  100% {
-    -webkit-transform: scaleX(1);
-    transform: scaleX(1);
-    -webkit-transform-origin: left;
-    transform-origin: left;
-  }
-}
-
 @keyframes loadingBar {
   0% {
-    -webkit-transform: scaleX(0);
     transform: scaleX(0);
-    -webkit-transform-origin: left;
     transform-origin: left;
   }
   100% {
-    -webkit-transform: scaleX(1);
     transform: scaleX(1);
-    -webkit-transform-origin: left;
     transform-origin: left;
-  }
-}
-
-@-webkit-keyframes spin {
-  0% {
-    -webkit-transform: rotate(0deg);
-    transform: rotate(0deg);
-  }
-  100% {
-    -webkit-transform: rotate(360deg);
-    transform: rotate(360deg);
   }
 }
 
 @keyframes spin {
   0% {
-    -webkit-transform: rotate(0deg);
     transform: rotate(0deg);
   }
   100% {
-    -webkit-transform: rotate(360deg);
     transform: rotate(360deg);
-  }
-}
-
-@-webkit-keyframes fadeInUp {
-  from {
-    opacity: 0;
-    -webkit-transform: translateY(10px);
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    -webkit-transform: translateY(0);
-    transform: translateY(0);
   }
 }
 
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    -webkit-transform: translateY(10px);
     transform: translateY(10px);
   }
   to {
     opacity: 1;
-    -webkit-transform: translateY(0);
     transform: translateY(0);
-  }
-}
-
-@-webkit-keyframes fadeOutDown {
-  from {
-    opacity: 1;
-    -webkit-transform: translateY(0);
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    -webkit-transform: translateY(10px);
-    transform: translateY(10px);
   }
 }
 
 @keyframes fadeOutDown {
   from {
     opacity: 1;
-    -webkit-transform: translateY(0);
     transform: translateY(0);
   }
   to {
     opacity: 0;
-    -webkit-transform: translateY(10px);
     transform: translateY(10px);
-  }
-}
-
-@-webkit-keyframes popIn {
-  from {
-    -webkit-transform: scale(0.9);
-    transform: scale(0.9);
-    opacity: 0;
-  }
-  to {
-    -webkit-transform: scale(1);
-    transform: scale(1);
-    opacity: 1;
   }
 }
 
 @keyframes popIn {
   from {
-    -webkit-transform: scale(0.9);
     transform: scale(0.9);
     opacity: 0;
   }
   to {
-    -webkit-transform: scale(1);
     transform: scale(1);
     opacity: 1;
   }

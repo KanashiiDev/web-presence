@@ -24,8 +24,9 @@ const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, "package.json"
   // 1. Clean dist folder
   fs.emptyDirSync(DIST_DIR);
 
-  // 2. Autoprefixer — mutates CSS files in extensionDir
+  // 2. Autoprefixer - adds vendor prefixes to CSS files in both directories
   await prefixCssFiles(EXTENSION_DIR);
+  await prefixCssFiles(SHARED_DIR);
 
   // 3. Copy extension files to dist (excluding manifests, parsers, matches, codemirror addons)
   copyExtensionFiles(EXTENSION_DIR, DIST_DIR);
