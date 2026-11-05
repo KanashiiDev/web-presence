@@ -21,6 +21,7 @@ function applySectionFromUrl() {
   document.querySelector(".header h3").textContent = fullTitle;
   document.title = fullTitle;
   document.querySelector(".header-desc").textContent = i18n.t(`settings.${sectionKey}.desc`);
+  document.body.setAttribute("active-section", sectionKey);
 
   return sectionKey;
 }
@@ -43,6 +44,7 @@ function startSettings() {
   if (currentSection === "backup") initBackupButtons();
   if (currentSection === "priority") initActivityPriority();
   if (currentSection === "customstatus") initCustomStatus();
+  if (currentSection === "lastfm") initLastFm();
 }
 
 window.addEventListener("load", async () => {

@@ -4,9 +4,6 @@
 
 /* Utility - prevent text selection */
 .no-select {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
   user-select: none;
 }
 
@@ -163,8 +160,6 @@ input[type="text"]::placeholder,
 }
 
 input[type="range"] {
-  -webkit-appearance: none !important;
-  -moz-appearance: none !important;
   appearance: none !important;
   width: 100% !important;
   cursor: pointer !important;
@@ -201,7 +196,6 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--text-color-primary);
   border: 1px solid var(--text-color-secondary);
-  -webkit-box-shadow: -407px 0 0 400px var(--foreground-color-600);
   box-shadow: -407px 0 0 400px var(--foreground-color-600);
 }
 
@@ -254,11 +248,9 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   color: var(--text-color-primary);
   background: var(--foreground-color-300);
-  -webkit-transition: background var(--transition-normal) ease;
-  transition: background var(--transition-normal) ease;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
+  transition:
+    border-color var(--transition-normal) ease,
+    background var(--transition-normal) ease;
   user-select: none;
   text-decoration: none;
   text-align: center;
@@ -291,7 +283,6 @@ button:focus-visible,
   border-radius: var(--radius-md);
   background: var(--foreground-color-200);
   box-shadow: 0 1px 3px var(--shadow-color);
-  -webkit-transition: background var(--transition-normal) ease;
   transition: background var(--transition-normal) ease;
 }
 
@@ -455,7 +446,6 @@ button:focus-visible,
 
 /* Page Header - top bar with title, description, and action buttons */
 .header {
-  margin-bottom: 20px;
   padding: 10px;
   color: var(--text-color-primary);
   background: var(--foreground-color-100);
@@ -590,8 +580,10 @@ button:focus-visible,
   border-radius: var(--radius-lg);
   padding: 20px 30px;
   max-width: 600px;
+  min-width: 500px;
   width: 90%;
   max-height: 90vh;
+  overflow-x: hidden;
   overflow-y: auto;
   box-shadow: 0 8px 24px var(--shadow-color);
   animation: popIn var(--transition-reduced) ease;
@@ -653,6 +645,18 @@ button:focus-visible,
 
 .modal .button-group .active:hover {
   background: var(--accent-color);
+}
+
+.modal .ts-control,
+.modal input[type="text"]:not(.ts-control),
+.modal .input:not(.ts-control) {
+  background: var(--foreground-color-400);
+}
+
+.modal .ts-control:focus,
+.modal input[type="text"]:not(.ts-control):focus,
+.modal .input:not(.ts-control):focus {
+  background: var(--foreground-color-500);
 }
 
 /* History filter menu - shared between popup and settings */

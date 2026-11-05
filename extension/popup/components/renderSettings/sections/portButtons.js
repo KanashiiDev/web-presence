@@ -252,6 +252,7 @@ async function buildPortButtons(container) {
   const btnFactory = createBtn(i18n.t("settings.factory"), "factoryReset");
   const btnBackup = createBtn(i18n.t("settings.backup.title"), "backupSettings");
   const btnPriority = createBtn(i18n.t("settings.priority.title"), "activityPriority");
+  const btnLastFm = createBtn(i18n.t("settings.lastfm.title"), "lastfmSettings");
 
   const wikiWrap = document.createElement("div");
   wikiWrap.className = "wiki-wrap";
@@ -266,6 +267,8 @@ async function buildPortButtons(container) {
   btnBackup.onclick = () => openSettingsPage("backup");
 
   btnPriority.onclick = () => openSettingsPage("priority");
+
+  btnLastFm.onclick = () => openSettingsPage("lastfm");
 
   btnParserManager.onclick = async () => {
     openselectorParserManager();
@@ -323,6 +326,6 @@ async function buildPortButtons(container) {
     }
   };
 
-  buttonsWrapper.append(btnPriority, btnParserManager, btnBackup, wikiWrap, debugWrap, btnFactory);
+  buttonsWrapper.append(btnPriority, btnLastFm, btnParserManager, btnBackup, wikiWrap, debugWrap, btnFactory);
   container.append(buttonsWrapper);
 }

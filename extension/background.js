@@ -31,6 +31,7 @@ const state = {
   customStatusClientId: null,
   customStatusIdentityLocked: false,
   customStatusCaptureTimer: null,
+  lastFm: { enabled: false, apiKey: "", apiSecret: "", sessionKey: "", sources: [] },
 };
 
 const getEnabledParsers = () => state.parserList.filter((p) => p.isEnabled);
@@ -86,6 +87,15 @@ async function scheduleHistoryAdd(tabId, activityData) {
             link: activityData.link || activityData.songUrl,
             mode: activityData.mode,
             date: tracker.startTime || now,
+          });
+
+          // Scrobble the newly committed track to Last.fm
+          lastfmScrobbleTrack({
+            title: activityData.title,
+            artist: activityData.artist,
+            source: activityData.source,
+            date: tracker.startTime || now,
+            mode: activityData.mode,
           });
         } else {
           if (!saveHistory) {
@@ -1317,28 +1327,6 @@ keepAliveBackground();
 // Setup Iframe Listeners
 setupIframeListeners();
 
-// React to custom status storage changes from the settings page so toggles and
-// profile switches take effect immediately instead of waiting up to ~60s for the
-// next keep-alive cycle. Prevents stuck Discord activity when custom status is
-// disabled while media is playing, and ensures the active profile is broadcast
-// without delay after a save.
-browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local") return;
-  if (!("customStatusEnabled" in changes) && !("customStatusProfiles" in changes) && !("customStatusActiveProfileId" in changes)) {
-    return;
-  }
-
-  (async () => {
-    await loadCustomStatusState();
-    if (state.customStatusEnabled) {
-      startCustomStatusInterval();
-      scheduleCustomStatusSend();
-    } else {
-      await clearCustomStatus();
-    }
-  })().catch((err) => logError("[background:customStatusStorage]: Reacting to custom status storage change failed:", err));
-});
-
 // Start
 const init = async () => {
   logInfo("[background:init]: Extension initializing");
@@ -1357,6 +1345,9 @@ const init = async () => {
     startCustomStatusInterval();
     scheduleCustomStatusSend();
   }
+
+  // Restore the Last.fm scrobbling config
+  await loadLastFmState();
 
   setupListeners();
   await debugLogCleanup();

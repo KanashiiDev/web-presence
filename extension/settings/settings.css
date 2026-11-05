@@ -4,6 +4,8 @@
   padding: 0;
 }
 
+#lfSourceList,
+#lfAllowList,
 #prioritySourceList,
 #priorityList,
 #historyPanel,
@@ -14,6 +16,8 @@
   -ms-overflow-style: none;
 }
 
+#lfSourceList::-webkit-scrollbar,
+#lfAllowList::-webkit-scrollbar,
 #prioritySourceList::-webkit-scrollbar,
 #priorityList::-webkit-scrollbar,
 #historyPanel::-webkit-scrollbar,
@@ -1326,7 +1330,6 @@ button.history-modal-close {
 .priority-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1613,4 +1616,123 @@ button.history-modal-close {
   display: flex;
   gap: 8px;
   flex-direction: column;
+}
+
+/* Last.fm section */
+.lf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lf-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lf-toggle-text {
+  color: var(--text-color-primary);
+  min-width: 120px;
+}
+
+.lf-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  color: var(--text-color-secondary);
+}
+
+.lf-status-dot {
+  height: 8px;
+  width: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-color-muted);
+}
+
+.lf-status-dot.lf-status-ok {
+  background: var(--green-color);
+}
+
+.lf-status-text {
+  color: var(--text-color-secondary);
+}
+
+.lf-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lf-settings-btn {
+  margin-left: auto;
+}
+
+.lf-hint {
+  color: var(--text-color-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.lf-link {
+  color: var(--link-color, var(--text-color-primary));
+  text-decoration: underline;
+}
+
+.lf-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+}
+
+.lf-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lf-field-label {
+  font-weight: 600;
+  min-width: 100px;
+  color: var(--text-color-secondary);
+  font-size: var(--font-md);
+}
+
+.lf-session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lf-keys-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lf-hint.api-hint {
+  display: grid;
+  margin-bottom: 10px;
+}
+
+.lf-key-inputs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lf-dialog > .close-btn {
+  width: 100%;
+}
+
+.highlight-auth-button {
+  border-color: var(--yellow-color);
+  background: var(--foreground-color-500);
 }

@@ -112,6 +112,44 @@
       </div>
     </div>
 
+    <!-- Last.fm Section -->
+    <div class="container" data-section="lastfm">
+      <div class="content card card-md lastfm lf-card">
+        <div class="lf-toggle-row">
+          <span class="lf-toggle-text" data-i18n="settings.lastfm.enabled"></span>
+          <label class="switch-label no-select" id="lfEnabledToggle">
+            <input type="checkbox" id="lfEnabledInput" />
+            <span class="slider"></span>
+          </label>
+          <button type="button" class="btn lf-settings-btn" id="lfSettingsBtn">
+            <span class="lf-btn-icon" id="lfSettingsIcon"></span>
+            <span data-i18n="settings.lastfm.settingsBtn"></span>
+          </button>
+        </div>
+        <div class="lf-status-row" id="lfStatusRow">
+          <span class="lf-status-dot"></span>
+          <span class="lf-status-text"></span>
+        </div>
+        <div class="priority-columns">
+          <div class="priority-column">
+            <h3 class="priority-column-title" data-i18n="settings.lastfm.sitesTitle"></h3>
+            <div id="lfSearchContainer"></div>
+            <div class="priority-list" id="lfSourceList">
+              <div class="empty-state" data-i18n="settings.lastfm.sourcesEmpty"></div>
+            </div>
+          </div>
+          <div class="priority-column">
+            <div class="lf-source-header">
+              <h3 class="priority-column-title" data-i18n="settings.lastfm.sourcesTitle"></h3>
+            </div>
+            <div class="priority-list dropzone" id="lfAllowList">
+              <div class="empty-state" data-i18n="settings.lastfm.sourcesDropzone"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Debug Logs Section -->
     <div class="container" data-section="debug">
       <div class="content card card-md debug-section">

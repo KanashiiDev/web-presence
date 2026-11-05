@@ -1907,6 +1907,15 @@ const setupListeners = () => {
           case "store_removeScript":
             result = await handleStoreRemoveScript(req);
             break;
+          case "lastfm_authStart":
+            result = await handleLastFmAuthStart();
+            break;
+          case "lastfm_authPoll":
+            result = await handleLastFmAuthPoll();
+            break;
+          case "lastfm_authCancel":
+            result = handleLastFmAuthCancel();
+            break;
           case "debug_log": {
             if (typeof debugLog === "function") {
               const { level = "info", source = "unknown", args = [], tabId, tabUrl, hostname, parserId } = req;
@@ -2079,26 +2088,25 @@ const setupListeners = () => {
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
 
-    for (const [key, change] of Object.entries(changes)) {
-      // Keep the custom status state in sync; re-assert or release the custom activity on changes
-      if (key === "customStatusEnabled" || key === "customStatusProfiles" || key === "customStatusActiveProfileId") {
-        (async () => {
-          const wasEnabled = state.customStatusEnabled;
-          await loadCustomStatusState();
-          if (state.customStatusEnabled) {
-            // Ensure the ~10s re-assert interval is running while the custom status is enabled;
-            // the send itself defers briefly while the fresh media-owner identity gets adopted
-            startCustomStatusInterval();
-            scheduleCustomStatusSend();
-          } else {
-            stopCustomStatusInterval();
-            if (wasEnabled) {
-              await clearCustomStatus();
-            }
-          }
-        })().catch((err) => logError("[background:customStatusChange]:", err));
-      }
+    // Custom Status
+    if (Object.keys(changes).some((key) => key.startsWith("customStatus"))) {
+      (async () => {
+        await loadCustomStatusState();
+        if (state.customStatusEnabled) {
+          startCustomStatusInterval();
+          scheduleCustomStatusSend();
+        } else {
+          await clearCustomStatus();
+        }
+      })().catch((err) => logError("[background:customStatusStorage]: Reacting to custom status storage change failed:", err));
+    }
 
+    // Last.fm
+    if (Object.keys(changes).some((key) => key.startsWith("lastFm"))) {
+      loadLastFmState().catch((err) => logError("[background:lastFmStorage]: Reacting to Last.fm storage change failed:", err));
+    }
+
+    for (const [key, change] of Object.entries(changes)) {
       // Update the priority order and re-evaluate the active tab quickly so a priority site takes over
       if (key === "activityPriority") {
         state.activityPriority = Array.isArray(change.newValue) ? change.newValue.filter((id) => typeof id === "string") : [];
