@@ -140,7 +140,7 @@ async function destroyOtherSimpleBars(keepId) {
         simpleBarInstances.delete(panel);
         panelPromises.delete(panel);
         panel.dataset.sbInit = "";
-        panel.style.paddingRight = "2px";
+        panel.style.paddingRight = "";
 
         allPanels.delete(panel);
       }
@@ -176,7 +176,7 @@ async function updatePanelPadding(panel, timeout = 1000) {
       const scrollbar = await waitForScrollbar(instance, timeout);
 
       if (!scrollbar) {
-        panel.style.paddingRight = "2px";
+        panel.style.paddingRight = "";
         return { ok: false, reason: "scrollbar_not_found" };
       }
 
@@ -185,7 +185,7 @@ async function updatePanelPadding(panel, timeout = 1000) {
         panel.style.transition = "padding var(--transition-reduced-fast), min-height var(--transition-reduced-fast)";
       }
 
-      const newPadding = isVisible ? "16px" : "2px";
+      const newPadding = isVisible ? "16px" : "";
 
       if (panel.style.paddingRight === newPadding) {
         return { ok: true, visible: isVisible };
@@ -204,7 +204,7 @@ async function updatePanelPadding(panel, timeout = 1000) {
 
       return { ok: true, visible: isVisible };
     } catch (error) {
-      panel.style.paddingRight = "2px";
+      panel.style.paddingRight = "";
       return { ok: false, error: error.message };
     } finally {
       panelPromises.delete(panel);
