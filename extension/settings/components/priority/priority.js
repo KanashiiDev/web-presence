@@ -44,6 +44,7 @@ const PriorityStorage = {
         logError("[PriorityStorage:save]: Failed to save activity priority:", error);
         showAlert(i18n.t("common.error"), "", "warn");
       }
+      activateSimpleBar(["prioritySourceList", "priorityList"]);
     }, 250);
   },
 };
@@ -140,6 +141,7 @@ const PriorityListController = {
       empty.textContent = i18n.t("settings.priority.noResults");
       zone.appendChild(empty);
     }
+    activateSimpleBar(["prioritySourceList", "priorityList"]);
   },
 
   render() {
@@ -174,6 +176,7 @@ const PriorityListController = {
 
     loadFavIcons([...zones.source.querySelectorAll(".parser-icon"), ...zones.priority.querySelectorAll(".parser-icon")]);
     this.applySearch();
+    activateSimpleBar(["prioritySourceList", "priorityList"]);
   },
 
   // Order = current contents of the priority zone, in DOM order.
@@ -240,7 +243,8 @@ const PriorityListController = {
       if (PriorityState.dragRow === row) PriorityState.dragRow = null;
       const zone = member ? zones.source : zones.priority;
       if (zone === zones.source) row.style.display = ""; // show it again under an active search filter
-      zone.appendChild(row);
+      const content = zone.querySelector(".simplebar-content");
+      (content ?? zone).appendChild(row);
       this.commit();
     });
     row.appendChild(action);
@@ -276,13 +280,6 @@ const PriorityListController = {
     title.textContent = getParserLabel(parser);
     title.title = getParserDomains(parser).join(", ");
     row.appendChild(title);
-
-    const domain = document.createElement("span");
-    domain.className = "priority-domain";
-    const domainText = getParserDomains(parser).join(", ");
-    domain.textContent = domainText;
-    domain.title = domainText;
-    row.appendChild(domain);
 
     this.setRowRole(row, member, rank);
     this.wireDragEvents(row);
@@ -349,7 +346,8 @@ const PriorityListController = {
 
         // Hovering the empty area of the priority zone appends the row last
         if (zone === zones.priority && dragRow.parentElement !== zones.priority) {
-          zones.priority.appendChild(dragRow);
+          const content = zones.priority.querySelector(".simplebar-content");
+          (content ?? zones.priority).appendChild(dragRow);
         }
       });
 
@@ -372,4 +370,6 @@ async function initActivityPriority() {
   PriorityListController.renderSearchBar();
   PriorityListController.initZoneDropTargets();
   PriorityListController.render();
+
+  await activateSimpleBar(["prioritySourceList", "priorityList"]);
 }

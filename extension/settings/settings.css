@@ -4,6 +4,8 @@
   padding: 0;
 }
 
+#prioritySourceList,
+#priorityList,
 #historyPanel,
 #historyFilterMenuContent,
 #debugLogContainer,
@@ -12,6 +14,8 @@
   -ms-overflow-style: none;
 }
 
+#prioritySourceList::-webkit-scrollbar,
+#priorityList::-webkit-scrollbar,
 #historyPanel::-webkit-scrollbar,
 #historyFilterMenuContent::-webkit-scrollbar {
   display: none;
@@ -457,6 +461,7 @@ button[data-level-action="replace"].edit-mode {
 }
 
 .filter-actions-header {
+  width: 100%;
   display: flex;
   gap: 8px;
   align-self: anchor-center;
@@ -746,7 +751,6 @@ button.history-modal-close {
   max-height: 400px;
   height: 100%;
   padding: 0 5px;
-  padding-right: 16px;
   overflow-y: auto;
 }
 
@@ -788,7 +792,8 @@ button.history-modal-close {
   width: 50%;
   height: 500px;
   max-height: 90vh;
-  min-width: 400px;
+  min-width: 500px;
+  max-width: 800px;
   display: grid;
   grid-template-rows: auto 1fr auto;
   background: var(--foreground-color-100);
@@ -1249,26 +1254,23 @@ button.history-modal-close {
 }
 
 /* Activity Priority Section */
-#prioritySearchContainer {
-  flex: 1;
-}
-
-.content.priority {
-  background: none;
-  box-shadow: none;
-  padding: 20px 0;
-}
 
 .priority-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
 .priority-column {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  min-width: 0;
+  border-radius: var(--radius-md);
+  padding: 12px;
 }
 
 .priority-column-title {
@@ -1276,12 +1278,17 @@ button.history-modal-close {
   font-size: var(--font-md-lg);
   font-weight: 600;
   color: var(--text-color-muted);
+  flex-shrink: 0;
 }
 
 .priority-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .priority-list.dropzone {
@@ -1304,6 +1311,7 @@ button.history-modal-close {
 }
 
 .priority-list .empty-state {
+  width: 100%;
   color: var(--text-color-muted);
   text-align: center;
 }
@@ -1313,7 +1321,8 @@ button.history-modal-close {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: var(--foreground-color-200);
+  margin-bottom: 10px;
+  background: var(--foreground-color-300);
   border: 0.5px solid var(--border-color);
   border-radius: var(--radius-md);
   cursor: grab;
@@ -1354,17 +1363,6 @@ button.history-modal-close {
   white-space: nowrap;
 }
 
-.priority-domain {
-  margin-left: auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  font-size: var(--font-xs);
-  color: var(--text-color-muted);
-}
-
 .priority-item .parser-icon-container.spinner {
   height: 24px;
   width: 24px;
@@ -1372,6 +1370,7 @@ button.history-modal-close {
 }
 
 .priority-action {
+  margin-left: auto;
   flex-shrink: 0;
 }
 
@@ -1411,7 +1410,6 @@ button.history-modal-close {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
   min-width: 0;
 }
 
