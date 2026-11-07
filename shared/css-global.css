@@ -1063,3 +1063,8 @@ code {
   border-radius: var(--radius-sm);
   font-family: Consolas, "Courier New", monospace;
 }
+
+a {
+  text-decoration: none;
+  transition: color var(--transition-reduced) ease;
+}

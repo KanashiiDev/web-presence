@@ -154,7 +154,7 @@ async function showInitialTutorial(currentConnectionMode) {
   const ALL_ENTRIES_SEL =
     ".header-container, .parser-entry, .search-controls, .simplebar-track.simplebar-vertical, " +
     "#openSelector, #openManager, #mainFooterButtons, #clearHistoryBtn, #cancelCleanBtn, " +
-    "#githubLink, #settingsToggle, #openFiltersBtn, #openDashboardBtn, #openLibraryBtn";
+    "#githubLink, #settingsToggle, #openFiltersBtn, #openCustomStatusBtn, #openDashboardBtn, #openLibraryBtn";
 
   // Returns all entries except the one containing targetEl
   function popupFading(targetEl) {

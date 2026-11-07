@@ -1,15 +1,208 @@
-// Global picker state
-let globalPicker = null;
-let globalPickerElements = null;
-let currentEditingItem = null;
-let currentSwatch = null;
-let currentDeleteBtn = null;
-let isGradientMode = false;
-let isBlurMode = false;
-let gradientDegree = 90;
-let lastGradientColors = null;
+/**
+ * Color picker popover used by the color settings panel.
+ */
 
-// Create picker popover once
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PICKER_WIDTH = 82;
+const PICKER_SLIDER_SIZE = 10;
+const MIN_GRADIENT_COLORS = 2;
+const DEFAULT_GRADIENT_DEGREE = 90;
+const MODE_SWITCH_DELAY_MS = 50;
+const SCROLL_OFFSET = 10;
+const FALLBACK_COLOR = "#000000";
+
+/** Matches a hex color without an alpha channel (#rgb or #rrggbb). */
+const NO_ALPHA_HEX_RE = /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+/** The single iro.ColorPicker instance (created lazily). */
+let globalPicker = null;
+
+/** DOM references returned by createPickerPopover (created lazily). */
+let globalPickerElements = null;
+
+/**
+ * Mutable state of the picker for the item currently being edited.
+ * @type {{
+ *   item: Object|null,
+ *   swatch: HTMLElement|null,
+ *   deleteBtn: HTMLElement|null,
+ *   isGradientMode: boolean,
+ *   isBlurMode: boolean,
+ *   degree: number,
+ *   lastGradientColors: string[]|null
+ * }}
+ */
+const pickerState = {
+  item: null,
+  swatch: null,
+  deleteBtn: null,
+  isGradientMode: false,
+  isBlurMode: false,
+  degree: DEFAULT_GRADIENT_DEGREE,
+  lastGradientColors: null,
+};
+
+/** Serializes storage writes so quick successive edits cannot overwrite each other. */
+let saveQueue = Promise.resolve();
+
+/** Timer used to re-show the popover after a mode switch. */
+let modeSwitchTimer = null;
+
+/** Clears everything that belongs to the previously edited item. */
+function resetPickerState() {
+  pickerState.item = null;
+  pickerState.swatch = null;
+  pickerState.deleteBtn = null;
+  pickerState.isGradientMode = false;
+  pickerState.degree = DEFAULT_GRADIENT_DEGREE;
+  pickerState.lastGradientColors = null;
+}
+
+/** Whether the color picker is currently open for a color row. */
+function isPickerOpen() {
+  return pickerState.swatch !== null;
+}
+
+/** Returns the delete button of the color row currently being edited, or null. */
+function getPickerDeleteBtn() {
+  return pickerState.deleteBtn;
+}
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Stops the given events from bubbling out of an element.
+ * @param {HTMLElement} element
+ * @param {string[]} [events]
+ */
+function stopPropagationFor(element, events = ["mousedown", "click"]) {
+  events.forEach((type) => element.addEventListener(type, (e) => e.stopPropagation()));
+}
+
+/**
+ * Formats an iro color as hex, including alpha only when it is below 1.
+ * @param {Object} color iro color instance.
+ * @returns {string}
+ */
+function formatHex(color) {
+  return color.alpha < 1 ? color.hex8String : color.hexString;
+}
+
+/**
+ * Checks whether a text value is a color that tinycolor can parse.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isValidColorText(text) {
+  return tinycolor(text.trim()).isValid();
+}
+
+/**
+ * Applies a user-typed color to an iro color. A hex value without alpha keeps
+ * the current alpha instead of resetting it to 1.
+ * @param {Object} color iro color instance.
+ * @param {string} text User input (hex, rgb, hsl or a named color).
+ * @returns {boolean} False if the text is not a valid color.
+ */
+function applyTextToColor(color, text) {
+  const trimmed = text.trim();
+  const parsed = tinycolor(trimmed);
+  if (!parsed.isValid()) return false;
+
+  if (NO_ALPHA_HEX_RE.test(trimmed)) parsed.setAlpha(color.alpha);
+  color.hex8String = parsed.toHex8String();
+  return true;
+}
+
+/**
+ * Returns the current picker value: a single color or a linear-gradient string.
+ * @returns {string}
+ */
+function getPickerValue() {
+  const colors = globalPicker.colors.map((c) => c.rgbaString);
+  if (pickerState.isGradientMode && colors.length > 1) {
+    return `linear-gradient(${pickerState.degree}deg, ${colors.join(", ")})`;
+  }
+  return colors[0];
+}
+
+/**
+ * Checks whether a stored value differs from the theme default.
+ * @param {string|undefined} value Stored value.
+ * @param {string|null} defaultValue Theme default.
+ * @returns {boolean}
+ */
+function isCustomValue(value, defaultValue) {
+  if (!value) return false;
+  if (isGradient(value) || !defaultValue) return true;
+  return !tinycolor.equals(value, defaultValue);
+}
+
+/**
+ * Enables or disables a per-item delete button depending on the stored value.
+ * @param {HTMLElement} btn
+ * @param {Object} item Color setting item.
+ * @param {Object} config Stored color settings.
+ */
+function setDeleteBtnState(btn, item, config) {
+  btn.classList.toggle("disabled", !isCustomValue(config[item.key], getDefaultCSSValue(item)));
+}
+
+/**
+ * Enables or disables the "delete all colors" button.
+ * @param {Object} config Stored color settings.
+ */
+function updateDeleteAllBtn(config) {
+  const btn = document.querySelector(".all-colors-delete-btn");
+  if (btn) btn.classList.toggle("disabled", Object.keys(config).length === 0);
+}
+
+/** Updates the blur toggle label from the current state. */
+function updateBlurLabel() {
+  const status = i18n.t(pickerState.isBlurMode ? "common.disable" : "common.enable");
+  globalPickerElements.btnBlur.textContent = `${i18n.t("settings.backgroundImage.blur")} (${status})`;
+}
+
+/**
+ * Sets the gradient angle and syncs the slider and its label.
+ * @param {number} value Angle in degrees.
+ */
+function setDegree(value) {
+  const { degreeSlider, degreeValue } = globalPickerElements;
+  pickerState.degree = value;
+  degreeSlider.value = value;
+  degreeValue.textContent = `${value}°`;
+}
+
+/**
+ * Finds the DOM element that belongs to a color setting. Prefers a
+ * `data-key` attribute and falls back to the item's position.
+ * @param {string} selector Element selector, e.g. ".color-swatch".
+ * @param {Object} item Color setting item.
+ * @param {number} index Position of the item in getColorSettings().
+ * @returns {HTMLElement|null}
+ */
+function findItemElement(selector, item, index) {
+  return document.querySelector(`${selector}[data-key="${item.key}"]`) ?? document.querySelectorAll(selector)[index] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Popover creation
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the picker popover DOM (called once).
+ * @returns {Object} References to the popover and its controls.
+ */
 function createPickerPopover() {
   const popover = document.createElement("div");
   popover.className = "picker-popover hidden";
@@ -20,11 +213,11 @@ function createPickerPopover() {
   const popoverInner = document.createElement("div");
   popoverInner.className = "picker-popover-inner";
 
-  // Gradient Controls
+  // Gradient controls
   const gradientControls = document.createElement("div");
   gradientControls.className = "gradient-controls hidden";
 
-  // Degree Slider
+  // Degree slider
   const degreeContainer = document.createElement("div");
   degreeContainer.style.cssText = "margin-bottom: 8px;";
 
@@ -42,17 +235,15 @@ function createPickerPopover() {
 
   const degreeValue = document.createElement("span");
 
-  degreeSliderRow.appendChild(degreeSlider);
-  degreeSliderRow.appendChild(degreeValue);
-  degreeContainer.appendChild(degreeLabel);
-  degreeContainer.appendChild(degreeSliderRow);
-
-  // Color Count Controls
-  const colorCountContainer = document.createElement("div");
-  colorCountContainer.className = "colorCountContainer";
+  degreeSliderRow.append(degreeSlider, degreeValue);
+  degreeContainer.append(degreeLabel, degreeSliderRow);
 
   const colorCountLabel = document.createElement("label");
   colorCountLabel.textContent = i18n.t("colorPicker.colors");
+
+  // Color count controls
+  const colorCountContainer = document.createElement("div");
+  colorCountContainer.className = "colorCountContainer";
 
   const btnRemoveColor = document.createElement("span");
   btnRemoveColor.className = "gradient-color-btn btn";
@@ -61,46 +252,32 @@ function createPickerPopover() {
   const colorCount = document.createElement("span");
 
   const btnAddColor = document.createElement("span");
-  btnAddColor.appendChild(createSVG(svg_paths.plusIconPaths));
   btnAddColor.className = "gradient-color-btn btn";
+  btnAddColor.appendChild(createSVG(svg_paths.plusIconPaths));
 
-  // Color List
+  // Color list
   const colorListContainer = document.createElement("div");
   colorListContainer.className = "gradient-color-list";
   colorListContainer.id = "gradientColorList";
+  stopPropagationFor(colorListContainer);
 
-  colorListContainer.addEventListener("mousedown", (e) => {
-    e.stopPropagation();
-  });
+  colorCountContainer.append(btnRemoveColor, colorCount, btnAddColor);
+  gradientControls.append(degreeContainer, colorCountLabel, colorListContainer, colorCountContainer);
 
-  colorListContainer.addEventListener("click", (e) => {
-    e.stopPropagation();
-  });
-
-  colorCountContainer.appendChild(colorCountLabel);
-  colorCountContainer.appendChild(btnRemoveColor);
-  colorCountContainer.appendChild(colorCount);
-  colorCountContainer.appendChild(btnAddColor);
-
-  gradientControls.appendChild(degreeContainer);
-  gradientControls.appendChild(colorCountContainer);
-  gradientControls.appendChild(colorListContainer);
-
-  // Hex Input (single color mode)
+  // Hex input (single color mode)
   const hexInputContainer = document.createElement("div");
   hexInputContainer.className = "hex-input-container";
 
   const hexInput = document.createElement("input");
   hexInput.type = "text";
-  hexInput.placeholder = "#000000";
+  hexInput.placeholder = FALLBACK_COLOR;
 
   hexInputContainer.appendChild(hexInput);
 
-  // Blur Button
+  // Blur and gradient buttons
   const btnBlur = document.createElement("span");
   btnBlur.className = "blur-btn btn";
 
-  // Gradient Button
   const btnGradient = document.createElement("span");
   btnGradient.className = "gradient-btn btn";
 
@@ -124,95 +301,78 @@ function createPickerPopover() {
   };
 }
 
-// Initialize global picker once
+/** Creates the popover and the iro picker once, and wires up all events. */
 function initGlobalPicker() {
   if (globalPickerElements) return;
 
   globalPickerElements = createPickerPopover();
 
-  // Create the iro picker
   globalPicker = new iro.ColorPicker(globalPickerElements.popoverInner, {
-    width: 100,
-    colors: ["#000000"],
+    width: PICKER_WIDTH,
+    colors: [FALLBACK_COLOR],
     layoutDirection: "vertical",
     layout: [
       { component: iro.ui.Box },
-      { component: iro.ui.Slider, options: { sliderType: "hue", sliderSize: 10 } },
-      { component: iro.ui.Slider, options: { sliderType: "alpha", sliderSize: 10 } },
+      { component: iro.ui.Slider, options: { sliderType: "hue", sliderSize: PICKER_SLIDER_SIZE } },
+      { component: iro.ui.Slider, options: { sliderType: "alpha", sliderSize: PICKER_SLIDER_SIZE } },
     ],
   });
 
   globalPickerElements.popoverInner.appendChild(globalPickerElements.gradientControls);
 
-  setupPickerEventsOnce();
+  setupPickerEvents();
 }
 
-// Setup all picker events
-function setupPickerEventsOnce() {
-  const { degreeSlider, degreeValue, btnAddColor, btnRemoveColor, colorCount, hexInput, btnBlur, btnGradient, popover } = globalPickerElements;
+// ---------------------------------------------------------------------------
+// Events (registered once)
+// ---------------------------------------------------------------------------
 
-  // Hex input
-  hexInput.addEventListener("mousedown", (e) => e.stopPropagation());
-  hexInput.addEventListener("click", (e) => e.stopPropagation());
+/** Registers every DOM and iro event handler. Handlers read the shared state, so this runs only once. */
+function setupPickerEvents() {
+  const { degreeSlider, btnAddColor, btnRemoveColor, hexInput, btnBlur, btnGradient, popover, popoverInner } = globalPickerElements;
 
-  hexInput.addEventListener("input", (e) => {
-    const hex = e.target.value;
-    if (tinycolor(hex).isValid()) {
-      globalPicker.colors[0].hexString = hex;
-      updateGradient();
-    }
+  // Hex input (single color mode)
+  stopPropagationFor(hexInput);
+
+  hexInput.addEventListener("input", () => {
+    if (applyTextToColor(globalPicker.colors[0], hexInput.value)) updatePreview();
   });
 
   hexInput.addEventListener("change", () => {
-    if (tinycolor(hexInput.value).isValid()) {
-      pickerEnd();
-    } else {
-      hexInput.value = globalPicker.colors[0].hexString;
-    }
+    if (isValidColorText(hexInput.value)) pickerEnd();
+    hexInput.value = formatHex(globalPicker.colors[0]);
   });
 
   // Degree slider
   degreeSlider.addEventListener("input", () => {
-    gradientDegree = parseInt(degreeSlider.value);
-    degreeValue.textContent = `${gradientDegree}°`;
-    updateGradient();
+    setDegree(parseInt(degreeSlider.value, 10));
+    updatePreview();
   });
-
   degreeSlider.addEventListener("change", pickerEnd);
 
-  // Add/Remove colors
+  // Add / remove colors
   btnAddColor.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!globalPicker || !globalPicker.colors) return;
-
     const lastColor = globalPicker.colors[globalPicker.colors.length - 1];
     globalPicker.addColor(lastColor.rgbaString);
-    globalPickerElements.colorCount.textContent = globalPicker.colors.length;
-    rebuildColorList();
-    updateGradient();
-    pickerEnd();
+    commitColorListChange();
   });
 
   btnRemoveColor.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!globalPicker || globalPicker.colors.length <= 2) return;
-
-    globalPicker.removeColor(globalPicker.colors.length - 1);
-    globalPickerElements.colorCount.textContent = globalPicker.colors.length;
-    rebuildColorList();
-    updateGradient();
-    pickerEnd();
+    if (globalPicker.colors.length <= MIN_GRADIENT_COLORS) return;
+    removeGradientColor(globalPicker.colors.length - 1);
   });
 
   // Blur toggle
   btnBlur.addEventListener("click", (e) => {
     e.stopPropagation();
-    isBlurMode = !isBlurMode;
-    btnBlur.textContent = i18n.t("settings.backgroundImage.blur") + " (" + (isBlurMode ? i18n.t("common.disable") : i18n.t("common.enable")) + ")";
+    pickerState.isBlurMode = !pickerState.isBlurMode;
+    updateBlurLabel();
     pickerEnd();
   });
 
@@ -222,117 +382,137 @@ function setupPickerEventsOnce() {
     toggleGradientMode();
   });
 
-  // Close on popover click
+  // Click on the popover backdrop closes the picker
   popover.addEventListener("click", (e) => {
-    if (e.target === popover) {
-      popover.classList.add("hidden");
-    }
+    if (e.target === popover) closePicker();
     e.stopPropagation();
   });
 
-  globalPickerElements.popoverInner.addEventListener("pointerdown", (e) => {
+  popoverInner.addEventListener("pointerdown", (e) => {
     if (e.target.closest(".IroColorPicker")) {
-      globalPickerElements.popoverInner.setPointerCapture(e.pointerId);
+      popoverInner.setPointerCapture(e.pointerId);
     }
+  });
+
+  // iro events. They are ignored while no item is being edited, which also
+  // covers the colors being reset in openPickerForSwatch.
+  globalPicker.on("input:end", () => {
+    if (pickerState.swatch) pickerEnd();
+  });
+
+  globalPicker.on("color:change", () => {
+    if (!pickerState.swatch) return;
+
+    if (!pickerState.isGradientMode && document.activeElement !== hexInput) {
+      hexInput.value = formatHex(globalPicker.colors[0]);
+    }
+    updateColorItemsDisplay();
+    updatePreview();
   });
 }
 
-// Setup dynamic picker events (called each time picker opens)
-function setupDynamicPickerEvents() {
-  // Remove old listeners
-  globalPicker.off("color:change");
-  globalPicker.off("input:end");
+// ---------------------------------------------------------------------------
+// Preview and persistence
+// ---------------------------------------------------------------------------
 
-  const pickerChange = () => {
-    if (!isGradientMode) {
-      globalPickerElements.hexInput.value = globalPicker.colors[0].hexString;
-    }
-    updateColorItemsDisplay();
-    updateGradient();
-  };
-
-  globalPicker.on("input:end", pickerEnd);
-  globalPicker.on("color:change", pickerChange);
+/** Mirrors the current picker value on the swatch. */
+function updatePreview() {
+  if (!pickerState.swatch) return;
+  pickerState.swatch.style.background = getPickerValue();
 }
 
-// Helper functions
-function updateGradient() {
-  if (!currentSwatch) return;
+/**
+ * Persists the current picker value (and, for the foreground color, the blur flag),
+ * then re-applies the color settings. Writes are queued, and the value is captured
+ * at call time so later picker changes cannot alter a queued save.
+ * @returns {Promise<void>}
+ */
+function pickerEnd() {
+  const { item, swatch, deleteBtn, isGradientMode, isBlurMode } = pickerState;
+  if (!item?.key || !swatch) return Promise.resolve();
 
-  if (isGradientMode && globalPicker.colors.length > 1) {
-    const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-    currentSwatch.style.background = `linear-gradient(${gradientDegree}deg, ${colors})`;
-  } else {
-    currentSwatch.style.background = globalPicker.colors[0].rgbaString;
-  }
-}
+  const value = getPickerValue();
+  const hasTransparency = isGradientMode ? globalPicker.colors.some((c) => c.alpha < 1) : globalPicker.colors[0].alpha < 1;
+  const applyFgBlur = isBlurMode && hasTransparency;
+  swatch.style.background = value;
 
-async function pickerEnd() {
-  if (!currentEditingItem?.key || !currentSwatch) return;
+  saveQueue = saveQueue
+    .then(async () => {
+      const { colorSettings } = await browser.storage.local.get("colorSettings");
+      const config = colorSettings || {};
+      config[item.key] = value;
 
-  let value;
-  if (isGradientMode && globalPicker.colors.length > 1) {
-    const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-    value = `linear-gradient(${gradientDegree}deg, ${colors})`;
-  } else {
-    value = globalPicker.colors[0].rgbaString;
-  }
-
-  const storage = await browser.storage.local.get("colorSettings");
-  const config = storage.colorSettings || {};
-  config[currentEditingItem.key] = value;
-  currentSwatch.style.background = value;
-
-  if (currentEditingItem.key === "foregroundColor") {
-    const hasTransparency = isGradientMode ? globalPicker.colors.some((c) => c.alpha < 1) : globalPicker.colors[0].alpha < 1;
-    config["applyFgBlur"] = isBlurMode && hasTransparency;
-  }
-
-  await browser.storage.local.set({ colorSettings: config });
-  await applyColorSettings();
-  await updateCurrentDeleteBtn();
-
-  const deleteColorsBtn = document.querySelector(".all-colors-delete-btn");
-  deleteColorsBtn.classList.toggle("disabled", Object.keys(config).length === 0);
-}
-
-// Toggle gradient mode
-function toggleGradientMode() {
-  const { btnGradient, gradientControls, hexInputContainer, hexInput, colorCount, degreeSlider, degreeValue, popover } = globalPickerElements;
-  document.body.style.transition = "none";
-  if (!isGradientMode) {
-    // Switch to gradient
-    const currentHue = globalPicker.colors[0].hue;
-
-    if (lastGradientColors && lastGradientColors.length > 1) {
-      globalPicker.colors[0].set(lastGradientColors[0]);
-      for (let i = 1; i < lastGradientColors.length; i++) {
-        globalPicker.addColor(lastGradientColors[i]);
+      if (item.key === "foregroundColor") {
+        config.applyFgBlur = applyFgBlur;
       }
+
+      await browser.storage.local.set({ colorSettings: config });
+      await applyColorSettings();
+
+      if (deleteBtn) setDeleteBtnState(deleteBtn, item, config);
+      updateDeleteAllBtn(config);
+    })
+    .catch((err) => console.error("[colorPicker] Failed to save color:", err));
+
+  return saveQueue;
+}
+
+/** Updates the delete button of the item currently being edited. */
+async function updateCurrentDeleteBtn() {
+  const { item, deleteBtn } = pickerState;
+  if (!deleteBtn || !item) return;
+
+  const { colorSettings } = await browser.storage.local.get("colorSettings");
+  setDeleteBtnState(deleteBtn, item, colorSettings || {});
+}
+
+// ---------------------------------------------------------------------------
+// Mode handling
+// ---------------------------------------------------------------------------
+
+/** Syncs the popover UI with the current mode (single color or gradient). */
+function syncModeUI() {
+  const { popover, gradientControls, hexInputContainer, hexInput, btnGradient, colorCount } = globalPickerElements;
+  const gradient = pickerState.isGradientMode;
+
+  popover.classList.toggle("gradient-mode", gradient);
+  gradientControls.classList.toggle("hidden", !gradient);
+  hexInputContainer.classList.toggle("hidden", gradient);
+  btnGradient.textContent = i18n.t(gradient ? "colorPicker.single" : "colorPicker.gradient");
+
+  if (gradient) {
+    setDegree(pickerState.degree);
+    colorCount.textContent = globalPicker.colors.length;
+  } else {
+    hexInput.value = formatHex(globalPicker.colors[0]);
+  }
+}
+
+/** Switches between single color and gradient mode, and saves the result immediately. */
+function toggleGradientMode() {
+  const { popover } = globalPickerElements;
+  document.body.style.transition = "none";
+
+  if (!pickerState.isGradientMode) {
+    // Single -> gradient
+    const currentHue = globalPicker.colors[0].hue;
+    const saved = pickerState.lastGradientColors;
+
+    if (saved && saved.length > 1) {
+      globalPicker.colors[0].set(saved[0]);
+      saved.slice(1).forEach((color) => globalPicker.addColor(color));
     } else {
-      const currentColor = globalPicker.colors[0].rgbaString;
-      globalPicker.addColor(currentColor);
+      globalPicker.addColor(globalPicker.colors[0].rgbaString);
       globalPicker.colors[1].hue = currentHue;
     }
 
     globalPicker.setActiveColor(0);
-
-    isGradientMode = true;
-    popover.classList.add("gradient-mode");
-    btnGradient.textContent = i18n.t("colorPicker.single");
-    gradientControls.classList.remove("hidden");
-    hexInputContainer.classList.add("hidden");
-    colorCount.textContent = globalPicker.colors.length;
-    degreeSlider.value = gradientDegree;
-    degreeValue.textContent = `${gradientDegree}°`;
-    rebuildColorList();
-    updateGradient();
+    pickerState.isGradientMode = true;
   } else {
-    // Switch to single color
-    lastGradientColors = globalPicker.colors.map((c) => c.rgbaString);
+    // Gradient -> single
+    pickerState.lastGradientColors = globalPicker.colors.map((c) => c.rgbaString);
     const firstColor = globalPicker.colors[0].rgbaString;
 
-    currentSwatch.style.background = firstColor;
     popover.classList.add("hidden");
 
     while (globalPicker.colors.length > 1) {
@@ -341,356 +521,304 @@ function toggleGradientMode() {
 
     globalPicker.colors[0].set(firstColor);
     globalPicker.setActiveColor(0);
-
-    isGradientMode = false;
-    popover.classList.remove("gradient-mode");
-    btnGradient.textContent = i18n.t("colorPicker.gradient");
-    gradientControls.classList.add("hidden");
-    hexInputContainer.classList.remove("hidden");
-    hexInput.value = globalPicker.colors[0].hexString;
+    pickerState.isGradientMode = false;
   }
-  setTimeout(() => {
-    popover.classList.remove("hidden");
+
+  syncModeUI();
+  if (pickerState.isGradientMode) rebuildColorList(true);
+  updatePreview();
+  pickerEnd();
+
+  clearTimeout(modeSwitchTimer);
+  modeSwitchTimer = setTimeout(() => {
+    if (pickerState.swatch) popover.classList.remove("hidden");
     document.body.style.transition = "";
-  }, 50);
+    activateSimpleBar("colorExpandableSection");
+  }, MODE_SWITCH_DELAY_MS);
 }
 
-// Update color items display
+// ---------------------------------------------------------------------------
+// Gradient color list
+// ---------------------------------------------------------------------------
+
+/** Refreshes count, list, preview and storage after the number of gradient colors changed. */
+function commitColorListChange() {
+  globalPickerElements.colorCount.textContent = globalPicker.colors.length;
+  rebuildColorList();
+  updatePreview();
+  pickerEnd();
+}
+
+/**
+ * Removes one gradient color and keeps a valid color active.
+ * @param {number} index Index of the color to remove.
+ */
+function removeGradientColor(index) {
+  globalPicker.removeColor(index);
+  globalPicker.setActiveColor(Math.min(index, globalPicker.colors.length - 1));
+  commitColorListChange();
+}
+
+/** Updates the swatches and hex inputs of the gradient color list from the picker. */
 function updateColorItemsDisplay() {
   const { colorListContainer } = globalPickerElements;
   const colorItems = colorListContainer.querySelectorAll(".gradient-color-item");
 
   colorItems.forEach((colorItem, index) => {
-    if (globalPicker.colors[index]) {
-      const miniSwatch = colorItem.querySelector("div.indicator");
-      const miniInput = colorItem.querySelector("input");
+    const color = globalPicker.colors[index];
+    if (!color) return;
 
-      if (miniSwatch) {
-        miniSwatch.style.background = globalPicker.colors[index].rgbaString;
-      }
+    const miniSwatch = colorItem.querySelector("div.indicator");
+    const miniInput = colorItem.querySelector("input");
 
-      if (miniInput && document.activeElement !== miniInput) {
-        miniInput.value = globalPicker.colors[index].hexString;
-      }
-    }
+    if (miniSwatch) miniSwatch.style.background = color.rgbaString;
+    if (miniInput && document.activeElement !== miniInput) miniInput.value = formatHex(color);
   });
 }
 
-// Rebuild color list
-async function rebuildColorList() {
-  const { colorListContainer } = globalPickerElements;
-  const existingItems = colorListContainer.querySelectorAll(".gradient-color-item");
+/**
+ * Builds one row of the gradient color list.
+ * @param {Object} color iro color instance.
+ * @param {number} index Position of the color in the picker.
+ * @returns {HTMLElement}
+ */
+function createColorListItem(color, index) {
+  const colorItem = document.createElement("div");
+  colorItem.className = "gradient-color-item";
 
-  if (existingItems.length === globalPicker.colors.length) {
-    return;
-  }
-
-  while (colorListContainer.firstChild) {
-    colorListContainer.removeChild(colorListContainer.firstChild);
-  }
-
-  globalPicker.colors.forEach((color, index) => {
-    const colorItem = document.createElement("div");
-    colorItem.className = "gradient-color-item";
-
-    const miniSwatch = document.createElement("div");
-    miniSwatch.className = "indicator";
-    miniSwatch.style.background = color.rgbaString;
-
-    miniSwatch.addEventListener("click", (e) => {
-      e.stopPropagation();
-      globalPicker.setActiveColor(index);
-      rebuildColorList();
-    });
-
-    const miniHexInput = document.createElement("input");
-    miniHexInput.type = "text";
-    miniHexInput.value = color.hexString;
-    miniHexInput.placeholder = "#000000";
-
-    miniHexInput.addEventListener("mousedown", (e) => e.stopPropagation());
-    miniHexInput.addEventListener("click", (e) => e.stopPropagation());
-
-    miniHexInput.addEventListener("input", (e) => {
-      const hex = e.target.value;
-      if (tinycolor(hex).isValid()) {
-        globalPicker.colors[index].hexString = hex;
-        miniSwatch.style.background = globalPicker.colors[index].rgbaString;
-        if (currentSwatch) {
-          if (isGradientMode && globalPicker.colors.length > 1) {
-            const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-            currentSwatch.style.background = `linear-gradient(${gradientDegree}deg, ${colors})`;
-          } else {
-            currentSwatch.style.background = globalPicker.colors[0].rgbaString;
-          }
-        }
-      }
-    });
-
-    miniHexInput.addEventListener("change", async () => {
-      if (tinycolor(miniHexInput.value).isValid()) {
-        if (!currentEditingItem || !currentSwatch) return;
-
-        let value;
-        if (isGradientMode && globalPicker.colors.length > 1) {
-          const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-          value = `linear-gradient(${gradientDegree}deg, ${colors})`;
-        } else {
-          value = globalPicker.colors[0].rgbaString;
-        }
-
-        const storage = await browser.storage.local.get("colorSettings");
-        const config = storage.colorSettings || {};
-        config[currentEditingItem.key] = value;
-        currentSwatch.style.background = value;
-
-        await browser.storage.local.set({ colorSettings: config });
-        await applyColorSettings();
-        await updateCurrentDeleteBtn();
-      } else {
-        miniHexInput.value = globalPicker.colors[index].hexString;
-      }
-    });
-
-    miniHexInput.addEventListener("focus", () => {
-      globalPicker.setActiveColor(index);
-      rebuildColorList();
-    });
-
-    if (globalPicker.colors.length > 2) {
-      const deleteBtn = document.createElement("span");
-      deleteBtn.appendChild(createSVG(svg_paths.crossIconPaths));
-      deleteBtn.className = "btn btn-action";
-      deleteBtn.title = "Remove color";
-
-      deleteBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        globalPicker.removeColor(index);
-        globalPickerElements.colorCount.textContent = globalPicker.colors.length;
-
-        if (globalPicker.activeColor >= globalPicker.colors.length) {
-          globalPicker.setActiveColor(globalPicker.colors.length - 1);
-        }
-
-        rebuildColorList();
-
-        if (currentSwatch) {
-          const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-          currentSwatch.style.background = `linear-gradient(${gradientDegree}deg, ${colors})`;
-        }
-
-        if (!currentEditingItem || !currentSwatch) return;
-
-        const colors = globalPicker.colors.map((c) => c.rgbaString).join(", ");
-        const value = `linear-gradient(${gradientDegree}deg, ${colors})`;
-
-        const storage = await browser.storage.local.get("colorSettings");
-        const config = storage.colorSettings || {};
-        config[currentEditingItem.key] = value;
-        currentSwatch.style.background = value;
-
-        await browser.storage.local.set({ colorSettings: config });
-        await applyColorSettings();
-        await updateCurrentDeleteBtn();
-      });
-
-      colorItem.appendChild(deleteBtn);
-    }
-
-    colorItem.appendChild(miniSwatch);
-    colorItem.appendChild(miniHexInput);
-    colorListContainer.appendChild(colorItem);
+  const miniSwatch = document.createElement("div");
+  miniSwatch.className = "indicator";
+  miniSwatch.style.background = color.rgbaString;
+  miniSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    globalPicker.setActiveColor(index);
   });
-  await destroyOtherSimpleBars("colorExpandableSection");
+
+  const miniHexInput = document.createElement("input");
+  miniHexInput.type = "text";
+  miniHexInput.value = formatHex(color);
+  miniHexInput.placeholder = FALLBACK_COLOR;
+  stopPropagationFor(miniHexInput);
+
+  miniHexInput.addEventListener("input", () => {
+    const target = globalPicker.colors[index];
+    if (target && applyTextToColor(target, miniHexInput.value)) {
+      miniSwatch.style.background = target.rgbaString;
+      updatePreview();
+    }
+  });
+
+  miniHexInput.addEventListener("change", () => {
+    if (isValidColorText(miniHexInput.value)) {
+      pickerEnd();
+    } else {
+      miniHexInput.value = formatHex(globalPicker.colors[index]);
+    }
+  });
+
+  miniHexInput.addEventListener("focus", () => globalPicker.setActiveColor(index));
+
+  if (globalPicker.colors.length > MIN_GRADIENT_COLORS) {
+    const deleteBtn = document.createElement("span");
+    deleteBtn.className = "btn btn-action";
+    deleteBtn.title = i18n.t("common.delete");
+    deleteBtn.appendChild(createSVG(svg_paths.crossIconPaths));
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeGradientColor(index);
+    });
+    colorItem.appendChild(deleteBtn);
+  }
+
+  colorItem.append(miniSwatch, miniHexInput);
+  return colorItem;
+}
+
+/** Renders the gradient color list items (DOM only, no scrollbar activation). */
+function renderColorList() {
+  const { colorListContainer } = globalPickerElements;
+
+  colorListContainer.replaceChildren();
+  globalPicker.colors.forEach((color, index) => {
+    colorListContainer.appendChild(createColorListItem(color, index));
+  });
+}
+
+/**
+ * Activates SimpleBar on the gradient color list. The list is looked up in the
+ * document and must be measured while visible, so this does nothing until the
+ * popover is attached to the page.
+ * @returns {Promise<void>}
+ */
+async function activateColorListScroll() {
+  if (!globalPickerElements.popover.isConnected) return;
+
+  await destroySimplebar("gradientColorList");
   await activateSimpleBar("gradientColorList");
 }
 
-// Update delete button
-async function updateCurrentDeleteBtn() {
-  if (!currentDeleteBtn || !currentEditingItem) return;
+/**
+ * Rebuilds the gradient color list. Skipped when the item count is unchanged,
+ * unless `force` is set (needed when the colors themselves were replaced).
+ * @param {boolean} [force=false]
+ * @returns {Promise<void>}
+ */
+async function rebuildColorList(force = false) {
+  const { colorListContainer } = globalPickerElements;
+  const existingCount = colorListContainer.querySelectorAll(".gradient-color-item").length;
 
-  const storage = await browser.storage.local.get("colorSettings");
-  const config = storage.colorSettings || {};
-  const currentValue = config[currentEditingItem.key];
+  if (!force && existingCount === globalPicker.colors.length) return;
 
-  if (!currentValue || currentValue === currentEditingItem.default) {
-    currentDeleteBtn.classList.add("disabled");
-  } else {
-    currentDeleteBtn.classList.remove("disabled");
-  }
+  renderColorList();
+  await activateColorListScroll();
 }
 
-// Open picker for a swatch
-async function openPickerForSwatch(item, swatch, btnDelete) {
-  initGlobalPicker();
+// ---------------------------------------------------------------------------
+// Open / close
+// ---------------------------------------------------------------------------
 
-  // Clear previous state completely
-  currentEditingItem = null;
-  currentSwatch = null;
-  currentDeleteBtn = null;
-  isGradientMode = false;
-  gradientDegree = 90;
-  lastGradientColors = null;
-
-  const colorStorage = await browser.storage.local.get("colorSettings");
-  const colorConfig = colorStorage.colorSettings || {};
-  const initialColor = colorConfig[item.key] || item.default;
-  const isInitiallyGradient = initialColor && initialColor.includes("linear-gradient");
-
-  // Parse initial color
-  let initialColors = [item.default];
-  if (isInitiallyGradient) {
-    const degreeMatch = initialColor.match(/linear-gradient\((\d+)deg/);
-    if (degreeMatch) {
-      gradientDegree = parseInt(degreeMatch[1]);
-    }
-
-    const colors = initialColor.match(/rgba?\([^)]+\)/g) || [];
-    if (colors.length > 0) {
-      initialColors = colors;
-      lastGradientColors = [...colors]; // Clone array
-      isGradientMode = true;
-    } else {
-      initialColors = [item.default];
-      isGradientMode = false;
-    }
-  } else {
-    initialColors = [initialColor];
-    isGradientMode = false;
-  }
-
-  // Completely reset picker colors
-  globalPicker.off("color:change");
-  globalPicker.off("input:end");
-
-  // Remove ALL colors
+/**
+ * Replaces all colors of the picker.
+ * @param {string[]} colors Colors accepted by iro.
+ */
+function resetPickerColors(colors) {
   while (globalPicker.colors.length > 0) {
     globalPicker.removeColor(0);
   }
+  colors.forEach((color) => globalPicker.addColor(color));
+  globalPicker.setActiveColor(0);
+}
 
-  // Add fresh colors
-  for (let i = 0; i < initialColors.length; i++) {
-    if (i === 0) {
-      globalPicker.addColor(initialColors[0]);
+/**
+ * Opens the picker for a color setting.
+ * @param {Object} item Color setting item (from getColorSettings()).
+ * @param {HTMLElement} swatch Swatch that shows the item's color.
+ * @param {HTMLElement} btnDelete Delete button of the item.
+ * @returns {Promise<void>}
+ */
+async function openPickerForSwatch(item, swatch, btnDelete) {
+  initGlobalPicker();
+
+  // Clear the previous state completely. iro events are ignored while swatch is null.
+  resetPickerState();
+
+  const { colorSettings } = await browser.storage.local.get("colorSettings");
+  const config = colorSettings || {};
+  const initialValue = config[item.key] || item.default || FALLBACK_COLOR;
+
+  // Work out the initial colors and mode
+  let initialColors = [tinycolor(initialValue).isValid() ? initialValue : FALLBACK_COLOR];
+
+  if (isGradient(initialValue)) {
+    const { degree, stops } = parseGradient(initialValue);
+    const colors = stops.map((stop) => stop.color).filter((color) => tinycolor(color).isValid());
+
+    if (colors.length > 1) {
+      initialColors = colors;
+      pickerState.lastGradientColors = [...colors];
+      pickerState.isGradientMode = true;
+      pickerState.degree = Math.round(degree ?? DEFAULT_GRADIENT_DEGREE);
     } else {
-      globalPicker.addColor(initialColors[i]);
+      initialColors = [colors[0] ?? item.default ?? FALLBACK_COLOR];
     }
   }
 
-  globalPicker.setActiveColor(0);
+  resetPickerColors(initialColors);
 
-  // Update UI
-  const { btnBlur, btnGradient, gradientControls, hexInputContainer, hexInput, colorCount, degreeSlider, degreeValue, popover } = globalPickerElements;
+  // Update the UI
+  const { btnBlur, btnGradient, colorListContainer, popover } = globalPickerElements;
 
   btnBlur.style.display = item.key === "foregroundColor" ? "inline-block" : "none";
   btnGradient.style.display = item.enableGradient ? "inline-block" : "none";
 
-  isBlurMode = colorConfig.applyFgBlur;
-  btnBlur.textContent = i18n.t("settings.backgroundImage.blur") + " (" + (isBlurMode ? i18n.t("common.disable") : i18n.t("common.enable")) + ")";
+  pickerState.isBlurMode = !!config.applyFgBlur;
+  updateBlurLabel();
+  syncModeUI();
 
-  if (isGradientMode) {
-    popover.classList.add("gradient-mode");
-    gradientControls.classList.remove("hidden");
-    hexInputContainer.classList.add("hidden");
-    btnGradient.textContent = i18n.t("colorPicker.single");
-    degreeSlider.value = gradientDegree;
-    degreeValue.textContent = `${gradientDegree}°`;
-    colorCount.textContent = globalPicker.colors.length;
-    await rebuildColorList();
+  if (pickerState.isGradientMode) {
+    renderColorList();
   } else {
-    popover.classList.remove("gradient-mode");
-    gradientControls.classList.add("hidden");
-    hexInputContainer.classList.remove("hidden");
-    btnGradient.textContent = i18n.t("colorPicker.gradient");
-    hexInput.value = globalPicker.colors[0].hexString;
-    // Clear color list
-    while (globalPickerElements.colorListContainer.firstChild) {
-      globalPickerElements.colorListContainer.removeChild(globalPickerElements.colorListContainer.firstChild);
-    }
+    colorListContainer.replaceChildren();
   }
 
-  // set current state
-  currentEditingItem = item;
-  currentSwatch = swatch;
-  currentDeleteBtn = btnDelete;
+  // Start editing
+  pickerState.item = item;
+  pickerState.swatch = swatch;
+  pickerState.deleteBtn = btnDelete;
+  applyPickerDeleteButtonState(btnDelete);
 
-  setupDynamicPickerEvents();
-
-  // Append popover to swatch's parent control
-  const control = swatch.parentElement;
-  control.appendChild(popover);
-
+  // Attach and show the popover BEFORE activating SimpleBar: on the first open the
+  // popover is not in the document yet, and a hidden list cannot be measured.
+  swatch.parentElement.appendChild(popover);
   popover.classList.remove("hidden");
-  const colorList = document.querySelector(".color.expandable-section");
-  const scrollEl = simpleBarInstances.get(colorList)?.getScrollElement();
-  const containerRect = scrollEl.getBoundingClientRect();
-  const popoverTop = popover.getBoundingClientRect().top - containerRect.top + scrollEl.scrollTop - 10;
-  await smoothScrollTo(scrollEl, popoverTop);
+
+  if (pickerState.isGradientMode) await activateColorListScroll();
+
+  // Scroll the popover into view
+  const colorSection = document.querySelector(".color.expandable-section");
+  const scrollEl = colorSection ? simpleBarInstances.get(colorSection)?.getScrollElement() : null;
+  if (scrollEl) {
+    const containerRect = scrollEl.getBoundingClientRect();
+    const popoverTop = popover.getBoundingClientRect().top - containerRect.top + scrollEl.scrollTop - SCROLL_OFFSET;
+    await smoothScrollTo(scrollEl, popoverTop);
+  }
 }
 
-// Close picker
+/**
+ * Closes the picker and clears the item being edited.
+ * @returns {Promise<void>}
+ */
 async function closePicker() {
+  restoreDeleteButtons();
   if (globalPickerElements) {
     globalPickerElements.popover.classList.add("hidden");
   }
-  currentEditingItem = null;
-  currentSwatch = null;
-  currentDeleteBtn = null;
-  await activateSimpleBar(document.querySelector(".color.expandable-section"));
+
+  pickerState.item = null;
+  pickerState.swatch = null;
+  pickerState.deleteBtn = null;
+
+  const colorSection = document.querySelector(".color.expandable-section");
+  if (colorSection) await activateSimpleBar(colorSection);
 }
 
-// Update all swatches when theme changes
+// ---------------------------------------------------------------------------
+// Theme changes
+// ---------------------------------------------------------------------------
+
+/**
+ * Refreshes all swatches and delete buttons after a theme change. If the picker
+ * is open, it is reopened so it shows the new values.
+ * @returns {Promise<void>}
+ */
 async function updateAllSwatchesForTheme() {
-  const colorStorage = await browser.storage.local.get("colorSettings");
-  const colorConfig = colorStorage.colorSettings || {};
-  const COLOR_SETTINGS = getColorSettings();
+  const { colorSettings } = await browser.storage.local.get("colorSettings");
+  const config = colorSettings || {};
+  const settings = getColorSettings();
 
-  // Update all swatches in DOM
-  const allSwatches = document.querySelectorAll(".color-swatch");
-  allSwatches.forEach((swatch, index) => {
-    if (COLOR_SETTINGS[index]) {
-      const item = COLOR_SETTINGS[index];
-      const value = colorConfig[item.key] || getDefaultCSSValue(item);
-      swatch.style.background = value;
-    }
+  settings.forEach((item, index) => {
+    const swatch = findItemElement(".color-swatch", item, index);
+    if (swatch) swatch.style.background = config[item.key] || item.default;
+
+    const btnDelete = findItemElement(".color-delete-btn", item, index);
+    if (btnDelete) setDeleteBtnState(btnDelete, item, config);
   });
 
-  // Update all delete buttons
-  const allDeleteBtns = document.querySelectorAll(".color-delete-btn");
-  allDeleteBtns.forEach((btnDelete, index) => {
-    if (COLOR_SETTINGS[index]) {
-      const item = COLOR_SETTINGS[index];
-      const currentValue = colorConfig[item.key];
-      const defaultValue = getDefaultCSSValue(item);
+  updateDeleteAllBtn(config);
 
-      if (!currentValue || currentValue === defaultValue) {
-        btnDelete.classList.add("disabled");
-      } else {
-        btnDelete.classList.remove("disabled");
-      }
-    }
-  });
+  // Reopen the picker if it was open. The item is read before closePicker() clears it.
+  const openKey = pickerState.item?.key;
+  if (!openKey) return;
 
-  const deleteColorsBtn = document.querySelector(".all-colors-delete-btn");
-  deleteColorsBtn.classList.toggle("disabled", Object.keys(colorConfig).length === 0);
+  const index = settings.findIndex((item) => item.key === openKey);
+  if (index < 0) return;
 
-  // If picker is currently open, update it too
-  if (currentEditingItem && currentSwatch) {
-    // Close picker temporarily
-    closePicker();
+  await closePicker();
 
-    // Wait a bit then reopen with new values
-    setTimeout(async () => {
-      // Find the swatch and button again
-      const COLOR_SETTINGS = getColorSettings();
-      const itemIndex = COLOR_SETTINGS.findIndex((i) => i.key === currentEditingItem.key);
-      if (itemIndex >= 0) {
-        const swatch = document.querySelectorAll(".color-swatch")[itemIndex];
-        const btnDelete = document.querySelectorAll(".color-delete-btn")[itemIndex];
-        if (swatch && btnDelete) {
-          await openPickerForSwatch(currentEditingItem, swatch, btnDelete);
-        }
-      }
-    }, 100);
+  const item = settings[index];
+  const swatch = findItemElement(".color-swatch", item, index);
+  const btnDelete = findItemElement(".color-delete-btn", item, index);
+  if (swatch && btnDelete) {
+    await openPickerForSwatch(item, swatch, btnDelete);
   }
 }

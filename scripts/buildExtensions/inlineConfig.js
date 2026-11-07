@@ -55,22 +55,8 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   ]);
 
   // Main Utils
-  inlineUtilsFunctions("main.js", "common/utils.js", [
-    "debounce",
-    "getColorSettings",
-    "saveStyleAttrs",
-    "applyThemeSettings",
-    "applyBackgroundSettings",
-    "applyColorSettings",
-    "isGradient",
-    "parseGradient",
-    "extractGradientColors",
-    "generateForegroundScaleGradients",
-    "generateForegroundScale",
-    "getCSSThemeDefault",
-    "getDefaultCSSValue",
-    "getColorVariant",
-  ]);
+  inlineUtilsFunctions("main.js", "common/utils/colors.js", [], "start");
+  inlineUtilsFunctions("main.js", "common/utils.js", ["debounce", "applyThemeSettings"]);
 
   // Main Parser Utils
   inlineUtilsFunctions("mainParser.js", "common/utils.js", [

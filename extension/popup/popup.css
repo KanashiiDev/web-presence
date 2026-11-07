@@ -329,7 +329,7 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: var(--background-color);
+  background: var(--background-color);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -343,7 +343,7 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   padding: 6px 10px;
   border: 1px solid var(--warning-color);
   border-radius: 8px;
-  background-color: var(--warning-color);
+  background: var(--warning-color);
   font-size: 12px;
 }
 
@@ -375,7 +375,7 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   padding: 6px 10px;
   border: 1px solid var(--accent-color-border);
   border-radius: 8px;
-  background-color: var(--accent-color);
+  background: var(--accent-color);
   color: var(--text-color-btn);
   font-size: 12px;
   cursor: pointer;
@@ -436,6 +436,10 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   margin-left: 4px;
 }
 
+.color-delete-btn.close-picker svg {
+  margin-left: -5px;
+}
+
 .bg-delete-btn.disabled,
 .all-colors-delete-btn.disabled,
 .color-delete-btn.disabled {
@@ -443,6 +447,7 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   pointer-events: none;
   width: 0;
   padding: 5px 0;
+  margin-right: -5px;
 }
 
 .btn-action.active,
@@ -487,6 +492,7 @@ body.fg-blur.parser-options-open #siteList .simplebar-offset {
   background: var(--alert-color);
 }
 
+.color-delete-btn.blocked:not(.disabled),
 .input[disabled] {
   pointer-events: none;
   opacity: 0.7;
@@ -1301,7 +1307,7 @@ body.cleaning-mode .selected .history-trash {
   top: 0;
   z-index: 1000;
   padding-bottom: 6px;
-  right: 0px;
+  right: 28px;
 }
 
 .picker-popover-wrapper {
@@ -1317,18 +1323,18 @@ body.cleaning-mode .selected .history-trash {
 }
 
 .picker-popover .btn {
-  width: 88px;
+  width: 80px;
   font-size: 11px;
   padding: 4px;
   text-align: center;
 }
 
 .picker-popover .blur-btn.btn {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .picker-popover.gradient-mode .blur-btn.btn {
-  margin-right: 18px;
+  margin-right: 14px;
 }
 
 .bg-url-control {
@@ -1359,21 +1365,20 @@ body.cleaning-mode .selected .history-trash {
   overflow: hidden;
   position: absolute !important;
   top: 35px;
-  left: 0;
+  right: 0;
   background: var(--foreground-color-300);
   z-index: 1001;
   border-radius: var(--radius-default);
   box-shadow: 0 4px 12px var(--shadow-color);
-  padding: 6px;
+  padding: 12px;
   opacity: 1 !important;
-  width: calc(100% - 24px) !important;
+  width: calc(100% - 6px) !important;
   min-width: 280px;
-  height: 115px !important;
+  box-sizing: border-box;
 }
 
 .color.expandable-section {
-  height: 250px !important;
-  min-width: 270px;
+  height: 290px !important;
   overflow: auto;
 }
 
@@ -1386,6 +1391,12 @@ body.cleaning-mode .selected .history-trash {
 
 .expandable-section .settings-option {
   padding: 4px !important;
+}
+
+.bg.expandable-section .settings-option {
+  padding: 4px !important;
+  display: grid;
+  grid-template-columns: 80px 1fr;
 }
 
 .slider-row {
@@ -1413,8 +1424,16 @@ body.cleaning-mode .selected .history-trash {
 
 .colorCountContainer {
   display: flex;
+  gap: 7px;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  margin-top: -2px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  background: var(--foreground-color-200);
+  box-shadow: 0 0 3px var(--shadow-color);
 }
 
 .degree-slider-row {
@@ -1443,11 +1462,13 @@ body.cleaning-mode .selected .history-trash {
 }
 
 .gradient-controls {
-  max-width: 160px;
+  max-width: 100px;
+  min-width: 98px;
 }
 
 .gradient-color-list {
   max-height: 76px;
+  max-width: 90px;
   width: auto;
   overflow: scroll;
   padding: 4px;
@@ -1459,8 +1480,9 @@ body.cleaning-mode .selected .history-trash {
 }
 
 span.gradient-color-btn.btn {
-  height: 18px;
-  width: 18px;
+  height: 14px;
+  width: 14px;
+  padding: 0;
 }
 
 .gradient-color-item {
@@ -1492,11 +1514,11 @@ span.gradient-color-btn.btn {
   border-radius: 0;
 }
 
-.gradient-color-item input {
+.gradient-color-item input[type="text"] {
   border: 1px solid var(--border-color);
   border-radius: 3px;
   font-family: monospace;
-  font-size: 11px;
+  font-size: 10px;
   min-width: 0px;
   margin: 0;
 }

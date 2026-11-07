@@ -290,7 +290,7 @@ const FilterListController = {
 
     // More button
     const moreBtn = document.createElement("button");
-    moreBtn.className = "btn btn-secondary btn-sm";
+    moreBtn.className = "btn filter-more btn-secondary btn-sm";
     moreBtn.textContent = i18n.t("common.more");
     moreBtn.style.display = "none";
     FilterEvents.add(moreBtn, "click", (e) => {

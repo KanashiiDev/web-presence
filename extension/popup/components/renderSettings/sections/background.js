@@ -100,6 +100,14 @@ async function buildBackground(container) {
   );
 
   btnDeleteBg.addEventListener("click", async () => {
+    if (
+      !(await showConfirm("", {
+        heading: i18n.t("settings.backgroundImage.confirmDelete"),
+        body: "",
+      }))
+    )
+      return;
+
     bgSettings = { image: null, blur: 0, brightness: 100, saturation: 100, positionX: 50 };
     await saveBgSettings();
 

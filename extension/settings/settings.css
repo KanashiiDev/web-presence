@@ -164,7 +164,7 @@ button[data-level-action="replace"].edit-mode {
 }
 
 .parser-title mark {
-  background-color: var(--accent-color);
+  background: var(--accent-color);
   color: var(--text-color-btn);
   border-radius: 2px;
   font-weight: 500;
@@ -172,11 +172,11 @@ button[data-level-action="replace"].edit-mode {
 }
 
 .parser-option.active .parser-title mark {
-  background-color: var(--accent-color-bright);
+  background: var(--accent-color-bright);
 }
 
 .parser-option.active:hover .parser-title mark {
-  background-color: var(--accent-color);
+  background: var(--accent-color);
 }
 
 #formContainer {
@@ -670,6 +670,11 @@ button[data-level-action="replace"].edit-mode {
   max-height: 115px;
 }
 
+.btn.filter-more {
+  width: 100%;
+  opacity: 0.8;
+}
+
 .filter-entry.filter-entry-block {
   display: block;
   padding: 5px 0;
@@ -1094,7 +1099,7 @@ button.history-modal-close {
 }
 
 .debug-log-row.level-info.init {
-  background-color: var(--foreground-color-300);
+  background: var(--foreground-color-300);
 }
 
 .debug-log-row.level-warn {

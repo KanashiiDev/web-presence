@@ -68,8 +68,9 @@
   --warning-color: #7a6508;
   --alert-color: #782020;
   --accent-color: #425c83;
-  --accent-color-border: #425c83;
   --accent-color-bright: #4e6f97;
+  --accent-color-border: #425c83;
+  --accent-color-border-bright: #4e6f97;
   --switch-toggle-color: #ddd;
   --icon-color: #ddd;
   --red-color: #f44336;
@@ -113,8 +114,9 @@
   --warning-color: #b38600;
   --alert-color: #c53030;
   --accent-color: #425c83;
-  --accent-color-border: #425c83;
   --accent-color-bright: #4e6f97;
+  --accent-color-border: #425c83;
+  --accent-color-border-bright: #4e6f97;
   --switch-toggle-color: #f4f4f4;
   --icon-color: #3c3c3c;
   --red-color: #e53e3e;

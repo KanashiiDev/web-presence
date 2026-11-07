@@ -145,7 +145,7 @@ input[type="text"]:not(.ts-control),
 input[type="text"]:not(.ts-control input):focus,
 .input:not(.ts-control input):focus {
   background: var(--foreground-color-400);
-  border-color: var(--accent-color) !important;
+  border-color: var(--accent-color-border-bright) !important;
 }
 
 .ts-wrapper:not(.dropdown-active) .ts-control:hover,
@@ -196,7 +196,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--text-color-primary);
   border: 1px solid var(--text-color-secondary);
-  box-shadow: -407px 0 0 400px var(--foreground-color-600);
+  box-shadow: -3997px 0 0 3990px var(--foreground-color-600);
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -227,7 +227,7 @@ input[type="range"]::-moz-range-thumb {
 
 .select:focus {
   background: var(--foreground-color-400);
-  border-color: var(--accent-color);
+  border-color: var(--accent-color-border-bright);
 }
 
 /* Button - opt-in via .btn class; never use bare <button> selector */
@@ -560,7 +560,7 @@ button:focus-visible,
 
 .history-mode-switch .segmented-option.active {
   opacity: 1;
-  border-color: var(--accent-color);
+  border-color: var(--accent-color-border-bright);
 }
 
 /* Modal - overlay + content container for dialogs */

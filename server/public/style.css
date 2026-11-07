@@ -282,9 +282,7 @@ footer {
 }
 
 footer a {
-  text-decoration: none;
   color: var(--text-color-primary);
-  transition: color var(--transition-normal) ease;
 }
 
 footer a:hover {
@@ -498,12 +496,12 @@ img:not(.summary-img)[src*="assets/icon-dark.png"] {
   padding: 16px;
   border-radius: 8px;
   overflow: hidden;
-  background-color: var(--foreground-color-300);
+  background: var(--foreground-color-300);
   transition: background-color 0.2s ease;
 }
 
 .activity:hover {
-  background-color: var(--foreground-color-400);
+  background: var(--foreground-color-400);
 }
 
 .activity-info .date {
@@ -632,7 +630,7 @@ input[type="number"] {
   left: -7px;
   width: calc(100% + 13px);
   height: 3px;
-  background-color: var(--text-color-muted);
+  background: var(--text-color-muted);
   -webkit-animation: loadingBar 5s ease-in-out;
   animation: loadingBar 5s ease-in-out;
   display: block;
@@ -645,7 +643,7 @@ input[type="number"] {
   overflow: hidden;
   color: var(--text-color-primary);
   border-radius: var(--radius-default);
-  background-color: var(--foreground-color-300);
+  background: var(--foreground-color-300);
   border-left: 4px solid var(--border-color-bright);
   text-align: center;
   width: 100%;
@@ -1314,7 +1312,7 @@ input[type="number"] {
 }
 
 .capture-preset-item.active {
-  border-color: var(--accent-color);
+  border-color: var(--accent-color-border);
   background: var(--foreground-color-100);
 }
 

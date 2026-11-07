@@ -29,6 +29,14 @@ async function buildColors(container) {
       document.body.style.transition = "none";
       e.stopPropagation();
 
+      if (isPickerOpen()) {
+        if (btnDelete === getPickerDeleteBtn()) {
+          await closePicker();
+          return;
+        }
+        return;
+      }
+
       const { colorSettings: latest } = await browser.storage.local.get("colorSettings");
       const config = latest ?? {};
       delete config[item.key];
@@ -52,9 +60,10 @@ async function buildColors(container) {
       deleteColorsBtn.classList.toggle("disabled", Object.keys(config).length === 0);
     });
 
-    swatch.addEventListener("click", (e) => {
+    swatch.addEventListener("click", async (e) => {
       e.stopPropagation();
-      openPickerForSwatch(item, swatch, btnDelete);
+      await openPickerForSwatch(item, swatch, btnDelete);
+      applyPickerDeleteButtonState(btnDelete);
     });
 
     control.appendChild(swatch);
@@ -86,6 +95,14 @@ async function buildColors(container) {
   btnDeleteColors.classList.toggle("disabled", Object.keys(colorConfig).length === 0);
 
   btnDeleteColors.addEventListener("click", async (e) => {
+    if (
+      !(await showConfirm("", {
+        heading: i18n.t("settings.color.confirmDeleteAll"),
+        body: "",
+      }))
+    )
+      return;
+
     await browser.storage.local.set({ colorSettings: {} });
     await applyColorSettings();
     await applyBackgroundSettings();
@@ -115,7 +132,29 @@ async function buildColors(container) {
     e.stopPropagation();
     const isHidden = colorModal.classList.toggle("hidden");
     toggleSpan.classList.toggle("expanded", !isHidden);
+    if (!isHidden) colorSectionWrapper.scrollIntoView({ behavior: "smooth", block: "start" });
     await activateSimpleBar(colorModal);
+  });
+}
+
+function restoreDeleteButtons() {
+  document.querySelectorAll(".color-delete-btn").forEach((btn) => {
+    btn.classList.remove("blocked", "close-picker");
+    btn.replaceChildren(createSVG(svg_paths.crossIconPaths));
+  });
+}
+
+function applyPickerDeleteButtonState(activeBtn) {
+  document.querySelectorAll(".color-delete-btn").forEach((btn) => {
+    if (btn === activeBtn) {
+      btn.classList.remove("blocked");
+      btn.classList.add("close-picker");
+      btn.replaceChildren(createSVG(svg_paths.backIconPaths));
+    } else {
+      btn.classList.add("blocked");
+      btn.classList.remove("close-picker");
+      btn.replaceChildren(createSVG(svg_paths.crossIconPaths));
+    }
   });
 }
 
