@@ -596,6 +596,14 @@ html.setup-dialog-open #mainFooterButtons {
   box-shadow: 0 0 4px var(--text-color-muted);
 }
 
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
 .tutorialTooltip-highlight {
   position: relative;
   z-index: 9999;

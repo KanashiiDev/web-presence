@@ -701,4 +701,9 @@ async function initLastFm() {
   LastFmListController.render();
 
   await activateSimpleBar(["lfSourceList", "lfAllowList"]);
+
+  const tutorial = await browser.storage.local.get("lastFmTutorialDone");
+  if (!tutorial.lastFmTutorialDone) {
+    await showLastFmTutorial({ openSettingsDialog: openLastFmSettingsDialog });
+  }
 }

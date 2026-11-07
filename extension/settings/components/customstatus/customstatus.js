@@ -714,4 +714,9 @@ async function initCustomStatus() {
   await CustomStatusStorage.load();
   csWatchCustomStatusStorage();
   CustomStatusController.init();
+
+  const tutorial = await browser.storage.local.get("customStatusTutorialDone");
+  if (!tutorial.customStatusTutorialDone) {
+    await showCustomStatusTutorial();
+  }
 }

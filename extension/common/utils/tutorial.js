@@ -9,17 +9,28 @@
  *   getFadingEls?: (targetEl: Element|null) => Element[]|null
  * }>} config.steps
  * @param {string} config.storageKey
+ * @param {number} [config.dialogWidth] - optional fixed tooltip width (px) for text-heavy tutorials
  * @param {Function} [config.onStart]  - runs once before first step
  * @param {Function} [config.onEnd]    - runs once after last step / skip
  */
-async function createTutorial({ steps, storageKey, onStart, onEnd }) {
+async function createTutorial({ steps, storageKey, dialogWidth, onStart, onEnd }) {
   // Build tooltip DOM
   function buildTooltip() {
     document.getElementById("tutorialTooltip")?.remove();
+    document.getElementById("tutorialOverlay")?.remove();
+
+    // Dim backdrop for target-less steps (intro / finish)
+    const overlay = document.createElement("div");
+    overlay.id = "tutorialOverlay";
+    overlay.className = "tutorial-overlay";
 
     const dialog = document.createElement("div");
     dialog.id = "tutorialTooltip";
     dialog.className = "tutorial-dialog";
+    if (dialogWidth) {
+      dialog.style.minWidth = `${dialogWidth}px`;
+      dialog.style.maxWidth = `${dialogWidth}px`;
+    }
 
     const header = document.createElement("h2");
     const text = document.createElement("p");
@@ -34,12 +45,12 @@ async function createTutorial({ steps, storageKey, onStart, onEnd }) {
 
     actions.append(nextBtn, skipBtn);
     dialog.append(header, text, actions);
-    document.body.appendChild(dialog);
+    document.body.append(overlay, dialog);
 
-    return { dialog, header, text, nextBtn, skipBtn };
+    return { overlay, dialog, header, text, nextBtn, skipBtn };
   }
 
-  const { dialog, header, text, nextBtn, skipBtn } = buildTooltip();
+  const { overlay, dialog, header, text, nextBtn, skipBtn } = buildTooltip();
   let currentStep = 0;
 
   // Swap a CSS class across a live NodeList > new target set, avoids repeated querySelectorAll
@@ -59,9 +70,14 @@ async function createTutorial({ steps, storageKey, onStart, onEnd }) {
     swapClass("fading", getFadingEls?.(targetEl) ?? null);
   }
 
-  // Position tooltip relative to target; no-op when targetEl is absent
+  // Position tooltip relative to target; centered fallback when the step has no target element
   function positionTooltip(targetEl) {
-    if (!targetEl) return;
+    if (!targetEl) {
+      const scrollY = window.scrollY ?? document.documentElement.scrollTop;
+      dialog.style.top = `${Math.max(8, scrollY + (window.innerHeight - dialog.offsetHeight) / 2)}px`;
+      dialog.style.left = `${Math.max(8, (window.innerWidth - dialog.offsetWidth) / 2)}px`;
+      return;
+    }
 
     const rect = targetEl.getBoundingClientRect();
     const scrollY = window.scrollY ?? document.documentElement.scrollTop;
@@ -88,9 +104,11 @@ async function createTutorial({ steps, storageKey, onStart, onEnd }) {
     if (!step) return; // guard against out-of-bounds
 
     const isLastStep = index + 1 >= steps.length;
-    const targetEl = step.selector ? document.querySelector(step.selector) : null;
 
     step.onShow?.();
+
+    // Query the target after onShow: onShow may open a dialog or create the element to point at
+    const targetEl = step.selector ? document.querySelector(step.selector) : null;
 
     header.textContent = i18n.t("tutorial.step", { step: `${index + 1}/${steps.length}` });
     text.textContent = step.text;
@@ -103,10 +121,13 @@ async function createTutorial({ steps, storageKey, onStart, onEnd }) {
     highlight(targetEl);
     applyFading(targetEl, step.getFadingEls);
     positionTooltip(targetEl);
+    // Backdrop only for centered, target-less steps
+    overlay.style.display = targetEl ? "none" : "";
   }
 
   // Remove tooltip, clear visual state, persist completion
   async function endTutorial() {
+    overlay.remove();
     dialog.remove();
     swapClass("tutorialTooltip-highlight", null);
     swapClass("fading", null);
@@ -169,17 +190,18 @@ async function showInitialTutorial(currentConnectionMode) {
     { text: i18n.t("tutorial.step4"), selector: "#openManager", getFadingEls: popupFading },
     { text: i18n.t("tutorial.step5"), selector: "#settingsToggle", getFadingEls: popupFading },
     { text: i18n.t("tutorial.step6"), selector: "#openFiltersBtn", getFadingEls: popupFading },
+    { text: i18n.t("tutorial.step7"), selector: "#openCustomStatusBtn", getFadingEls: popupFading },
     ...(currentConnectionMode !== "web-only"
       ? [
           {
-            text: i18n.t("tutorial.step7"),
+            text: i18n.t("tutorial.step8"),
             selector: "#openDashboardBtn",
             getFadingEls: popupFading,
           },
         ]
       : []),
 
-    { text: i18n.t("tutorial.step8"), selector: "#openLibraryBtn", getFadingEls: popupFading },
+    { text: i18n.t("tutorial.step9"), selector: "#openLibraryBtn", getFadingEls: popupFading },
   ];
 
   await createTutorial({
@@ -318,6 +340,95 @@ async function showFiltersTutorial() {
         document.getElementById("toggleFormBtn")?.click();
       }
       if (emptyState) emptyState.style.display = "";
+    },
+  });
+}
+
+// Last.fm Tutorial
+async function showLastFmTutorial({ openSettingsDialog } = {}) {
+  const card = document.querySelector('[data-section="lastfm"] .content');
+  const SEL = ".lf-toggle-row, #lfStatusRow, #lfSearchContainer, #lfSourceList, #lfAllowList";
+  let tutorialModal = null;
+
+  function lfFading(targetEl) {
+    return [...document.querySelectorAll(SEL)].filter((el) => el !== targetEl && !el.contains(targetEl));
+  }
+
+  function disposeModal() {
+    tutorialModal?.remove();
+    tutorialModal = null;
+  }
+
+  const steps = [
+    { text: i18n.t("lastfm.tutorial.intro") },
+    { text: i18n.t("lastfm.tutorial.toggle"), selector: "#lfEnabledToggle", getFadingEls: lfFading },
+    { text: i18n.t("lastfm.tutorial.settingsBtn"), selector: "#lfSettingsBtn", getFadingEls: lfFading },
+    {
+      text: i18n.t("lastfm.tutorial.auth"),
+      selector: ".lf-session-row .btn",
+      getFadingEls: lfFading,
+      onShow: () => {
+        if (!tutorialModal && openSettingsDialog) {
+          tutorialModal = openSettingsDialog();
+          // Tutorial is read-only here: prevent accidental clicks inside the dialog
+          if (tutorialModal) tutorialModal.style.pointerEvents = "none";
+        }
+      },
+    },
+    {
+      text: i18n.t("lastfm.tutorial.status"),
+      selector: "#lfStatusRow",
+      getFadingEls: lfFading,
+      onShow: disposeModal,
+    },
+    { text: i18n.t("lastfm.tutorial.search"), selector: "#lfSearchContainer", getFadingEls: lfFading },
+    { text: i18n.t("lastfm.tutorial.sourceList"), selector: "#lfSourceList", getFadingEls: lfFading },
+    { text: i18n.t("lastfm.tutorial.allowList"), selector: "#lfAllowList", getFadingEls: lfFading },
+    { text: i18n.t("lastfm.tutorial.activate"), selector: "#lfEnabledToggle", getFadingEls: lfFading },
+  ];
+
+  await createTutorial({
+    steps,
+    storageKey: "lastFmTutorialDone",
+    dialogWidth: 320,
+    onStart: () => {
+      if (card) card.style.pointerEvents = "none";
+    },
+    onEnd: async () => {
+      disposeModal();
+      if (card) card.style.pointerEvents = "";
+    },
+  });
+}
+
+// Custom Status Tutorial
+async function showCustomStatusTutorial() {
+  const card = document.querySelector('[data-section="customstatus"] .content');
+  const SEL = "#csProfilesContainer, .cs-toggle-row, #csFields, #csPreview, #csSaveButtons";
+
+  function csFading(targetEl) {
+    return [...document.querySelectorAll(SEL)].filter((el) => el !== targetEl && !el.contains(targetEl));
+  }
+
+  const steps = [
+    { text: i18n.t("customstatus.tutorial.intro") },
+    { text: i18n.t("customstatus.tutorial.profiles"), selector: "#csProfilesContainer", getFadingEls: csFading },
+    { text: i18n.t("customstatus.tutorial.fields"), selector: "#csFields", getFadingEls: csFading },
+    { text: i18n.t("customstatus.tutorial.preview"), selector: "#csPreview", getFadingEls: csFading },
+    { text: i18n.t("customstatus.tutorial.save"), selector: "#csSaveButtons", getFadingEls: csFading },
+    { text: i18n.t("customstatus.tutorial.activate"), selector: ".cs-toggle-row", getFadingEls: csFading },
+    { text: i18n.t("customstatus.tutorial.activeMode") },
+  ];
+
+  await createTutorial({
+    steps,
+    storageKey: "customStatusTutorialDone",
+    dialogWidth: 320,
+    onStart: () => {
+      if (card) card.style.pointerEvents = "none";
+    },
+    onEnd: async () => {
+      if (card) card.style.pointerEvents = "";
     },
   });
 }
