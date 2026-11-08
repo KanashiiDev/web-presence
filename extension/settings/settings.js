@@ -45,6 +45,7 @@ function startSettings() {
   if (currentSection === "priority") initActivityPriority();
   if (currentSection === "customstatus") initCustomStatus();
   if (currentSection === "lastfm") initLastFm();
+  initNewDots();
 }
 
 window.addEventListener("load", async () => {

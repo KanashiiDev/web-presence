@@ -55,6 +55,7 @@ class UserScriptUI {
     if (!tutorial.userScriptTutorialDone) {
       await showUserScriptTutorial();
     }
+    initNewDots();
   }
 
   bindEvents() {

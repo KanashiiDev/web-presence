@@ -55,6 +55,7 @@ const sectionManager = {
     historyToggleBtn.addEventListener("click", this.listeners.historyToggle);
     historyStatsToggleBtn.addEventListener("click", this.listeners.statsToggle);
     settingsToggleBtn.addEventListener("click", this.listeners.settingsToggle);
+    initNewDots();
   },
 
   _transitioning: false,
@@ -72,6 +73,7 @@ const sectionManager = {
     } finally {
       this._transitioning = false;
       applyTranslations();
+      initNewDots();
     }
   },
 

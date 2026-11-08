@@ -17,6 +17,7 @@ class UserParserUI {
     this.renderList();
     await this.restoreContext();
     initStorageListener();
+    initNewDots();
   }
 
   bindEvents() {

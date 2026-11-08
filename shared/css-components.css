@@ -7,6 +7,24 @@
   user-select: none;
 }
 
+/* New Dot - red badge guiding users to newly added features */
+.new-dot-host {
+  position: relative;
+}
+
+.new-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red-color);
+  box-shadow: var(--red-color) 0 0 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* Badge - small status labels */
 .badge {
   display: inline-block;

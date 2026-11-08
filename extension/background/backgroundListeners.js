@@ -2326,6 +2326,11 @@ const setupListeners = () => {
     }
   });
 
+  // onInstalled
+  browser.runtime.onInstalled.addListener(({ reason }) => {
+    if (reason === "install") newDotRecordInstall();
+  });
+
   // onSuspend
   browser.runtime.onSuspend.addListener(() => {
     logInfo("[background:onSuspend]: Suspending...");
