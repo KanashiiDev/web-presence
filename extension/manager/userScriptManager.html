@@ -146,9 +146,18 @@
           <div class="container">
             <div class="code-header">
               <p data-i18n="userscript.codeEditor.label">Script Code:</p>
+              <button id="btnFoldAll" data-i18n="userscript.codeEditor.foldAll">Fold All</button>
+              <button id="btnUnfoldAll" data-i18n="userscript.codeEditor.unfoldAll">Unfold All</button>
+              <button id="btnWrapToggle" data-i18n="userscript.codeEditor.wrapToggle">Wrap</button>
               <button id="btnFormat" data-i18n="userscript.codeEditor.beautify">Beautify</button>
             </div>
             <textarea id="inCode" rows="15" data-i18n="userscript.codeEditor.placeholder" placeholder="// Your javaScript code here..."></textarea>
+            <div class="cm-status-bar">
+              <span id="cmStatusPos"></span>
+              <span id="cmStatusSel" hidden></span>
+              <button type="button" id="cmStatusErrors" class="chip error" hidden></button>
+              <button type="button" id="cmStatusWarnings" class="chip warning" hidden></button>
+            </div>
             <div class="code-notes">
               <p class="helpers note-section">
                 <span data-i18n="userscript.codeEditor.requiredVariables.label">Required Variables:</span>
@@ -239,6 +248,26 @@
                 <code>
                   <code>Ctrl+/</code>
                   <span data-i18n="userscript.codeEditor.keyboardShortcuts.toggleComment">Toggle Comment</span>
+                </code>
+                <code>
+                  <code>Ctrl+Alt+[</code>
+                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.foldAll">Fold All</span>
+                </code>
+                <code>
+                  <code>Ctrl+Alt+]</code>
+                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.unfoldAll">Unfold All</span>
+                </code>
+                <code>
+                  <code>F8</code>
+                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.nextError">Next lint issue</span>
+                </code>
+                <code>
+                  <code>Alt+Up/Down</code>
+                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.moveLines">Move Lines</span>
+                </code>
+                <code>
+                  <code>Shift+Alt+Down</code>
+                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.duplicateLine">Duplicate Line</span>
                 </code>
                 <code>
                   <code>Ctrl+Z</code>

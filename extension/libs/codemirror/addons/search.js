@@ -212,9 +212,25 @@
   }
 
   // --- Panel lifecycle ---
+  // Seed the search box with the current single-line selection
+  var MAX_QUERY_SEED_LENGTH = 200;
+  function getSearchSeed(cm) {
+    if (!cm.somethingSelected()) return null;
+    var text = (cm.getSelections()[0] || "").trim();
+    if (!text || text.indexOf("\n") !== -1) return null;
+    if (text.length > MAX_QUERY_SEED_LENGTH) text = text.slice(0, MAX_QUERY_SEED_LENGTH);
+    return text;
+  }
+  function seedPanelFromSelection(cm, panel) {
+    var seed = getSearchSeed(cm);
+    if (seed == null || panel._refs.searchInput.value === seed) return;
+    panel._refs.searchInput.value = seed;
+    startSearch(cm, seed, {});
+  }
   function openPanel(cm) {
     var state = getSearchState(cm);
     if (state._panel) {
+      seedPanelFromSelection(cm, state._panel);
       state._panel._refs.searchInput.focus();
       return;
     }
@@ -227,6 +243,9 @@
 
     // wire events
     wirePanelEvents(cm, panel);
+
+    // prefill with the current selection (if any) and run the search
+    seedPanelFromSelection(cm, panel);
 
     // focus input
     panel._refs.searchInput.focus();

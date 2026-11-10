@@ -177,7 +177,7 @@ async function showAlert(title, body, type = "info", { labelOk = i18n.t("common.
 }
 
 // Confirm
-async function showConfirm(title, { type = "danger", heading, body, labelOk, labelCancel = i18n.t("common.cancel"), target } = {}) {
+async function showConfirm(title, { type = "danger", heading, body, labelOk, labelCancel = i18n.t("common.cancel"), extraButtons = [], target } = {}) {
   heading ??= type === "danger" ? i18n.t("dialog.confirmDelete") : "";
   body ??= type === "danger" ? i18n.t("dialog.warnDelete") : "";
   labelOk ??= type === "danger" ? i18n.t("common.delete") : i18n.t("common.confirm");
@@ -192,6 +192,7 @@ async function showConfirm(title, { type = "danger", heading, body, labelOk, lab
     type,
     heading,
     body: bodyNode,
+    extraButtons,
     buttons: [
       { label: labelCancel, cls: "", value: false },
       { label: labelOk, cls: type, value: true },

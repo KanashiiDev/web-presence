@@ -1,11 +1,216 @@
 // Small, reusable utility helpers
 
+/**
+ * Runtime helper functions injected into userscripts by userScriptWorker.js.
+ * Mirrors the JSHint `predef` whitelist in libs/codemirror/libs/jshintFilters.js
+ * and is exposed to the editor autocomplete through the CodeMirror 5 "hint"
+ * additionalContext option (javascript-hint.js uses additionalContext by default
+ * for the standard JavaScript hint helper).
+ */
+const RUNTIME_HELPERS = {
+  setMemo: true,
+  getMemo: true,
+  useSetting: true,
+  getText: true,
+  getTextAll: true,
+  getImage: true,
+  getImageAll: true,
+  querySelectorDeep: true,
+  getIframeData: true,
+  clearActivity: true,
+  blockHistorySave: true,
+  allowHistorySave: true,
+};
+
+// `//#region Name` / `//#endregion` comment markers for collapsible named sections.
+const REGION_OPEN_RE = /\/\/#region\b(?!-)/;
+const REGION_OPEN_ALL_RE = /\/\/#region\b(?!-)/g;
+const REGION_CLOSE_ALL_RE = /\/\/#endregion\b/g;
+
+const LINT_FLASH_CLASS = "cm-lint-flash";
+const LINT_FLASH_DURATION = 700;
+const MAX_DOC_WORDS = 1500;
+const MAX_DOC_WORD_LENGTH = 40;
+const MAX_HINT_EXTRAS = 80;
+
+/**
+ * Fold range finder for `//#region ... //#endregion` comment sections.
+ *
+ * @param {CodeMirror} cm Editor instance.
+ * @param {{line: number, ch: number}} pos Position to fold from (line start).
+ * @returns {null|{from: object, to: object}} Fold range or null.
+ */
+function regionFoldRange(cm, pos) {
+  const lineText = cm.getLine(pos.line) || "";
+  if (!REGION_OPEN_RE.test(lineText)) return null;
+
+  let depth = 1;
+  for (let current = pos.line + 1; current <= cm.lastLine(); current++) {
+    const text = (cm.getLine(current) || "").trim();
+    if (!text.startsWith("//")) continue;
+
+    const bulkCloses = (text.match(REGION_CLOSE_ALL_RE) || []).length;
+    const opens = (text.match(REGION_OPEN_ALL_RE) || []).length;
+    if (bulkCloses) {
+      depth -= bulkCloses;
+      if (depth <= 0 && current > pos.line) {
+        return {
+          from: CodeMirror.Pos(pos.line, lineText.length),
+          to: CodeMirror.Pos(current, cm.getLine(current).length),
+        };
+      }
+    }
+    depth += opens;
+  }
+  return null;
+}
+
+/**
+ * Registers the region fold helper for JavaScript content (mirrors the
+ * comment-fold.js global-helper pattern so the finder participates in
+ * CodeMirror.fold.auto lookups).
+ */
+function registerRegionFoldHelper() {
+  CodeMirror.registerGlobalHelper(
+    "fold",
+    "region",
+    function (mode) {
+      return mode.name === "javascript" && !mode.jsonMode;
+    },
+    regionFoldRange,
+  );
+}
+registerRegionFoldHelper();
+
+/**
+ * Duplicates the current selection (or the current line when the selection is
+ * empty) immediately below it. Multiple cursors are processed bottom-up so
+ * earlier insertions do not shift positions that have yet to be copied.
+ *
+ * @param {CodeMirror} cm Editor instance.
+ */
+function duplicateLines(cm) {
+  cm.operation(function () {
+    const sels = cm
+      .listSelections()
+      .slice()
+      .sort((a, b) => Math.min(b.anchor.line, b.head.line) - Math.min(a.anchor.line, a.head.line));
+    for (const sel of sels) {
+      const from = cmpPosLess(sel.anchor, sel.head);
+      const to = cmpPosGreater(sel.anchor, sel.head);
+      const endLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+
+      if (from.line === to.line && from.ch === to.ch) {
+        // Empty selection: duplicate the whole line.
+        const lineLen = cm.getLine(from.line).length;
+        const text = cm.getRange(CodeMirror.Pos(from.line, 0), CodeMirror.Pos(from.line, lineLen)) + "\n";
+        cm.replaceRange(text, CodeMirror.Pos(from.line, lineLen));
+        cm.setSelection(CodeMirror.Pos(from.line + 1, 0), CodeMirror.Pos(from.line + 1, lineLen));
+      } else if (from.line === endLine) {
+        // Text selection within one line: duplicate exactly the selected text.
+        const text = cm.getRange(from, to);
+        cm.replaceRange(text, to);
+        cm.setSelection(CodeMirror.Pos(to.line, to.ch), CodeMirror.Pos(to.line, to.ch + text.length));
+      } else {
+        // Multi-line selection: duplicate the whole block below it.
+        const blockEndCh = cm.getLine(endLine).length;
+        const span = endLine - from.line + 1;
+        const text = cm.getRange(CodeMirror.Pos(from.line, 0), CodeMirror.Pos(endLine, blockEndCh)) + "\n";
+        cm.replaceRange(text, CodeMirror.Pos(endLine, blockEndCh));
+        cm.setSelection(CodeMirror.Pos(from.line + span, from.ch), CodeMirror.Pos(endLine + span, to.ch));
+      }
+    }
+  });
+}
+
+/**
+ * Swaps a full-line block with the adjacent line above (`dir < 0`) or below
+ * (`dir > 0`). Selections whose swap target line belongs to another selection
+ * are skipped to avoid mixing the moving blocks.
+ *
+ * @param {CodeMirror} cm Editor instance.
+ * @param {number} dir -1 to move up, 1 to move down.
+ */
+function moveLines(cm, dir) {
+  const sels = cm.listSelections();
+  const spans = sels.map(function (sel) {
+    const from = cmpPosLess(sel.anchor, sel.head);
+    const to = cmpPosGreater(sel.anchor, sel.head);
+    return { start: from.line, end: to.ch === 0 && to.line > from.line ? to.line - 1 : to.line, shift: 0, sel: sel };
+  });
+
+  const spanOccupied = function (index, line) {
+    return spans.some((other, otherIndex) => otherIndex !== index && line >= other.start && line <= other.end);
+  };
+
+  cm.operation(function () {
+    for (let i = 0; i < spans.length; i++) {
+      const span = spans[i];
+      const targetLine = dir < 0 ? span.start - 1 : span.end + 1;
+      if (targetLine < cm.firstLine() || targetLine > cm.lastLine() || spanOccupied(i, targetLine)) continue;
+      swapBlockWithLine(cm, span.start, span.end, targetLine);
+      span.shift = dir;
+    }
+    cm.setSelections(
+      spans.map(function (span) {
+        const anchor = span.sel.anchor;
+        const head = span.sel.head;
+        return {
+          anchor: span.shift ? cm.clipPos(CodeMirror.Pos(anchor.line + span.shift, anchor.ch)) : anchor,
+          head: span.shift ? cm.clipPos(CodeMirror.Pos(head.line + span.shift, head.ch)) : head,
+        };
+      }),
+    );
+  });
+}
+
+/**
+ * Swaps the full-line block `startLine..endLine` with the neighbour line at
+ * `targetLine` while keeping the document line count stable.
+ */
+function swapBlockWithLine(cm, startLine, endLine, targetLine) {
+  const blockEndCh = cm.getLine(endLine).length;
+  const blockText = cm.getRange(CodeMirror.Pos(startLine, 0), CodeMirror.Pos(endLine, blockEndCh));
+  const targetLen = cm.getLine(targetLine).length;
+  const targetText = cm.getRange(CodeMirror.Pos(targetLine, 0), CodeMirror.Pos(targetLine, targetLen));
+
+  if (targetLine < startLine) {
+    cm.replaceRange(blockText + "\n" + targetText, CodeMirror.Pos(targetLine, 0), CodeMirror.Pos(endLine, blockEndCh));
+  } else {
+    cm.replaceRange(targetText + "\n" + blockText, CodeMirror.Pos(startLine, 0), CodeMirror.Pos(targetLine, targetLen));
+  }
+}
+
+function cmpPosLess(a, b) {
+  return a.line < b.line || (a.line === b.line && a.ch < b.ch) ? a : b;
+}
+
+function cmpPosGreater(a, b) {
+  return cmpPosLess(a, b) === a ? b : a;
+}
+
+CodeMirror.commands.duplicateLines = duplicateLines;
+CodeMirror.commands.moveLinesUp = function (cm) {
+  moveLines(cm, -1);
+};
+CodeMirror.commands.moveLinesDown = function (cm) {
+  moveLines(cm, 1);
+};
+
 class UserScriptUI {
   constructor() {
     this.editingId = null;
     this.editingScript = null;
     this.activeTab = "my"; // "my" | "repo" | "edited"
     this.searchQuery = "";
+    this.lineWrapEnabled = true;
+    this.lintAnnotations = [];
+    this.lintFlashLine = null;
+    this.lintFlashTimer = null;
+    this.docWordsCache = [];
+    this.statusBarBuilt = false;
+    this._dirtyBaseline = null;
+    this._savePromise = null;
     this.init();
   }
 
@@ -115,15 +320,28 @@ class UserScriptUI {
         }
       }
     });
+
+    // Native browser guard when the tab/window closes with unsaved changes
+    window.addEventListener("beforeunload", (e) => {
+      if (this.isEditorDirty()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+
+    this.syncSearchAvailability();
   }
 
   async switchTab(tab) {
     if (this.activeTab === tab) return;
+    const editor = document.getElementById("editor");
+    // Tab switch closes the open editor; protect unsaved changes first.
+    if (editor && !editor.hidden && !(await this.confirmDiscardChanges())) return;
     this.activeTab = tab;
     document.querySelectorAll(".script-tab").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tab === tab);
     });
-    this.hideEditor();
+    this.hideEditorCore();
     await this.refreshList();
   }
 
@@ -148,8 +366,10 @@ class UserScriptUI {
   }
 
   async bindCodeEditor() {
-    const dataTheme = await browser.storage.local.get("theme");
-    const currentTheme = dataTheme.theme === "light" ? "material-lighter" : "material-darker";
+    const stored = await browser.storage.local.get(["theme", "editorLineWrap"]);
+    const currentTheme = stored.theme === "light" ? "material-lighter" : "material-darker";
+    // Default true keeps the pre-existing always-wrapped editor behaviour.
+    this.lineWrapEnabled = stored.editorLineWrap !== false;
 
     const codeMirrorConfig = {
       theme: currentTheme,
@@ -160,15 +380,28 @@ class UserScriptUI {
       matchBrackets: true,
       foldGutter: true,
       styleActiveLine: { nonEmpty: true },
+      // Official match-highlighter addon: highlights the word under the cursor
+      // and text selections throughout the document, scrollbar annotations included.
+      highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: true, minChars: 2, delay: 300 },
       gutters: ["CodeMirror-linenumbers", "CodeMirror-lint-markers", "CodeMirror-foldgutter"],
-      lineWrapping: true,
+      lineWrapping: this.lineWrapEnabled,
       extraKeys: {
         "Ctrl-/": "toggleComment",
+        "Ctrl-G": "findNextAdvanced",
+        "Shift-Ctrl-G": "findPrevAdvanced",
         "Ctrl-F": function (cm) {
           cm.execCommand("openSearchAdvanced");
         },
+        "Ctrl-Alt-[": "foldAll",
+        "Ctrl-Alt-]": "unfoldAll",
+        "Alt-Up": "moveLinesUp",
+        "Alt-Down": "moveLinesDown",
+        "Shift-Alt-Down": "duplicateLines",
         Esc: function (cm) {
-          cm.execCommand("closeSearchAdvanced");
+          // Close the search panel when it is open, otherwise restore the
+          // default single-selection behaviour (Esc -> singleSelection).
+          if (cm.state.searchAdvanced && cm.state.searchAdvanced._panel) cm.execCommand("closeSearchAdvanced");
+          else cm.execCommand("singleSelection");
         },
       },
     };
@@ -198,18 +431,38 @@ class UserScriptUI {
     };
 
     // Init CodeMirror 5
+    // lintOptions spread: add-on only - `onUpdateLinting` is an official
+    // lint.js UI option (lint.js defaults), the rest remain JSHint linter options.
+    const lintRunConfig = {
+      ...lintOptions,
+      onUpdateLinting: (annotations) => this.updateLintSummary(annotations),
+    };
     this.codeEditor = CodeMirror.fromTextArea(document.getElementById("inCode"), {
       mode: "javascript",
-      lint: lintOptions,
+      lint: lintRunConfig,
+      hintOptions: { additionalContext: RUNTIME_HELPERS },
       ...codeMirrorConfig,
     });
 
-    // Auto-complete
-    this.codeEditor.on("inputRead", function (cm, change) {
-      if (change.text[0].match(/[a-zA-Z_.]/)) {
-        cm.showHint({ completeSingle: false });
-      }
-    });
+    // Autocomplete: base JSHint helpers + words from the current document
+    // (covers string literals such as CSS selectors typed more than once).
+    this.refreshDocWords(this.codeEditor);
+    this.codeEditor.on(
+      "inputRead",
+      function (cm, change) {
+        const char = (change.text && change.text[0]) || "";
+        if (!char || !/[\w$.-]/.test(char)) return;
+        cm.showHint({ completeSingle: false, hint: (cm, options) => this.combinedHint(cm, options) });
+      }.bind(this),
+    );
+    this.codeEditor.on(
+      "changes",
+      debounce((cm) => {
+        this.refreshDocWords(cm);
+      }, 800),
+    );
+    this.codeEditor.on("cursorActivity", () => this.updateStatusBar());
+    this.buildEditorStatusBar();
 
     this.codeEditor.on(
       "change",
@@ -240,6 +493,29 @@ class UserScriptUI {
 
     // Iframe Selector Default Value
     this.iframeSelectorsEditor.setValue(JSON.stringify({ fields: { $video: { type: "video" } } }, null, 2));
+
+    // Ctrl/Cmd+Click adds additional cursors (core CodeMirror.addSelection API).
+    for (const editor of [this.codeEditor, this.iframeSelectorsEditor]) {
+      editor.on("mousedown", (cm, event) => this.addMultiCursor(cm, event));
+    }
+
+    // Toolbar controls: fold all, unfold all and the line wrap toggle.
+    const btnFoldAll = document.getElementById("btnFoldAll");
+    const btnUnfoldAll = document.getElementById("btnUnfoldAll");
+    const btnWrapToggle = document.getElementById("btnWrapToggle");
+    const syncWrapButton = () => btnWrapToggle.classList.toggle("active", this.lineWrapEnabled);
+
+    btnFoldAll?.addEventListener("click", () => this.codeEditor.execCommand("foldAll"));
+    btnUnfoldAll?.addEventListener("click", () => this.codeEditor.execCommand("unfoldAll"));
+
+    syncWrapButton();
+    btnWrapToggle?.addEventListener("click", async () => {
+      this.lineWrapEnabled = !this.lineWrapEnabled;
+      this.codeEditor.setOption("lineWrapping", this.lineWrapEnabled);
+      this.iframeSelectorsEditor.setOption("lineWrapping", this.lineWrapEnabled);
+      syncWrapButton();
+      await browser.storage.local.set({ editorLineWrap: this.lineWrapEnabled });
+    });
 
     // Iframe Selector Toggle
     const iframeSelectorsContainer = document.getElementById("iframeSelectorsContainer");
@@ -365,6 +641,193 @@ class UserScriptUI {
     document.querySelector(".container.watchAutoDetect").style.display = isWatch ? "" : "none";
   }
 
+  buildEditorStatusBar() {
+    const bar = document.getElementById("cmStatusBar");
+    if (!bar) return;
+    this.statusBarBuilt = true;
+    this.statusPos = document.getElementById("cmStatusPos");
+    this.statusSel = document.getElementById("cmStatusSel");
+    this.statusErrors = document.getElementById("cmStatusErrors");
+    this.statusWarnings = document.getElementById("cmStatusWarnings");
+
+    this.statusErrors?.addEventListener("click", () => this.navigateLint(this.codeEditor, 1, "error"));
+    this.statusWarnings?.addEventListener("click", () => this.navigateLint(this.codeEditor, 1, "warning"));
+    this.updateStatusBar();
+  }
+
+  updateStatusBar() {
+    if (!this.statusBarBuilt) return;
+    const cursor = this.codeEditor.getCursor();
+    this.statusPos.textContent = `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
+    const selectedLength = this.codeEditor.somethingSelected() ? this.codeEditor.getSelection().length : 0;
+    this.statusSel.hidden = !selectedLength;
+    this.statusSel.textContent = selectedLength ? i18n.t("userscript.codeEditor.status.selection", [selectedLength]) : "";
+  }
+
+  updateLintSummary(annotations) {
+    this.lintAnnotations = Array.isArray(annotations) ? annotations.filter((ann) => ann && ann.from && ann.severity) : [];
+    if (!this.statusBarBuilt) return;
+    const errors = this.lintAnnotations.filter((ann) => ann.severity === "error").length;
+    const warnings = this.lintAnnotations.filter((ann) => ann.severity === "warning").length;
+
+    this.statusWarnings.hidden = warnings === 0;
+    this.statusErrors.hidden = errors === 0;
+    if (errors) {
+      this.statusErrors.textContent = i18n.t("userscript.codeEditor.status.errors", [errors]);
+      this.statusErrors.title = i18n.t("userscript.codeEditor.keyboardShortcuts.nextError");
+    }
+    if (warnings) {
+      this.statusWarnings.textContent = i18n.t("userscript.codeEditor.status.warnings", [warnings]);
+      this.statusWarnings.title = i18n.t("userscript.codeEditor.keyboardShortcuts.nextError");
+    }
+  }
+
+  /**
+   * Moves the cursor to the next/previous lint annotation. Iterates the
+   * annotation list maintained by the lint.js `onUpdateLinting` hook.
+   *
+   * @param {CodeMirror} cm Editor instance.
+   * @param {number} dir 1 for next, -1 for previous.
+   * @param {string|null} [severity] Optional severity filter ("error"|"warning").
+   */
+  navigateLint(cm, dir, severity = null) {
+    const annotations = this.lintAnnotations.filter((ann) => !severity || ann.severity === severity);
+    if (!annotations.length) return;
+    const sorted = annotations.slice().sort((a, b) => a.from.line - b.from.line || a.from.ch - b.from.ch);
+    const cursor = cm.getCursor();
+    let target = null;
+    if (dir < 0) {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        const ann = sorted[i];
+        if (ann.from.line < cursor.line || (ann.from.line === cursor.line && ann.from.ch < cursor.ch)) {
+          target = ann;
+          break;
+        }
+      }
+      if (!target) target = sorted[sorted.length - 1];
+    } else {
+      for (const ann of sorted) {
+        if (ann.from.line > cursor.line || (ann.from.line === cursor.line && ann.from.ch > cursor.ch)) {
+          target = ann;
+          break;
+        }
+      }
+      if (!target) target = sorted[0];
+    }
+
+    cm.setCursor(target.from);
+    cm.scrollIntoView(null, 120);
+    cm.focus();
+    this.flashLintLine(cm, target.from.line);
+  }
+
+  flashLintLine(cm, line) {
+    clearTimeout(this.lintFlashTimer);
+    if (this.lintFlashLine !== null) cm.removeLineClass(this.lintFlashLine, "wrap", LINT_FLASH_CLASS);
+    cm.addLineClass(line, "wrap", LINT_FLASH_CLASS);
+    this.lintFlashLine = line;
+    this.lintFlashTimer = setTimeout(() => {
+      cm.removeLineClass(line, "wrap", LINT_FLASH_CLASS);
+      this.lintFlashLine = null;
+    }, LINT_FLASH_DURATION);
+  }
+
+  focusFirstLintError() {
+    const errors = this.lintAnnotations.filter((ann) => ann.severity === "error");
+    if (!errors.length) return;
+    const first = errors.slice().sort((a, b) => a.from.line - b.from.line || a.from.ch - b.from.ch)[0];
+    this.codeEditor.setCursor(first.from);
+    this.codeEditor.scrollIntoView(null, 120);
+    this.flashLintLine(this.codeEditor, first.from.line);
+  }
+
+  /**
+   * Rebuilds the lowercase-insensitive word vocabulary of the current document
+   * (identifiers and string content such as CSS selectors) used to supplement
+   * the base JavaScript autocomplete.
+   */
+  refreshDocWords(cm) {
+    const words = new Set();
+    const value = cm.getValue() || "";
+    const re = /[\w$-]{2,}/g;
+    let match;
+    while ((match = re.exec(value)) !== null) {
+      const word = match[0];
+      if (word.length > MAX_DOC_WORD_LENGTH || words.size >= MAX_DOC_WORDS) break;
+      if (/^-?\d+(?:[._]\d+)?$/.test(word)) continue;
+      words.add(word);
+    }
+    this.docWordsCache = [...words];
+  }
+
+  /**
+   * Combines the standard JavaScript hint helper with document vocabulary.
+   * Identifier/.property contexts keep the base result untouched; inside
+   * string literals the document word list is served instead.
+   */
+  combinedHint(cm, options) {
+    const hintOptions = { ...(options || {}) };
+    const base = CodeMirror.hint.javascript ? CodeMirror.hint.javascript(cm, hintOptions) : null;
+    const cursor = cm.getCursor();
+    const token = cm.getTokenAt(cursor);
+    const isString = typeof token.type === "string" && token.type.indexOf("string") !== -1;
+
+    let from;
+    let to;
+    let prefix;
+    if (base) {
+      from = base.from;
+      to = base.to || cursor;
+      prefix = cm.getRange(base.from, to);
+    } else if (isString) {
+      from = token.start;
+      const tokenText = token.string || "";
+      if (tokenText && /^["']/.test(tokenText.charAt(0))) from += 1;
+      if (cursor.ch <= from) return null;
+      const content = cm.getRange(from, cursor);
+      let start = content.length;
+      while (start > 0 && /[\w$-]/.test(content.charAt(start - 1))) start--;
+      from += start;
+      prefix = content.slice(start);
+      to = cursor;
+    } else {
+      return null;
+    }
+
+    const list = base ? base.list.slice() : [];
+    if (prefix.length >= 2) {
+      const seen = new Set(list.map((item) => (typeof item === "string" ? item : item && item.text)));
+      for (const word of this.docWordsCache) {
+        if (list.length >= MAX_HINT_EXTRAS + (base ? base.list.length : 0)) break;
+        if (seen.has(word) || word === prefix || !word.startsWith(prefix)) continue;
+        seen.add(word);
+        list.push(word);
+      }
+    }
+    if (!list.length) return null;
+    return { list, from, to };
+  }
+
+  /**
+   * Ctrl/Cmd+Click adds extra cursors using the core addSelection API.
+   * Falls back to the default click behaviour when the click lands on editor
+   * chrome (gutters, fold widgets) or uses modifier/shift keys.
+   *
+   * @param {CodeMirror} cm Editor instance.
+   * @param {MouseEvent} event Original mousedown event.
+   * @returns {boolean} True when an extra cursor was added.
+   */
+  addMultiCursor(cm, event) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.button !== 0) return false;
+    const target = event.target;
+    if (target?.closest?.(".CodeMirror-gutters, .CodeMirror-foldmarker, .CodeMirror-lint-markers")) return false;
+    const pos = cm.coordsChar({ left: event.clientX, top: event.clientY }, "window");
+    cm.addSelection(pos, pos);
+    cm.focus();
+    event.preventDefault();
+    return true;
+  }
+
   async refreshList() {
     const params = this.activeTab === "repo" ? { showOnlyStore: true } : this.activeTab === "edited" ? { showStoreParsers: true } : {};
     const listResp = await sendAction("listUserScripts", params);
@@ -384,13 +847,12 @@ class UserScriptUI {
   async restoreContext() {
     const { managerContext } = await browser.storage.local.get("managerContext");
     if (!managerContext) return;
-    const { target } = managerContext;
-    if (target) {
-      const el = document.querySelector(`.btnEdit[data-id="${target}"]`);
-      el?.click();
-    }
-    // remove managerContext after restoring
+    // Remove the stored context before opening: if the restore fails or is
+    // interrupted, a reload can never replay the edit-out-of-nowhere again.
     await browser.storage.local.remove("managerContext");
+    if (managerContext.target) {
+      document.querySelector(`.btnEdit[data-id="${managerContext.target}"]`)?.click();
+    }
   }
 
   renderList(list) {
@@ -585,16 +1047,21 @@ class UserScriptUI {
   }
 
   async showEditor(script = null, insertAfterEl = null) {
-    this.editingId = script?.id || null;
-    this.editingScript = script || null;
     const editor = document.getElementById("editor");
     const listContainer = document.getElementById("scriptList");
     if (!editor || !listContainer) return;
 
+    // Data-loss guard: the editor is about to be closed (same-script toggle)
+    // or refilled with another script; protect unsaved changes either way.
+    if (!editor.hidden && !(await this.confirmDiscardChanges())) return;
+
+    this.editingId = script?.id || null;
+    this.editingScript = script || null;
+
     const currentSection = script?.id || "new";
     if (editor.getAttribute("current") === currentSection) {
       editor.setAttribute("current", "0");
-      this.hideEditor();
+      this.hideEditorCore();
       return;
     } else {
       editor.setAttribute("current", currentSection);
@@ -708,15 +1175,93 @@ class UserScriptUI {
 
     const activeContainer = document.querySelector("div.code-notes.useSettings .active");
     if (activeContainer) activeContainer.className = "";
+
+    // Capture the clean-state baseline slightly AFTER the delayed
+    // iframeSelectorsEditor fill above (10 ms timer) and the auto-format gap.
+    setTimeout(() => {
+      this._dirtyBaseline = this.snapshotEditorState();
+    }, 30);
+    this.syncSearchAvailability();
   }
 
-  hideEditor(btn) {
+  /**
+   * Serializes every persistent form field into a comparable string. Values
+   * are the raw current form values, mirroring the parts of the script object
+   * that saveScript() sends to the background.
+   */
+  snapshotEditorState() {
+    return JSON.stringify({
+      title: document.getElementById("inTitle").value.trim(),
+      authors: splitAndTrim(document.getElementById("inAuthors").value).join(","),
+      authorsLinks: splitAndTrim(document.getElementById("inAuthorsLinks").value).join(","),
+      domain: document.getElementById("inDomain").value,
+      homepage: document.getElementById("inHomepage").value.trim(),
+      urlPatterns: document.getElementById("inUrlPatterns").value,
+      watchAutoDetect: document.getElementById("inWatchAutoDetect").value.trim(),
+      debug: document.getElementById("inDebug").checked,
+      versionMajor: document.getElementById("inVersionMajor").value,
+      versionMinor: document.getElementById("inVersionMinor").value,
+      versionPatch: document.getElementById("inVersionPatch").value,
+      description: document.getElementById("inDesc").value.trim(),
+      mode: this.inModeTom ? this.inModeTom.getValue() : "",
+      category: this.categorySelect ? this.categorySelect.getValue().join(",") : "",
+      tags: splitAndTrim(document.getElementById("inTags").value).join(","),
+      code: this.codeEditor ? this.codeEditor.getValue() : "",
+      iframeSelectors: this.iframeSelectorsEditor ? this.iframeSelectorsEditor.getValue() : "",
+    });
+  }
+
+  isEditorDirty() {
+    const editor = document.getElementById("editor");
+    if (!editor || editor.hidden) return false;
+    // _dirtyBaseline becomes null while the editor content is being (re)filled;
+    // treat the capture window as clean instead of trust false positives.
+    if (this._dirtyBaseline == null) return false;
+    return this._dirtyBaseline !== this.snapshotEditorState();
+  }
+
+  /**
+   * Unsaved-changes confirmation shared by editor close, script switch and page
+   * leave paths. Resolves true when the caller may proceed (clean editor, user
+   * discarded, or user saved successfully) and false when the user chose to
+   * keep editing.
+   */
+  async confirmDiscardChanges() {
+    if (!this.isEditorDirty()) return true;
+    const choice = await showConfirm("", {
+      type: "warn",
+      heading: i18n.t("userscript.editor.unsavedChanges.heading"),
+      body: i18n.t("userscript.editor.unsavedChanges.body"),
+      labelOk: i18n.t("userscript.editor.unsavedChanges.discard"),
+      extraButtons: [{ label: i18n.t("common.save"), cls: "primary", value: "save" }],
+    });
+    if (choice === "save") {
+      // saveScript clears the dirty state when the save succeeds. Falsy return
+      // (validation failed) means the user should keep editing.
+      return this.saveScript();
+    }
+    // OK ("discard changes") resolves truthy; cancel and escape resolve false.
+    return choice === true;
+  }
+
+  /**
+   * Public editor close with unsaved-changes protection.
+   * @param {number} [btn] Truthy means the caller wants the target URL param removed (browser chrome closes).
+   */
+  async hideEditor(btn) {
+    if (!(await this.confirmDiscardChanges())) return;
+    this.hideEditorCore(btn);
+  }
+
+  /** Raw close without confirmation - only for callers that already confirmed. */
+  hideEditorCore(btn) {
     const editor = document.getElementById("editor");
     editor.hidden = true;
     editor.setAttribute("current", "0");
     document.getElementById("editorMsg").classList = "";
     this.editingId = null;
     this.editingScript = null;
+    this.syncSearchAvailability();
     const params = new URLSearchParams(window.location.search);
     const target = params.get("target");
     if (btn && target) {
@@ -726,7 +1271,44 @@ class UserScriptUI {
     }
   }
 
+  /**
+   * Keeps the client-side list search (input + reset button) unavailable while
+   * the editor is open. Refreshing the list re-renders it and would close the
+   * editor, so blocking the trigger while editing is the simplest safe rule.
+   */
+  syncSearchAvailability() {
+    const editor = document.getElementById("editor");
+    const disabled = !!editor && !editor.hidden;
+    const searchInput = document.getElementById("scriptSearch");
+    const searchResetBtn = document.getElementById("scriptSearchResetBtn");
+    if (searchInput) {
+      searchInput.disabled = disabled;
+      searchInput.title = disabled ? i18n.t("userscript.editor.unsavedChanges.searchDisabled") : "";
+    }
+    if (searchResetBtn) searchResetBtn.disabled = disabled;
+  }
+
+  /**
+   * Single-flight save entry point. A second Save trigger while a save is
+   * already in flight (fast double click or Ctrl+S) joins the in-flight
+   * attempt instead of queuing a parallel write; the button stays disabled
+   * so racing requests cannot submit different editor states.
+   */
   async saveScript() {
+    if (this._savePromise) return this._savePromise;
+    const btnSave = document.getElementById("btnSave");
+    if (btnSave) btnSave.disabled = true;
+    this._savePromise = this.performSave();
+    try {
+      return await this._savePromise;
+    } finally {
+      if (btnSave) btnSave.disabled = false;
+      this._savePromise = null;
+    }
+  }
+
+  /** Validation, the lint gate and the actual background save request. */
+  async performSave() {
     const domainRaw = document.getElementById("inDomain").value.trim();
     const domain = domainRaw.includes(",") ? splitAndTrim(domainRaw).map((d) => this.cleanDomain(d)) : this.cleanDomain(domainRaw);
     const domainEmpty = Array.isArray(domain) ? domain.length === 0 : !domain;
@@ -894,25 +1476,41 @@ class UserScriptUI {
       return;
     }
 
-    this.showMessage("Saving script...", "info");
+    // Lint gate: error-severity JSHint findings almost always mean the script
+    // will not run. Give the user a chance to jump to the first error line
+    // (hint: F8) or to save anyway.
+    const lintErrorCount = this.lintAnnotations.filter((ann) => ann.severity === "error").length;
+    if (lintErrorCount > 0) {
+      const body = i18n.t("userscript.editor.warn.lintErrors.body", [lintErrorCount]);
+      const proceed = await showConfirm(i18n.t("userscript.editor.warn.lintErrors.heading"), {
+        type: "warn",
+        body,
+        labelOk: i18n.t("common.save"),
+      });
+      if (!proceed) {
+        this.focusFirstLintError();
+        this.showMessage(body, "error");
+        return;
+      }
+    }
 
-    const response = await browser.runtime.sendMessage({
-      action: "saveUserScript",
-      script,
-      previousId: this.editingId || null,
-    });
+    this.showMessage(i18n.t("userscript.editor.status.saving"), "info");
+
+    const response = await sendAction("saveUserScript", { script, previousId: this.editingId || null });
 
     if (response?.ok) {
-      this.showMessage("Script saved and registered successfully.", "success");
+      // Success refreshes the dirty state so list refresh / editor close paths
+      // do not treat the saved content as unsaved changes.
+      this._dirtyBaseline = this.snapshotEditorState();
+      this.showMessage(i18n.t("userscript.editor.status.saved"), "success");
       await this.refreshList();
-    } else {
-      this.showMessage(
-        `${i18n.t("userscript.editor.warn.saveFailed")} ${
-          response?.error?.startsWith("userscript.editor") ? i18n.t(response.error) : response?.error || "Unknown error"
-        }`,
-        "error",
-      );
+      return true;
     }
+    this.showMessage(
+      `${i18n.t("userscript.editor.warn.saveFailed")} ${response?.error?.startsWith("userscript.editor") ? i18n.t(response.error) : response?.error || "Unknown error"}`,
+      "error",
+    );
+    return false;
   }
 
   validateScriptCode(code) {

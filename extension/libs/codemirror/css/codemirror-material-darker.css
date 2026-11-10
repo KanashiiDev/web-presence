@@ -237,6 +237,16 @@
   content: "\25B8";
 }
 
+/* highlightSelectionMatches addon styles */
+.cm-matchhighlight {
+  background-color: rgba(82, 139, 255, 0.22);
+  border-radius: 2px;
+}
+
+.CodeMirror-selection-highlight-scrollbar {
+  background-color: rgba(82, 139, 255, 0.4);
+}
+
 .CodeMirror-vscrollbar,
 .CodeMirror-hscrollbar {
   scrollbar-width: thin;

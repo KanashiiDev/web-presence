@@ -76,10 +76,18 @@ button:not([disabled]):hover {
 }
 
 #btnFormat,
-#btnFormatJson {
+#btnFormatJson,
+#btnFoldAll,
+#btnUnfoldAll,
+#btnWrapToggle {
   padding: 2px 6px;
   margin-bottom: 4px;
   border: 1px solid var(--border-color-bright);
+}
+
+#btnWrapToggle.active {
+  background: var(--accent-color);
+  color: var(--text-color-btn);
 }
 
 .script-actions button {
@@ -341,6 +349,47 @@ input[disabled] {
   padding: 10px;
   border-radius: var(--radius-sm);
   font-size: var(--font-lg);
+}
+
+/* Code editor status bar under the CodeMirror wrapper */
+.cm-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 0;
+  font-size: var(--font-md);
+  color: var(--text-color-muted);
+}
+
+.cm-status-bar .chip {
+  padding: 1px 8px;
+  border: 1px solid var(--border-color-bright);
+  border-radius: var(--radius-sm);
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+  font-size: var(--font-md);
+  cursor: pointer;
+}
+
+.cm-status-bar .chip[hidden] {
+  display: none;
+}
+
+.cm-status-bar .chip:hover {
+  background: var(--foreground-color-500);
+}
+
+.cm-status-bar .chip.error {
+  color: var(--red-color);
+}
+
+.cm-status-bar .chip.warning {
+  color: var(--yellow-color);
+}
+
+/* Temporary highlight for the line targeted by lint navigation (F8) */
+.cm-lint-flash {
+  background: var(--accent-color-border);
 }
 
 .message {
