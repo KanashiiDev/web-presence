@@ -55,7 +55,6 @@ body > .container {
 }
 
 .container > .content.card {
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }

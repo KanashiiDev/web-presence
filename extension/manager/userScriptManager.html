@@ -26,319 +26,352 @@
       </div>
     </div>
 
-    <div class="script-tabs">
-      <button id="tabMyScripts" class="script-tab active" data-i18n="userscript.tabs.myScripts" data-tab="my">My Scripts</button>
-      <button id="tabRepoScripts" class="script-tab" data-i18n="userscript.tabs.repoScripts" data-tab="repo">Installed from Repo</button>
-      <button id="tabEditedScripts" class="script-tab" data-i18n="userscript.tabs.editedScripts" data-tab="edited">Edited</button>
-      <div id="searchControls">
-        <input type="text" id="scriptSearch" placeholder="Search scripts..." data-i18n="userscript.search.placeholder" />
-        <span id="scriptSearchResetBtn" data-i18n="common.reset" data-i18n-attr="title" title="Clear Search"></span>
+    <div class="usm-main">
+      <div class="script-tabs">
+        <button id="tabMyScripts" class="btn script-tab active" data-i18n="userscript.tabs.myScripts" data-tab="my">My Scripts</button>
+        <button id="tabRepoScripts" class="btn script-tab" data-i18n="userscript.tabs.repoScripts" data-tab="repo">Installed from Repo</button>
+        <button id="tabEditedScripts" class="btn script-tab" data-i18n="userscript.tabs.editedScripts" data-tab="edited">Edited</button>
       </div>
-    </div>
 
-    <ul id="scriptList"></ul>
-
-    <input type="file" id="fileInput" accept=".json,.js" />
-
-    <div id="editor" current="0" hidden>
-      <h4 id="editorTitle">New Script</h4>
-      <div id="editor-container">
-        <div id="editor-left">
-          <div class="container">
-            <p data-i18n="userscript.editor.scriptName.label">Script Name:</p>
-            <input type="text" id="inTitle" data-i18n="userscript.editor.scriptName.placeholder" placeholder="Music Website" />
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.version.label">Version:</p>
-            <div class="version-inputs">
-              <input type="number" id="inVersionMajor" min="0" value="1" />
-              <span class="version-sep">.</span>
-              <input type="number" id="inVersionMinor" min="0" value="0" />
-              <span class="version-sep">.</span>
-              <input type="number" id="inVersionPatch" min="0" value="0" />
+      <div class="usm-split">
+        <aside class="usm-sidebar">
+          <div class="usm-sidebar-search-wrapper">
+            <button id="usmBtnListToggle" class="btn usm-btn-list-toggle" type="button" title="Show script list" aria-label="Show script list">
+              <span id="usmListBtn" class="usm-list-icon"></span>
+            </button>
+            <div id="searchControls" class="usm-sidebar-search">
+              <input type="text" id="scriptSearch" placeholder="Search scripts..." data-i18n="userscript.search.placeholder" />
+              <span id="scriptSearchResetBtn" data-i18n="common.reset" data-i18n-attr="title" title="Clear Search"></span>
             </div>
           </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.category.label">Category</p>
-            <select id="inCategory" multiple placeholder="Select categories..."></select>
-            <small data-i18n="userscript.editor.category.help">Used for filtering in the Script Store.</small>
+          <ul id="scriptList"></ul>
+        </aside>
+        <div class="usm-resizer"></div>
+        <section class="usm-workspace">
+          <div id="editorEmpty" class="usm-editor-empty">
+            <p data-i18n="userscript.editor.emptyState">Select a script to start editing.</p>
           </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.tags.label">Tags (comma separated, Optional):</p>
-            <input type="text" id="inTags" placeholder="anime, japan, community" />
-            <small data-i18n="userscript.editor.tags.help">Free-form labels for search and filtering.</small>
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.description.label">Description:</p>
-            <input type="text" id="inDesc" data-i18n="userscript.editor.description.placeholder" placeholder="My Userscript for Music Website." />
-            <small data-i18n="userscript.editor.description.help">A brief description of what your script does.</small>
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.authors.label">Authors (comma separated):</p>
-            <input type="text" id="inAuthors" placeholder="kanashiiDev,KanashiiDev2" />
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.authorsLinks.label">Authors Links (comma separated, Optional):</p>
-            <input type="text" id="inAuthorsLinks" placeholder="https://github.com/KanashiiDev" />
-            <small data-i18n="userscript.editor.authorsLinks.help">Links to the authors' profiles.</small>
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.domains.label">Domain(s) (comma separated):</p>
-            <input type="text" id="inDomain" placeholder="musicwebsite.com, musicwebsite2.com" />
-            <small data-i18n="userscript.editor.domains.help">Enter the domains where this script should run.</small>
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.urlPatterns.label">URL Pattern(s) (comma separated):</p>
-            <input type="text" id="inUrlPatterns" placeholder="home.*,player.*" />
-            <div id="patternStatus"></div>
-            <small data-i18n="userscript.editor.urlPatterns.help">Regex patterns to match specific URLs. (Optional)</small>
-            <br />
-            <small>
-              <span data-i18n="userscript.editor.urlPatterns.exampleLabel">Example:</span>
-              <code>home.*</code>
-              <span data-i18n="userscript.editor.urlPatterns.exampleDesc">will match URLs that start with "home"</span>
-            </small>
-          </div>
-          <div class="container">
-            <p data-i18n="userscript.editor.homepage.label">Homepage (Optional):</p>
-            <input type="text" id="inHomepage" placeholder="https://musicwebsite.com" />
-            <small data-i18n="userscript.editor.homepage.help">The site that will open when the icon is clicked.</small>
-          </div>
-          <div class="container mode">
-            <p data-i18n="userscript.editor.activityMode.label">Activity Mode</p>
-            <select id="inMode">
-              <option value="listen" data-i18n="userscript.editor.activityMode.listen">Listening</option>
-              <option value="watch" data-i18n="userscript.editor.activityMode.watch">Watching</option>
-              <option value="play" data-i18n="userscript.editor.activityMode.play">Playing</option>
-            </select>
-            <small data-i18n="userscript.editor.activityMode.help">Choose how the activity is displayed on Discord.</small>
-            <br />
-            <small data-i18n="userscript.editor.activityMode.note">
-              Note: If you are using
-              <code>Watching</code>
-              mode, the source section will only appear when hovering over the activity cover. This is an RPC limitation.
-            </small>
-          </div>
-          <div class="container watchAutoDetect">
-            <p data-i18n="selector.editor.activityMode.watch.autoDetect">Auto Detect Video Status</p>
-            <select id="inWatchAutoDetect">
-              <option value="enable" data-i18n="common.enable" selected="true">Enable</option>
-              <option value="disable" data-i18n="common.disable">Disable</option>
-            </select>
-            <small data-i18n="selector.editor.activityMode.watch.autoDetect.desc"></small>
-          </div>
-          <div class="container debug">
-            <p data-i18n="userscript.editor.debugMode.label">Debug Mode</p>
-            <small data-i18n="userscript.editor.debugMode.help">
-              When your script is active, it displays activity information every 5 seconds in the developer console of the relevant page.
-            </small>
-            <label class="switch-label">
-              <input type="checkbox" id="inDebug" placeholder="" value="" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <div class="container">
-            <button id="btnSave" data-i18n="common.save">Save Script</button>
-            <button id="btnCancel" data-i18n="common.cancel">Close</button>
-          </div>
-        </div>
-        <div class="editor-right">
-          <div class="container">
-            <div class="code-header">
-              <p data-i18n="userscript.codeEditor.label">Script Code:</p>
-              <button id="btnFoldAll" data-i18n="userscript.codeEditor.foldAll">Fold All</button>
-              <button id="btnUnfoldAll" data-i18n="userscript.codeEditor.unfoldAll">Unfold All</button>
-              <button id="btnWrapToggle" data-i18n="userscript.codeEditor.wrapToggle">Wrap</button>
-              <button id="btnFormat" data-i18n="userscript.codeEditor.beautify">Beautify</button>
-            </div>
-            <textarea id="inCode" rows="15" data-i18n="userscript.codeEditor.placeholder" placeholder="// Your javaScript code here..."></textarea>
-            <div class="cm-status-bar">
-              <span id="cmStatusPos"></span>
-              <span id="cmStatusSel" hidden></span>
-              <button type="button" id="cmStatusErrors" class="chip error" hidden></button>
-              <button type="button" id="cmStatusWarnings" class="chip warning" hidden></button>
-            </div>
-            <div class="code-notes">
-              <p class="helpers note-section">
-                <span data-i18n="userscript.codeEditor.requiredVariables.label">Required Variables:</span>
-                <code>title</code>
-                <code>artist</code>
-                <code>image</code>
-                <code>source</code>
-                <code>link</code>
-                <code>timePassed</code>
-                <code>duration</code>
-              </p>
-              <p class="helpers note-section">
-                <span data-i18n="userscript.codeEditor.helperFunctions.label">Helper Functions:</span>
-                <a
-                  class="link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextselector-options"
-                >
-                  <code>getText()</code>
-                </a>
-                <a
-                  class="link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextallselector-options"
-                >
-                  <code>getTextAll()</code>
-                </a>
-                <a
-                  class="link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageselector-root"
-                >
-                  <code>getImage()</code>
-                </a>
-                <a
-                  class="link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageallselector-root"
-                >
-                  <code>getImageAll()</code>
-                </a>
-                <a
-                  class="link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#queryselectordeepselector-root-all"
-                >
-                  <code>querySelectorDeep()</code>
-                </a>
-              </p>
-              <p class="note-section">
-                <span class="execution-world" data-i18n="userscript.codeEditor.executionWorld.label">Execution World:</span>
-                <code>
-                  <code>//@world main</code>
-                  <span data-i18n="userscript.codeEditor.executionWorld.note">Use at the top of your script if you need access to page globals (e.g. window)</span>
-                </code>
-              </p>
-              <p class="note-section">
-                <span class="init-code-blocks" data-i18n="userscript.codeEditor.initCodeBlocks.label">Init Code Block:</span>
-                <code>
-                  <code>// @init-code-start {code} // @init-code-end</code>
-                  <span data-i18n="userscript.codeEditor.initCodeBlocks.note">Runs once before the document loads (document_start).</span>
-                </code>
-              </p>
-              <p class="note-section">
-                <span class="cast-support" data-i18n="userscript.codeEditor.castSupport.label">Cast Support:</span>
-                <code>
-                  <code>isPlaying</code>
-                  <span data-i18n="userscript.codeEditor.castSupport.note">Any truthy value indicating active playback; used for cast support (optional)</span>
-                </code>
-              </p>
-              <p class="note-section">
-                <span class="history-block" data-i18n="userscript.codeEditor.historyBlock.label">History Block:</span>
-                <code>
-                  <code>blockHistorySave(reason) / allowHistorySave()</code>
-                  <span data-i18n="userscript.codeEditor.historyBlock.note">
-                    Call blockHistorySave() inside your script to skip history saves while a condition matches (e.g. if(location.href === "xxx")
-                    blockHistorySave("reason");). Call allowHistorySave() to resume. Only one log is shown per block.
-                  </span>
-                </code>
-              </p>
-              <p class="note-section">
-                <span class="keyboard-shortcuts" data-i18n="userscript.codeEditor.keyboardShortcuts.label">Keyboard Shortcuts:</span>
-                <code>
-                  <code>Ctrl+/</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.toggleComment">Toggle Comment</span>
-                </code>
-                <code>
-                  <code>Ctrl+Alt+[</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.foldAll">Fold All</span>
-                </code>
-                <code>
-                  <code>Ctrl+Alt+]</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.unfoldAll">Unfold All</span>
-                </code>
-                <code>
-                  <code>F8</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.nextError">Next lint issue</span>
-                </code>
-                <code>
-                  <code>Alt+Up/Down</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.moveLines">Move Lines</span>
-                </code>
-                <code>
-                  <code>Shift+Alt+Down</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.duplicateLine">Duplicate Line</span>
-                </code>
-                <code>
-                  <code>Ctrl+Z</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.undo">Undo</span>
-                </code>
-                <code>
-                  <code>Ctrl+Y</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.redo">Redo</span>
-                </code>
-                <code>
-                  <code>Ctrl+F</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.find">Find</span>
-                </code>
-                <code>
-                  <code>Ctrl+S</code>
-                  <span data-i18n="userscript.codeEditor.keyboardShortcuts.save">Save</span>
-                </code>
-              </p>
-            </div>
-            <div class="code-notes useSettings">
-              <p data-i18n="userscript.settings.manageSettings">Manage Settings</p>
-              <small data-i18n="userscript.settings.help">
-                This section is for generating and editing default settings. This allows you to change these custom settings from the extension's pop-up window.
-              </small>
-              <div class="buttons">
-                <button id="createSettingsBtn" data-i18n="userscript.settings.generate">Generate Settings</button>
-                <button id="editSettingsBtn" data-i18n="userscript.settings.edit">Edit Settings</button>
+          <div id="editor" class="usm-editor" current="0" hidden>
+            <div class="usm-editor-header">
+              <div class="usm-editor-lead">
+                <img class="usm-editor-favicon" src="" alt="" />
+                <div class="usm-editor-title-wrap">
+                  <div class="usm-editor-title" id="editorTitle">New Script</div>
+                  <span class="usm-editor-status" id="editorStatus"></span>
+                </div>
               </div>
-              <div id="useSettingsContainer" class="use-settings-builder"></div>
-            </div>
-            <div class="code-notes iframeSelectors">
-              <p data-i18n="userscript.iframeSelectors.label">Iframe Selectors</p>
-              <small>
-                <span data-i18n="userscript.iframeSelectors.help"></span>
-                <a
-                  class="link"
-                  href="https://github.com/KanashiiDev/web-presence/wiki/Adding-a-New-Website#iframeselectors"
-                  target="_blank"
-                  data-i18n="userscript.iframeSelectors.helpLink"
-                ></a>
-              </small>
-              <button id="btnIframeSelectorsToggle" data-i18n="userscript.iframeSelectors.configure">Configure</button>
-              <div class="code-header" id="jsonCodeHeader">
-                <p>JSON:</p>
-                <button id="btnFormatJson" data-i18n="userscript.codeEditor.beautify">Beautify</button>
+              <div class="usm-editor-actions">
+                <button class="btn btn-primary" id="btnSave" data-i18n="common.save">Save Script</button>
+                <button class="btn btn-secondary" id="btnCancel" data-i18n="common.cancel">Close</button>
               </div>
-              <div id="iframeSelectorsContainer" class="iframe-selectors-builder" hidden>
-                <textarea id="inIframeSelectors"></textarea>
-                <div id="iframeSelectorsError" class="iframe-selectors-error"></div>
-                <div class="iframe-selectors-hint">
+            </div>
+
+            <div class="usm-editor-tabs">
+              <button class="btn usm-tab active" data-tab="code" data-i18n="userscript.tabs.code">Code</button>
+              <button class="btn usm-tab" data-tab="details" data-i18n="userscript.tabs.details">Details</button>
+              <button class="btn usm-tab" data-tab="advanced" data-i18n="userscript.tabs.advanced">Advanced</button>
+            </div>
+
+            <div class="usm-editor-panels">
+              <div class="usm-panel usm-panel-code active" data-tab="code">
+                <textarea id="inCode" rows="15" data-i18n="userscript.codeEditor.placeholder" placeholder="// Your javaScript code here..."></textarea>
+                <div class="cm-status-bar">
+                  <span id="cmStatusPos"></span>
+                  <span id="cmStatusSel" hidden></span>
+                  <button type="button" id="cmStatusErrors" class="btn chip error" hidden></button>
+                  <button type="button" id="cmStatusWarnings" class="btn chip warning" hidden></button>
+                  <button class="btn usm-notes-toggle" type="button" data-i18n="userscript.codeEditor.help">Show required variables and helpers</button>
+                  <div class="usm-code-toolbar">
+                    <button class="btn" id="btnFoldAll" data-i18n="userscript.codeEditor.foldAll">Fold All</button>
+                    <button class="btn" id="btnUnfoldAll" data-i18n="userscript.codeEditor.unfoldAll">Unfold All</button>
+                    <button class="btn" id="btnWrapToggle" data-i18n="userscript.codeEditor.wrapToggle">Wrap</button>
+                    <button class="btn" id="btnFormat" data-i18n="userscript.codeEditor.beautify">Beautify</button>
+                  </div>
+                </div>
+                <div class="usm-notes-body" hidden>
+                  <p class="helpers note-section">
+                    <span data-i18n="userscript.codeEditor.requiredVariables.label">Required Variables:</span>
+                    <code>title</code>
+                    <code>artist</code>
+                    <code>image</code>
+                    <code>source</code>
+                    <code>link</code>
+                    <code>timePassed</code>
+                    <code>duration</code>
+                  </p>
+                  <p class="helpers note-section">
+                    <span data-i18n="userscript.codeEditor.helperFunctions.label">Helper Functions:</span>
+                    <a
+                      class="link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextselector-options"
+                    >
+                      <code>getText()</code>
+                    </a>
+                    <a
+                      class="link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextallselector-options"
+                    >
+                      <code>getTextAll()</code>
+                    </a>
+                    <a
+                      class="link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageselector-root"
+                    >
+                      <code>getImage()</code>
+                    </a>
+                    <a
+                      class="link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageallselector-root"
+                    >
+                      <code>getImageAll()</code>
+                    </a>
+                    <a
+                      class="link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#queryselectordeepselector-root-all"
+                    >
+                      <code>querySelectorDeep()</code>
+                    </a>
+                  </p>
                   <p class="note-section">
-                    <span data-i18n="userscript.iframeSelectors.fieldTypes">Field types:</span>
-                    <code>video</code>
-                    <code>exists</code>
-                    <code>text</code>
-                    <code>attr</code>
-                    <code>time</code>
-                    <code>number</code>
-                    <code>classContains</code>
-                    <code>prop</code>
-                    <code>or</code>
+                    <span class="execution-world" data-i18n="userscript.codeEditor.executionWorld.label">Execution World:</span>
+                    <code>
+                      <code>//@world main</code>
+                      <span data-i18n="userscript.codeEditor.executionWorld.note">Use at the top of your script if you need access to page globals (e.g. window)</span>
+                    </code>
+                  </p>
+                  <p class="note-section">
+                    <span class="init-code-blocks" data-i18n="userscript.codeEditor.initCodeBlocks.label">Init Code Block:</span>
+                    <code>
+                      <code>// @init-code-start {code} // @init-code-end</code>
+                      <span data-i18n="userscript.codeEditor.initCodeBlocks.note">Runs once before the document loads (document_start).</span>
+                    </code>
+                  </p>
+                  <p class="note-section">
+                    <span class="cast-support" data-i18n="userscript.codeEditor.castSupport.label">Cast Support:</span>
+                    <code>
+                      <code>isPlaying</code>
+                      <span data-i18n="userscript.codeEditor.castSupport.note">Any truthy value indicating active playback; used for cast support (optional)</span>
+                    </code>
+                  </p>
+                  <p class="note-section">
+                    <span class="history-block" data-i18n="userscript.codeEditor.historyBlock.label">History Block:</span>
+                    <code>
+                      <code>blockHistorySave(reason) / allowHistorySave()</code>
+                      <span data-i18n="userscript.codeEditor.historyBlock.note">
+                        Call blockHistorySave() inside your script to skip history saves while a condition matches (e.g. if(location.href === "xxx")
+                        blockHistorySave("reason");). Call allowHistorySave() to resume. Only one log is shown per block.
+                      </span>
+                    </code>
+                  </p>
+                  <p class="note-section">
+                    <span class="keyboard-shortcuts" data-i18n="userscript.codeEditor.keyboardShortcuts.label">Keyboard Shortcuts:</span>
+                    <code>
+                      <code>Ctrl+/</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.toggleComment">Toggle Comment</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+Alt+[</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.foldAll">Fold All</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+Alt+]</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.unfoldAll">Unfold All</span>
+                    </code>
+                    <code>
+                      <code>F8</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.nextError">Next lint issue</span>
+                    </code>
+                    <code>
+                      <code>Alt+Up/Down</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.moveLines">Move Lines</span>
+                    </code>
+                    <code>
+                      <code>Shift+Alt+Down</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.duplicateLine">Duplicate Line</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+Z</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.undo">Undo</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+Y</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.redo">Redo</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+F</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.find">Find</span>
+                    </code>
+                    <code>
+                      <code>Ctrl+S</code>
+                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.save">Save</span>
+                    </code>
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div id="editorMsg"></div>
+              <div class="usm-panel" data-tab="details" hidden>
+                <div class="usm-form">
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.scriptName.label">Script Name:</label>
+                    <input type="text" id="inTitle" data-i18n="userscript.editor.scriptName.placeholder" placeholder="Music Website" />
+                  </div>
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.version.label">Version:</label>
+                    <div class="version-inputs">
+                      <input type="number" id="inVersionMajor" min="0" value="1" />
+                      <span class="version-sep">.</span>
+                      <input type="number" id="inVersionMinor" min="0" value="0" />
+                      <span class="version-sep">.</span>
+                      <input type="number" id="inVersionPatch" min="0" value="0" />
+                    </div>
+                  </div>
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.category.label">Category</label>
+                    <select id="inCategory" multiple placeholder="Select categories..."></select>
+                    <small data-i18n="userscript.editor.category.help">Used for filtering in the Script Store.</small>
+                  </div>
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.tags.label">Tags</label>
+                    <input type="text" id="inTags" placeholder="anime, japan, community" />
+                    <small data-i18n="userscript.editor.tags.help">Tags related to the site.</small>
+                  </div>
+                  <div class="usm-field usm-field-wide">
+                    <label data-i18n="userscript.editor.description.label">Description:</label>
+                    <input type="text" id="inDesc" data-i18n="userscript.editor.description.placeholder" placeholder="My Userscript for Music Website." />
+                    <small data-i18n="userscript.editor.description.help">A brief description of what your script does.</small>
+                  </div>
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.authors.label">Authors (comma separated):</label>
+                    <input type="text" id="inAuthors" placeholder="kanashiiDev,KanashiiDev2" />
+                  </div>
+                  <div class="usm-field">
+                    <label data-i18n="userscript.editor.authorsLinks.label">Authors Links (comma separated, Optional):</label>
+                    <input type="text" id="inAuthorsLinks" placeholder="https://github.com/KanashiiDev" />
+                    <small data-i18n="userscript.editor.authorsLinks.help">Links to the authors' profiles.</small>
+                  </div>
+                  <div class="usm-field usm-field-mode usm-field-wide">
+                    <label data-i18n="userscript.editor.activityMode.label">Activity Mode</label>
+                    <select id="inMode">
+                      <option value="listen" data-i18n="userscript.editor.activityMode.listen">Listening</option>
+                      <option value="watch" data-i18n="userscript.editor.activityMode.watch">Watching</option>
+                      <option value="play" data-i18n="userscript.editor.activityMode.play">Playing</option>
+                    </select>
+                    <small data-i18n="userscript.editor.activityMode.help">Choose how the activity is displayed on Discord.</small>
+                    <br />
+                    <small data-i18n="userscript.editor.activityMode.note">
+                      Note: If you are using
+                      <code>Watching</code>
+                      mode, the source section will only appear when hovering over the activity cover. This is an RPC limitation.
+                    </small>
+                  </div>
+                  <div class="usm-field usm-field-watchAutoDetect usm-field-wide">
+                    <label data-i18n="selector.editor.activityMode.watch.autoDetect">Auto Detect Video Status</label>
+                    <select id="inWatchAutoDetect">
+                      <option value="enable" data-i18n="common.enable" selected="true">Enable</option>
+                      <option value="disable" data-i18n="common.disable">Disable</option>
+                    </select>
+                    <small data-i18n="selector.editor.activityMode.watch.autoDetect.desc"></small>
+                  </div>
+                  <div class="usm-field usm-field-domain usm-field-wide">
+                    <label data-i18n="userscript.editor.domains.label">Domain(s) (comma separated):</label>
+                    <input type="text" id="inDomain" placeholder="musicwebsite.com, musicwebsite2.com" />
+                    <small data-i18n="userscript.editor.domains.help">Enter the domains where this script should run.</small>
+                  </div>
+                  <div class="usm-field usm-field-urlpatterns usm-field-wide">
+                    <label data-i18n="userscript.editor.urlPatterns.label">URL Pattern(s) (comma separated):</label>
+                    <input type="text" id="inUrlPatterns" placeholder="home.*,player.*" />
+                    <div id="patternStatus"></div>
+                    <small data-i18n="userscript.editor.urlPatterns.help">Regex patterns to match specific URLs. (Optional)</small>
+                    <br />
+                    <small>
+                      <span data-i18n="userscript.editor.urlPatterns.exampleLabel">Example:</span>
+                      <code>home.*</code>
+                      <span data-i18n="userscript.editor.urlPatterns.exampleDesc">will match URLs that start with "home"</span>
+                    </small>
+                  </div>
+                  <div class="usm-field usm-field-wide">
+                    <label data-i18n="userscript.editor.homepage.label">Homepage (Optional):</label>
+                    <input type="text" id="inHomepage" placeholder="https://musicwebsite.com" />
+                    <small data-i18n="userscript.editor.homepage.help">The site that will open when the icon is clicked.</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="usm-panel" data-tab="advanced" hidden>
+                <div class="usm-form">
+                  <div class="usm-field usm-field-debug">
+                    <label data-i18n="userscript.editor.debugMode.label">Debug Mode</label>
+                    <small data-i18n="userscript.editor.debugMode.help">
+                      When your script is active, it displays activity information every 5 seconds in the developer console of the relevant page.
+                    </small>
+                    <label class="switch-label">
+                      <input type="checkbox" id="inDebug" placeholder="" value="" />
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="usm-field usm-field-settings">
+                    <label data-i18n="userscript.settings.manageSettings">Manage Settings</label>
+                    <small data-i18n="userscript.settings.help">
+                      This section is for generating and editing default settings. This allows you to change these custom settings from the extension's pop-up window.
+                    </small>
+                    <div id="useSettingsContainer" class="use-settings-builder"></div>
+                  </div>
+                  <div class="usm-field usm-field-iframe">
+                    <label data-i18n="userscript.iframeSelectors.label">Iframe Access</label>
+                    <small>
+                      <span data-i18n="userscript.iframeSelectors.help"></span>
+                      <a
+                        class="link"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/UserScript-Method#iframeselectors"
+                        target="_blank"
+                        data-i18n="userscript.iframeSelectors.helpLink"
+                      ></a>
+                    </small>
+                    <button class="btn" id="btnIframeSelectorsToggle" data-i18n="userscript.iframeSelectors.configure">Configure</button>
+                    <div class="usm-code-header" id="jsonCodeHeader">
+                      <label>JSON:</label>
+                      <button class="btn" id="btnFormatJson" data-i18n="userscript.codeEditor.beautify">Beautify</button>
+                    </div>
+                    <div id="iframeSelectorsContainer" class="iframe-selectors-builder" hidden>
+                      <textarea id="inIframeSelectors"></textarea>
+                      <div id="iframeSelectorsError" class="iframe-selectors-error"></div>
+                      <div class="iframe-selectors-hint">
+                        <p class="note-section">
+                          <span data-i18n="userscript.iframeSelectors.fieldTypes">Field Types:</span>
+                          <code>video</code>
+                          <code>exists</code>
+                          <code>text</code>
+                          <code>attr</code>
+                          <code>time</code>
+                          <code>number</code>
+                          <code>classContains</code>
+                          <code>prop</code>
+                          <code>or</code>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="editorMsg"></div>
+          </div>
+        </section>
+      </div>
     </div>
+
+    <input type="file" id="fileInput" accept=".js" />
 
     <script src="../libs/browser-polyfill.js"></script>
     <script src="../libs/simplebar.js"></script>

@@ -3,6 +3,7 @@ class UserParserUI {
     this.editingId = null;
     this.parsers = [];
     this.enabledState = {};
+    this.searchQuery = "";
     this.init();
   }
 
@@ -12,6 +13,7 @@ class UserParserUI {
       if (typeof applyTranslations === "function") applyTranslations();
     }
     if (typeof initApplyAttrs === "function") initApplyAttrs();
+    await this.restoreSidebarWidth();
     this.bindEvents();
     await this.loadData();
     this.renderList();
@@ -32,53 +34,166 @@ class UserParserUI {
     document.getElementById("inMode").addEventListener("change", () => this.updateWatchAutoDetectVisibility());
 
     document.getElementById("parserList").addEventListener("click", (e) => this.handleListClick(e));
+
+    document.getElementById("usmListBtn")?.appendChild(createSVG(svg_paths.menuIconPaths));
+
+    document.getElementById("usmBtnListToggle")?.addEventListener("click", () => {
+      const sidebar = document.querySelector(".usm-sidebar");
+      sidebar?.classList.toggle("collapsed");
+      document.querySelectorAll(".script-item, .parser-item").forEach((li) => {
+        li.classList.toggle("collapsed", sidebar?.classList.contains("collapsed"));
+      });
+      this.saveSidebarWidth();
+    });
+
+    // Search input - filter list client-side without refetching
+    const scriptSearchEl = document.getElementById("scriptSearch");
+    const scriptSearchResetBtn = document.getElementById("scriptSearchResetBtn");
+    const debouncedRefreshList = debounce(() => this.renderList(), 300);
+    scriptSearchEl.addEventListener("input", (e) => {
+      this.searchQuery = e.target.value.toLowerCase();
+      scriptSearchResetBtn?.classList.toggle("filter-active", this.searchQuery.length > 0);
+      debouncedRefreshList();
+    });
+
+    scriptSearchEl.addEventListener("click", async () => {
+      this.hideEditor();
+    });
+
+    scriptSearchResetBtn?.appendChild(createSVG(svg_paths.closeIconPaths ?? svg_paths.crossIconPaths));
+    scriptSearchResetBtn?.addEventListener("click", () => {
+      scriptSearchEl.value = "";
+      this.searchQuery = "";
+      scriptSearchResetBtn?.classList.remove("filter-active");
+      this.renderList();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".parser-item")) this.closeOverflowMenus();
+    });
+
+    const resizer = document.querySelector(".usm-resizer");
+    const sidebar = document.querySelector(".usm-sidebar");
+    if (resizer && sidebar) {
+      let startX = 0;
+      let startWidth = 0;
+      const onMove = (e) => {
+        const width = startWidth + (e.clientX - startX);
+        sidebar.style.flexBasis = `${Math.round(Math.min(Math.max(width, 220), 520))}px`;
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        this.saveSidebarWidth();
+      };
+      resizer.addEventListener("mousedown", (e) => {
+        if (sidebar.classList.contains("collapsed")) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = sidebar.getBoundingClientRect().width;
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+    }
+  }
+
+  async saveSidebarWidth() {
+    const sidebar = document.querySelector(".usm-sidebar");
+    if (!sidebar || sidebar.classList.contains("collapsed")) return;
+    const width = sidebar.getBoundingClientRect().width;
+    try {
+      await browser.storage.local.set({ usmSidebarWidth: width });
+    } catch (_) {}
+  }
+
+  async restoreSidebarWidth() {
+    try {
+      const { usmSidebarWidth } = await browser.storage.local.get("usmSidebarWidth");
+      const sidebar = document.querySelector(".usm-sidebar");
+      if (sidebar && usmSidebarWidth) {
+        const clamped = Math.round(Math.min(Math.max(usmSidebarWidth, 220), 520));
+        sidebar.style.flexBasis = `${clamped}px`;
+      }
+    } catch (_) {}
   }
 
   // List Actions
   async handleListClick(e) {
-    const target = e.target.closest("button");
-    if (!target) return;
+    const button = e.target.closest("button");
+    if (button) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const li = target.closest(".parser-item");
-    const id = target.getAttribute("data-id");
-    const parser = this.parsers.find((p) => p.id === id);
-    if (!parser) return;
+      const li = button.closest("li");
+      if (!li) return;
+      const id = li.dataset.id;
+      const parser = this.parsers.find((p) => p.id === id);
+      if (!parser) return;
 
-    if (target.classList.contains("btnToggle")) {
-      const stateKey = `enable_${parser.id}`;
-      const currentStatus = this.enabledState[stateKey] !== false;
+      if (button.classList.contains("btnToggle")) {
+        const stateKey = `enable_${parser.id}`;
+        const currentStatus = this.enabledState[stateKey] !== false;
 
-      if (currentStatus) {
-        this.enabledState[stateKey] = false;
-      } else {
-        delete this.enabledState[stateKey];
-      }
+        if (currentStatus) {
+          this.enabledState[stateKey] = false;
+        } else {
+          delete this.enabledState[stateKey];
+        }
 
-      await this.saveData();
-      this.renderList();
-    } else if (target.classList.contains("btnEdit")) {
-      this.showEditor(parser, li);
-    } else if (target.classList.contains("btnExport")) {
-      this.exportMenuClick(e, parser);
-    } else if (target.classList.contains("btnDelete")) {
-      const confirmed = await showConfirm("", {
-        type: "danger",
-        heading: i18n.t("parserList.delete.confirm").replace("{site}", parser.title || parser.domain),
-        body: "",
-      });
-      if (confirmed) {
-        this.parsers = this.parsers.filter((p) => p.id !== id);
-        delete this.enabledState[`enable_${id}`];
         await this.saveData();
         this.renderList();
+        return;
       }
+      if (button.classList.contains("btnMore")) {
+        const menu = li.querySelector(".usm-overflow-menu");
+        if (menu && !menu.hidden) {
+          menu.hidden = true;
+          return;
+        }
+        this.closeOverflowMenus();
+        if (menu) menu.hidden = false;
+        return;
+      }
+      if (button.classList.contains("btnEdit")) return this.showEditor(parser);
+      if (button.classList.contains("btnExport")) return this.exportMenuClick(e, parser);
+      if (button.classList.contains("btnDelete")) {
+        const confirmed = await showConfirm("", {
+          type: "danger",
+          heading: i18n.t("parserList.delete.confirm").replace("{site}", parser.title || parser.domain),
+          body: "",
+        });
+        if (confirmed) {
+          this.parsers = this.parsers.filter((p) => p.id !== id);
+          delete this.enabledState[`enable_${id}`];
+          await this.saveData();
+          this.renderList();
+        }
+        return;
+      }
+      return;
     }
+
+    this.closeOverflowMenus();
+    const li = e.target.closest("li.parser-item");
+    if (!li) return;
+    const id = li.dataset.id;
+    if (!id) return;
+    e.preventDefault();
+
+    const parser = this.parsers.find((p) => p.id === id);
+    if (parser) this.showEditor(parser);
+  }
+
+  closeOverflowMenus() {
+    document.querySelectorAll(".usm-overflow-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
   }
 
   // Editor
-  showEditor(parser = null, liElement = null) {
+  showEditor(parser = null) {
     const editor = document.getElementById("editor");
-    const list = document.getElementById("parserList");
+    const editorEmpty = document.getElementById("editorEmpty");
 
     const currentSection = parser?.id || "new";
     if (editor.getAttribute("current") === currentSection) {
@@ -90,15 +205,29 @@ class UserParserUI {
 
     this.editingId = parser?.id || null;
 
-    if (liElement) {
-      liElement.insertAdjacentElement("afterend", editor);
-    } else if (list.firstChild) {
-      list.insertBefore(editor, list.firstChild);
-    } else {
-      list.appendChild(editor);
+    document.getElementById("editorTitle").textContent = parser ? `${i18n.t("userparser.editor.editParser")} [${parser.title}]` : i18n.t("userparser.editor.newParser");
+
+    const isEnabled = parser ? this.enabledState[`enable_${parser.id}`] !== false : false;
+    const statusEl = document.getElementById("editorStatus");
+    const favEl = document.querySelector(".usm-editor-favicon");
+    if (statusEl) {
+      statusEl.textContent = isEnabled ? i18n.t("userscript.status.active") : i18n.t("userscript.status.inactive");
+      statusEl.className = `usm-editor-status${isEnabled ? " status-active" : " status-inactive"}`;
     }
+    if (favEl && parser) {
+      const rawDomain = Array.isArray(parser.domain) ? parser.domain[0] : parser.domain;
+      const primaryDomain = (rawDomain || "").replace(/^\*\./, "");
+      favEl.dataset.src = primaryDomain;
+      favEl.classList.add("hidden-visibility");
+      favEl.src = "";
+    } else if (favEl) {
+      favEl.dataset.src = "";
+      favEl.src = "";
+    }
+    loadFavIcons([favEl]);
 
     editor.hidden = false;
+    if (editorEmpty) editorEmpty.hidden = true;
 
     document.getElementById("inTitle").value = parser?.title || "";
     document.getElementById("inDomain").value = parser?.domain || "";
@@ -120,13 +249,26 @@ class UserParserUI {
     document.getElementById("selButtonText").value = sel.buttonText || "";
     document.getElementById("selButtonLink2").value = sel.buttonLink2 || "";
     document.getElementById("selButtonText2").value = sel.buttonText2 || "";
+
+    this.syncSelectedItem();
   }
 
   hideEditor() {
     const editor = document.getElementById("editor");
+    const editorEmpty = document.getElementById("editorEmpty");
     editor.hidden = true;
-    document.body.appendChild(editor);
+    editor.setAttribute("current", "0");
+    if (editorEmpty) editorEmpty.hidden = false;
     this.editingId = null;
+    this.syncSelectedItem();
+  }
+
+  syncSelectedItem() {
+    const editor = document.getElementById("editor");
+    const openId = editor && !editor.hidden ? this.editingId : null;
+    document.querySelectorAll("#parserList .parser-item").forEach((li) => {
+      li.classList.toggle("selected", !!openId && li.dataset.id === String(openId));
+    });
   }
 
   updateWatchAutoDetectVisibility() {
@@ -161,8 +303,7 @@ class UserParserUI {
     if (!managerContext) return;
     const { target } = managerContext;
     if (target) {
-      const el = document.querySelector(`.btnEdit[data-id="${target}"]`);
-      el?.click();
+      document.querySelector(`#parserList li[data-id="${target}"]`)?.click();
     }
     // remove managerContext after restoring
     await browser.storage.local.remove("managerContext");
@@ -172,24 +313,39 @@ class UserParserUI {
     this.hideEditor();
     const ul = document.getElementById("parserList");
 
-    while (ul.firstChild) ul.removeChild(ul.firstChild);
+    const host = ul.querySelector(".simplebar-content") || ul;
 
-    if (this.parsers.length === 0) return;
+    while (host.firstChild) host.removeChild(host.firstChild);
 
-    this.parsers.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    const filteredList = this.filterList(this.parsers);
 
-    this.parsers.forEach((parser) => {
+    if (filteredList.length === 0) {
+      if (this.searchQuery) {
+        const emptyMsg = document.createElement("li");
+        emptyMsg.className = "script-empty-message";
+        emptyMsg.textContent = i18n.t("userparser.list.noResults");
+        host.appendChild(emptyMsg);
+        this.refreshListScroll();
+      }
+      return;
+    }
+
+    filteredList.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+
+    filteredList.forEach((parser) => {
       const isEnabled = this.enabledState[`enable_${parser.id}`] !== false;
 
       const li = document.createElement("li");
+      li.dataset.id = parser.id;
+      li.dataset.title = parser.title;
       li.className = `parser-item${!isEnabled ? " disabled" : ""}`;
 
       // Info
       const infoDiv = document.createElement("div");
       infoDiv.className = "parser-info";
 
-      const headerWrapper = document.createElement("div");
-      headerWrapper.className = "parser-header-wrapper";
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "parser-header";
 
       const rawDomain = Array.isArray(parser.domain) ? parser.domain[0] : parser.domain;
       const primaryDomain = (rawDomain || "").replace(/^\*\./, "");
@@ -197,6 +353,7 @@ class UserParserUI {
       // FavIcon
       const favIconContainer = document.createElement("div");
       favIconContainer.className = "parser-icon-container spinner";
+      favIconContainer.title = parser.title || parser.domain;
 
       const favIcon = document.createElement("img");
       favIcon.className = "parser-icon hidden-visibility";
@@ -204,10 +361,17 @@ class UserParserUI {
       favIcon.dataset.src = primaryDomain;
       favIcon.loading = "lazy";
       favIcon.decoding = "async";
-      favIcon.addEventListener("click", () => {
+      favIcon.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         window.open(`https://${primaryDomain}`, "_blank", "noopener,noreferrer");
       });
       favIconContainer.appendChild(favIcon);
+      headerDiv.appendChild(favIconContainer);
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "parser-title";
+      titleSpan.textContent = parser.title || parser.domain;
+      headerDiv.appendChild(titleSpan);
 
       // Status badge
       const status = document.createElement("span");
@@ -215,40 +379,72 @@ class UserParserUI {
       status.classList.toggle("status-active", isEnabled);
       status.classList.toggle("status-inactive", !isEnabled);
       status.textContent = isEnabled ? i18n.t("userscript.status.active") : i18n.t("userscript.status.inactive");
+      status.title = status.textContent;
+      headerDiv.appendChild(status);
 
-      // Header
-      const titleSpan = document.createElement("span");
-      titleSpan.className = "parser-title";
-      titleSpan.textContent = parser.title || parser.domain;
-
-      const headerDiv = document.createElement("div");
-      headerDiv.className = "parser-header";
-      headerDiv.appendChild(favIconContainer);
-      headerDiv.append(titleSpan, status);
-
-      headerWrapper.appendChild(headerDiv);
-      infoDiv.appendChild(headerWrapper);
-
-      // Domain / pattern
-      const domainSpan = document.createElement("small");
-      domainSpan.className = "parser-domain";
-      domainSpan.textContent = `${parser.domain} [${(parser.urlPatterns || [".*"]).join(", ")}]`;
-      infoDiv.appendChild(domainSpan);
+      infoDiv.appendChild(headerDiv);
 
       // Actions
       const actionsDiv = document.createElement("div");
       actionsDiv.className = "script-actions";
 
-      const { btnToggle, btnEdit, btnExport, btnDelete } = createListActionButtons(parser.id, isEnabled);
+      const btnToggle = createListActionButton(
+        isEnabled ? svg_paths.pauseIconPaths : svg_paths.startIconPaths,
+        `btnToggle btn ${isEnabled ? "btn-disable" : "btn-enable"}`,
+        isEnabled ? i18n.t("common.disable") : i18n.t("common.enable"),
+        parser.id,
+      );
+      actionsDiv.appendChild(btnToggle);
 
-      actionsDiv.append(btnToggle, btnEdit, btnExport, btnDelete);
+      const btnMore = document.createElement("button");
+      btnMore.type = "button";
+      btnMore.className = "btnMore btn";
+      btnMore.title = i18n.t("userscript.listControls.moreActions");
+      btnMore.appendChild(createSVG(svg_paths.moreIconPaths));
+      actionsDiv.appendChild(btnMore);
+
+      const menu = document.createElement("div");
+      menu.className = "usm-overflow-menu";
+      menu.hidden = true;
+      const btnExport = createListActionButton(svg_paths.exportIconPaths, "btnExport", i18n.t("userscript.listControls.export"), parser.id, { strokeWidth: 1.5 });
+      const btnDelete = createListActionButton(svg_paths.trashIconPaths, "btnDelete", i18n.t("common.delete"), parser.id);
+      menu.append(btnExport, btnDelete);
+
+      actionsDiv.appendChild(menu);
 
       li.append(infoDiv, actionsDiv);
-      ul.appendChild(li);
+      host.appendChild(li);
     });
 
     const allFavIcons = document.querySelectorAll(".parser-icon");
     if (typeof loadFavIcons === "function") loadFavIcons(allFavIcons);
+    this.refreshListScroll();
+  }
+
+  filterList(list) {
+    if (!this.searchQuery) return list;
+    const query = this.searchQuery;
+    return list.filter((parser) => {
+      const title = (parser.title || "").toLowerCase();
+      const domain = Array.isArray(parser.domain) ? parser.domain.join(" ") : parser.domain || "";
+      const urlPatterns = (parser.urlPatterns || []).join(" ");
+      return title.includes(query) || domain.toLowerCase().includes(query) || urlPatterns.toLowerCase().includes(query);
+    });
+  }
+
+  refreshListScroll() {
+    const ul = document.getElementById("parserList");
+    if (!ul || typeof activateSimpleBar !== "function") return;
+    Promise.resolve()
+      .then(() => activateSimpleBar("parserList"))
+      .catch(() => {})
+      .then(() =>
+        requestAnimationFrame(() => {
+          try {
+            window.SimpleBar?.instances?.get(ul)?.recalculate();
+          } catch (_) {}
+        }),
+      );
   }
 
   cleanDomain = (d) => {

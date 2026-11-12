@@ -7,13 +7,6 @@ async function loadFavIcons(icons, concurrency = 3, delayMs = 150, slowAfter = 8
 
   function loadSingleIcon(icon, domain) {
     return new Promise((resolve) => {
-      if (!domain) return resolve();
-
-      const rawDomain = Array.isArray(domain) ? domain[0] : domain;
-      const cleanDomain = (rawDomain || "").replace(/^\*\./, "");
-      const primaryDomain = cleanDomain.split(",")[0].trim();
-      const proxyUrl = `https://favicons.seadfeng.workers.dev/${primaryDomain}.ico`;
-      const googleUrl = `https://www.google.com/s2/favicons?domain=${primaryDomain}&sz=32`;
       const fallback = browser.runtime.getURL("icons/48x48.png");
 
       const finish = () => {
@@ -23,6 +16,17 @@ async function loadFavIcons(icons, concurrency = 3, delayMs = 150, slowAfter = 8
         icon.parentElement?.classList.remove("spinner");
         resolve();
       };
+
+      if (!domain) {
+        icon.src = fallback;
+        return finish();
+      }
+
+      const rawDomain = Array.isArray(domain) ? domain[0] : domain;
+      const cleanDomain = (rawDomain || "").replace(/^\*\./, "");
+      const primaryDomain = cleanDomain.split(",")[0].trim();
+      const proxyUrl = `https://favicons.seadfeng.workers.dev/${primaryDomain}.ico`;
+      const googleUrl = `https://www.google.com/s2/favicons?domain=${primaryDomain}&sz=32`;
 
       icon.onload = finish;
 

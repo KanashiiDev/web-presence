@@ -4,398 +4,814 @@ const SETTING_TYPES = {
   SELECT: "select",
 };
 
-class UseSettingParser {
-  constructor() {
-    this.regex = /useSetting\s*\(\s*(['"])([^'"]+)\1\s*,\s*(['"])([^'"]+)\3\s*,\s*(['"])([^'"]+)\5\s*,\s*([\s\S]*?)\)\s*;/g;
+/** i18n lookup that falls back to an English string while a key is still missing. */
+const _t = (key, fallback) => {
+  try {
+    const r = typeof i18n !== "undefined" ? i18n.t(key) : null;
+    return r && r !== key ? r : fallback;
+  } catch (_) {
+    return fallback;
+  }
+};
+
+const _el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+
+const JsScan = {
+  isIdent(ch) {
+    return !!ch && /[\w$]/.test(ch);
+  },
+
+  /** If a string / template / comment starts at i, returns the index right after it; otherwise i. */
+  skipNonCode(src, i) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (c === "/" && n === "/") {
+      const e = src.indexOf("\n", i);
+      return e === -1 ? src.length : e;
+    }
+    if (c === "/" && n === "*") {
+      const e = src.indexOf("*/", i + 2);
+      return e === -1 ? src.length : e + 2;
+    }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== c && src[j] !== "\n") {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      return Math.min(j + 1, src.length);
+    }
+    if (c === "`") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== "`") {
+        if (src[j] === "\\") j++;
+        j++;
+      }
+      return Math.min(j + 1, src.length);
+    }
+    return i;
+  },
+
+  /** Index of the bracket that closes the one at `open`, or -1. */
+  matchBracket(src, open) {
+    let depth = 0;
+    let i = open;
+    while (i < src.length) {
+      const j = this.skipNonCode(src, i);
+      if (j !== i) {
+        i = j;
+        continue;
+      }
+      const ch = src[i];
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "]" || ch === "}") {
+        depth--;
+        if (depth === 0) return i;
+      }
+      i++;
+    }
+    return -1;
+  },
+
+  /** Top-level argument ranges [start, end) between the parentheses at (open, close). */
+  splitArgs(src, open, close) {
+    const ranges = [];
+    let depth = 0;
+    let start = open + 1;
+    let i = open + 1;
+    while (i < close) {
+      const j = this.skipNonCode(src, i);
+      if (j !== i) {
+        i = j;
+        continue;
+      }
+      const ch = src[i];
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "]" || ch === "}") depth--;
+      else if (ch === "," && depth === 0) {
+        ranges.push([start, i]);
+        start = i + 1;
+      }
+      i++;
+    }
+    if (src.slice(start, close).trim() !== "") ranges.push([start, close]);
+    return ranges;
+  },
+
+  /** Decodes a single- or double-quoted string literal. Returns null if `src` is not exactly one. */
+  decodeString(src) {
+    const s = src.trim();
+    const q = s[0];
+    if ((q !== '"' && q !== "'") || s.length < 2 || s[s.length - 1] !== q) return null;
+    let out = "";
+    for (let i = 1; i < s.length - 1; i++) {
+      const c = s[i];
+      if (c === "\\") {
+        const n = s[++i];
+        if (n === "n") out += "\n";
+        else if (n === "t") out += "\t";
+        else if (n === "r") out += "\r";
+        else if (n === "b") out += "\b";
+        else if (n === "f") out += "\f";
+        else if (n === "v") out += "\v";
+        else if (n === "0") out += "\0";
+        else if (n === "x") {
+          out += String.fromCharCode(parseInt(s.substr(i + 1, 2), 16));
+          i += 2;
+        } else if (n === "u") {
+          if (s[i + 1] === "{") {
+            const e = s.indexOf("}", i);
+            out += String.fromCodePoint(parseInt(s.slice(i + 2, e), 16));
+            i = e;
+          } else {
+            out += String.fromCharCode(parseInt(s.substr(i + 1, 4), 16));
+            i += 4;
+          }
+        } else if (n === "\n") {
+          // line continuation: backslash-newline is dropped
+        } else out += n;
+      } else if (c === q) {
+        return null;
+      } else out += c;
+    }
+    return out;
+  },
+};
+
+/** Parses a JS literal (strings, numbers, booleans, null, arrays, objects with loose keys / trailing commas). */
+class LiteralParser {
+  constructor(src) {
+    this.s = src;
+    this.i = 0;
   }
 
-  parse(code) {
-    const settings = [];
-    let match;
-    while ((match = this.regex.exec(code)) !== null) {
-      const key = match[2];
-      const label = match[4];
-      const type = match[6];
-      const raw = (match[7] || "").trim();
-      const defaultValue = this.parseDefaultValue(raw);
-      settings.push({ key, label, type, defaultValue, raw });
-    }
-    return settings;
+  parse() {
+    const v = this.value();
+    this.ws();
+    if (this.i !== this.s.length) throw new Error("Unexpected token");
+    return v;
   }
 
-  // defaultValue parsing
-  parseDefaultValue(raw) {
-    if (!raw) return "";
-    const val = raw.trim();
-
-    if (val === "true") return true;
-    if (val === "false") return false;
-
-    // Strings wrapped in quotes
-    if (/^(['"]).*\1$/.test(val)) {
-      return val.slice(1, -1);
+  ws() {
+    for (;;) {
+      while (/\s/.test(this.s[this.i] || "")) this.i++;
+      const j = JsScan.skipNonCode(this.s, this.i);
+      if (j !== this.i && (this.s[this.i] === "/" || false)) this.i = j;
+      else return;
     }
+  }
 
-    // If it looks like JSON (array/object) attempt to normalize and parse
-    if (/^[[]{]/.test(val)) {
-      // Normalize unquoted object keys like {a: 1} => {"a":1}
-      const safe = val.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
-      try {
-        return JSON.parse(safe);
-      } catch (err) {
-        // If parse fails, return raw but log for debugging
-        console.warn("parseDefaultValue JSON.parse failed:", err, val);
-        return val;
+  string() {
+    const start = this.i;
+    const j = JsScan.skipNonCode(this.s, this.i);
+    const lit = JsScan.decodeString(this.s.slice(start, j));
+    if (lit === null) throw new Error("Bad string");
+    this.i = j;
+    return lit;
+  }
+
+  value() {
+    this.ws();
+    const c = this.s[this.i];
+    if (c === '"' || c === "'") return this.string();
+    if (c === "[") {
+      this.i++;
+      const arr = [];
+      for (;;) {
+        this.ws();
+        if (this.s[this.i] === "]") {
+          this.i++;
+          return arr;
+        }
+        arr.push(this.value());
+        this.ws();
+        if (this.s[this.i] === ",") this.i++;
+        else if (this.s[this.i] !== "]") throw new Error("Expected , or ]");
       }
     }
-
-    // Try to parse number
-    if (!Number.isNaN(Number(val))) return Number(val);
-
-    return val;
-  }
-
-  // Utility to stringify default values back into code.
-  // For select arrays, format with pretty JSON; for booleans & numbers keep raw.
-  stringifyDefault(value) {
-    if (typeof value === "boolean") return value ? "true" : "false";
-    if (typeof value === "number") return String(value);
-    if (typeof value === "string") return JSON.stringify(value);
-    // objects / arrays
-    return JSON.stringify(value, null, 2);
+    if (c === "{") {
+      this.i++;
+      const obj = {};
+      for (;;) {
+        this.ws();
+        if (this.s[this.i] === "}") {
+          this.i++;
+          return obj;
+        }
+        let key;
+        const k = this.s[this.i];
+        if (k === '"' || k === "'") key = this.string();
+        else {
+          const m = /^[A-Za-z_$][\w$]*|^\d+/.exec(this.s.slice(this.i));
+          if (!m) throw new Error("Bad key");
+          key = m[0];
+          this.i += key.length;
+        }
+        this.ws();
+        if (this.s[this.i] !== ":") throw new Error("Expected :");
+        this.i++;
+        obj[key] = this.value();
+        this.ws();
+        if (this.s[this.i] === ",") this.i++;
+        else if (this.s[this.i] !== "}") throw new Error("Expected , or }");
+      }
+    }
+    const rest = this.s.slice(this.i);
+    let m = /^(true|false|null)(?![\w$])/.exec(rest);
+    if (m) {
+      this.i += m[0].length;
+      return m[1] === "true" ? true : m[1] === "false" ? false : null;
+    }
+    m = /^-?\d+(\.\d+)?([eE][+-]?\d+)?/.exec(rest);
+    if (m) {
+      this.i += m[0].length;
+      return Number(m[0]);
+    }
+    throw new Error("Unsupported value");
   }
 }
 
-/* UseSettingEditor: UI */
-class UseSettingEditor {
-  constructor(codeEditor, container) {
-    this.codeEditor = codeEditor;
-    this.container = container;
-    this.parser = new UseSettingParser();
-    this.settings = [];
+class UseSettingParser {
+  /**
+   * Finds every `useSetting("key", "label", "type", default)` call whose first three
+   * arguments are plain string literals. Each result carries the exact source range of the
+   * call (`from`/`to`) so it can be replaced in place, plus the range of its statement when
+   * the call is the whole statement (`removable`).
+   */
+  parse(code) {
+    const out = [];
+    let i = 0;
+    while (i < code.length) {
+      const j = JsScan.skipNonCode(code, i);
+      if (j !== i) {
+        i = j;
+        continue;
+      }
+      if (code.startsWith("useSetting", i) && !JsScan.isIdent(code[i - 1]) && code[i - 1] !== "." && !JsScan.isIdent(code[i + 10])) {
+        let k = i + 10;
+        while (/\s/.test(code[k] || "")) k++;
+        if (code[k] === "(") {
+          const close = JsScan.matchBracket(code, k);
+          if (close > 0) {
+            const setting = this.readCall(code, i, k, close);
+            if (setting) out.push(setting);
+            i = close + 1;
+            continue;
+          }
+        }
+      }
+      i++;
+    }
+    return out;
   }
 
-  setCodeEditorValue(value) {
-    const cm = this.codeEditor;
-    const scrollInfo = cm.getScrollInfo();
-    const cursor = cm.getCursor();
+  readCall(code, from, open, close) {
+    const args = JsScan.splitArgs(code, open, close);
+    if (args.length < 3 || args.length > 4) return null;
+    const [key, label, type] = args.slice(0, 3).map(([a, b]) => JsScan.decodeString(code.slice(a, b)));
+    if (key === null || label === null || type === null) return null;
 
-    cm.operation(() => {
-      cm.setValue(value);
-      cm.setCursor(cursor);
-      cm.scrollTo(scrollInfo.left, scrollInfo.top);
+    const defaultSrc = args[3] ? code.slice(args[3][0], args[3][1]).trim() : "";
+    let defaultValue;
+    let defaultOk = true;
+    try {
+      defaultValue = defaultSrc ? new LiteralParser(defaultSrc).parse() : undefined;
+    } catch (_) {
+      defaultOk = false;
+    }
+
+    const to = close + 1;
+    const lineStart = code.lastIndexOf("\n", from - 1) + 1;
+    let lineEnd = code.indexOf("\n", to);
+    if (lineEnd === -1) lineEnd = code.length;
+    const before = code.slice(lineStart, from);
+    const after = code.slice(to, lineEnd);
+    const removable = /^\s*(?:(?:const|let|var)\s+[$A-Za-z_][\w$]*\s*=\s*)?(?:await\s+)?$/.test(before) && /^\s*;?\s*(?:\/\/.*)?$/.test(after);
+
+    return {
+      key,
+      label,
+      type,
+      defaultValue,
+      defaultSrc,
+      defaultOk,
+      from,
+      to,
+      indent: (/^\s*/.exec(before) || [""])[0],
+      removable,
+      stmtFrom: lineStart,
+      stmtTo: Math.min(lineEnd + 1, code.length),
+    };
+  }
+}
+
+class UseSettingEditor {
+  /**
+   * @param {CodeMirror.Editor} codeEditor
+   * @param {HTMLElement} container
+   * @param {{ onJump?: (pos: {line:number, ch:number}) => void }} [options]
+   */
+  constructor(codeEditor, container, options = {}) {
+    this.codeEditor = codeEditor;
+    this.container = container;
+    this.onJump = options.onJump || null;
+    this.parser = new UseSettingParser();
+    this.settings = [];
+    this.dirty = true;
+    this._writing = false;
+    this._refreshTimer = null;
+    this.draftEl = null;
+
+    codeEditor.on("change", () => {
+      if (this._writing) return;
+      this.dirty = true;
+      if (this.isVisible()) {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = setTimeout(() => this.refresh(), 250);
+      }
     });
   }
 
-  // Loading & state
+  isVisible() {
+    return !!this.container && this.container.offsetParent !== null;
+  }
+
+  /** Full reload from the current code (used when another script is opened). */
   loadFromCode() {
-    const code = this.codeEditor.getValue();
-    this.settings = this.parser.parse(code);
-    this.renderUI();
+    this.dirty = true;
+    this.refresh();
   }
 
-  // UI helpers
-  createRow(labelText, inputEl) {
-    const row = document.createElement("div");
-    row.className = "form-row";
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    row.append(label, inputEl);
-    return row;
+  /** Re-reads the code and re-renders, but only if the code changed since the last render. */
+  refresh() {
+    if (!this.dirty) return;
+    this.dirty = false;
+    this.settings = this.parser.parse(this.codeEditor.getValue());
+    this.render();
   }
 
-  createInput({ id = "", placeholder = "", type = "text", value = "" } = {}) {
-    const input = document.createElement("input");
-    if (id) input.id = id;
-    input.type = type;
-    input.placeholder = placeholder;
-    if (value !== undefined) input.value = value;
-    return input;
-  }
-
-  makeButton(text, onClick, attrs = {}) {
-    const btn = document.createElement("button");
-    btn.type = attrs.type || "button";
-    btn.textContent = text;
-    for (const [key, value] of Object.entries(attrs)) {
-      if (key !== "type" && key !== "className") {
-        btn.setAttribute(key, value);
-      }
-    }
-    btn.addEventListener("click", onClick);
-    return btn;
-  }
-
-  makeCopyButton(outputDiv) {
-    return this.makeButton(
-      i18n.t("userscript.useSettingEditor.copy"),
-      async (e) => {
-        try {
-          await navigator.clipboard.writeText(outputDiv.textContent);
-          e.target.textContent = i18n.t("userscript.useSettingEditor.copied");
-          setTimeout(() => (e.target.textContent = i18n.t("userscript.useSettingEditor.copy")), 1500);
-        } catch (err) {
-          e.target.textContent = i18n.t("userscript.export.status.error") + ": " + err;
-        }
-      },
-      { id: "copyCodeBtn" },
-    );
-  }
+  /* ---------- small UI helpers ---------- */
 
   createSwitch({ checked = false, onChange = null } = {}) {
-    const label = document.createElement("label");
-    label.className = "switch-label";
-    const input = this.createInput({ type: "checkbox" });
+    const label = _el("label", "switch-label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
     input.checked = !!checked;
     if (typeof onChange === "function") input.addEventListener("change", onChange);
-    const slider = document.createElement("span");
-    slider.className = "slider";
-    label.append(input, slider);
+    label.append(input, _el("span", "slider"));
     return label;
   }
 
-  // Rendering
-  renderUI() {
-    this.container.innerHTML = "";
+  makeButton(text, onClick, { title = "", className = "" } = {}) {
+    const b = _el("button", `btn ${className}`.trim(), text);
+    b.type = "button";
+    if (title) {
+      b.title = title;
+      b.setAttribute("aria-label", title);
+    }
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  makeIconButton(paths, onClick, title, className) {
+    const b = this.makeButton("", onClick, { title, className });
+    if (paths && typeof createSVG === "function") b.appendChild(createSVG(paths));
+    return b;
+  }
+
+  debounce(fn, ms) {
+    let t;
+    return (immediate) => {
+      clearTimeout(t);
+      if (immediate) fn();
+      else t = setTimeout(fn, ms);
+    };
+  }
+
+  /* ---------- rendering ---------- */
+
+  render() {
+    this.draftEl = null;
+    this.container.textContent = "";
+
+    const list = _el("div", "us-list");
+    this.listEl = list;
     if (!this.settings.length) {
-      const p = document.createElement("p");
-      p.textContent = i18n.t("userscript.useSettingEditor.warn.noSettings");
-      this.container.append(p);
+      list.append(_el("p", "us-empty", _t("userscript.useSettingEditor.warn.noSettings", "No settings found in the code yet.")));
+    }
+    this.settings.forEach((s, i) => list.append(this.buildRow(s, i)));
+
+    const footer = _el("div", "us-footer");
+    this.addBtn = this.makeButton("+ " + _t("userscript.useSettingEditor.addSetting", "Add setting"), () => this.openDraft(), { className: "us-add" });
+    footer.append(this.addBtn);
+
+    this.container.append(list, footer);
+  }
+
+  buildRow(s, i) {
+    const supported = Object.values(SETTING_TYPES).includes(s.type);
+    const row = _el("div", `us-row us-type-${supported ? s.type : "custom"}`);
+
+    const top = _el("div", "us-row-top");
+    top.append(_el("span", "us-type", _t("userscript.useSettingEditor.type." + s.type, s.type)));
+
+    const label = document.createElement("input");
+    label.type = "text";
+    label.className = "us-label";
+    label.value = s.label;
+    label.placeholder = _t("userscript.useSettingEditor.label", "Label");
+    label.setAttribute("aria-label", label.placeholder);
+    top.append(label);
+
+    const actions = _el("div", "us-row-actions");
+    const jumpBtn = this.makeIconButton(
+      typeof svg_paths !== "undefined" ? svg_paths.redirectIconPaths : null,
+      () => this.jump(i),
+      _t("userscript.useSettingEditor.jumpToCode", "Show in code"),
+      "us-jump",
+    );
+    if (!jumpBtn.firstChild) jumpBtn.textContent = "↗";
+    const delBtn = this.makeIconButton(typeof svg_paths !== "undefined" ? svg_paths.trashIconPaths : null, () => {}, _t("common.delete", "Delete"), "us-del");
+    if (!delBtn.firstChild) delBtn.textContent = "✕";
+    this.bindDelete(delBtn, i, s);
+    actions.append(jumpBtn, delBtn);
+    top.append(actions);
+
+    const meta = _el("div", "us-row-meta");
+    meta.append(_el("code", "us-key", s.key));
+
+    const msg = _el("div", "us-msg");
+    msg.setAttribute("role", "status");
+    let msgTimer = null;
+    const say = (text, kind) => {
+      clearTimeout(msgTimer);
+      msg.textContent = text || "";
+      msg.className = "us-msg" + (kind ? ` is-${kind}` : "");
+      row.classList.toggle("is-invalid", kind === "error");
+      if (kind === "ok") msgTimer = setTimeout(() => say("", ""), 1500);
+    };
+
+    const commit = this.debounce(() => {
+      const cur = this.settings[i];
+      if (!cur) return;
+      const lab = label.value.trim();
+      if (!lab) return say(_t("userscript.useSettingEditor.warn.emptyLabel", "The label can't be empty."), "error");
+      const r = ctl.read();
+      if (!r.ok) return say(r.error, "error");
+
+      const defaultCode = ctl.editable ? this.literal(r.value, cur.indent) : cur.defaultSrc;
+      const call = this.buildCall(cur.key, lab, cur.type, defaultCode);
+      const code = this.codeEditor.getValue();
+      if (code.slice(cur.from, cur.to) !== call) {
+        this.write(cur.from, cur.to, call);
+        this.settings = this.parser.parse(this.codeEditor.getValue());
+        if (this.settings.length !== this.listEl.querySelectorAll(".us-row:not(.us-draft)").length) {
+          this.dirty = true;
+          return this.refresh();
+        }
+      }
+      say(_t("userscript.useSettingEditor.success", "Saved"), "ok");
+    }, 450);
+
+    label.addEventListener("input", () => commit(false));
+    label.addEventListener("blur", () => commit(true));
+
+    const ctl = this.buildControl(supported ? s.type : "custom", s, (immediate) => commit(immediate));
+    const body = _el("div", "us-body");
+    body.append(ctl.el);
+
+    row.append(top, meta, body, msg);
+    return row;
+  }
+
+  /**
+   * Builds the editor for a default value.
+   * @returns {{el: HTMLElement, editable: boolean, read: () => ({ok:true,value:any}|{ok:false,error:string})}}
+   */
+  buildControl(type, setting, onChange) {
+    const value = setting ? setting.defaultValue : undefined;
+    const editable = !setting || setting.defaultOk;
+
+    if (type === SETTING_TYPES.CHECKBOX && editable && (typeof value === "boolean" || value === undefined)) {
+      const wrap = _el("div", "us-ctl us-switch-line");
+      const sw = this.createSwitch({ checked: !!value, onChange: () => onChange(true) });
+      const input = sw.querySelector("input");
+      const caption = _el("span", "us-caption", _t("userscript.useSettingEditor.defaultValue", "Default value"));
+      caption.addEventListener("click", () => input.click());
+      wrap.append(sw, caption);
+      return { el: wrap, editable: true, read: () => ({ ok: true, value: input.checked }) };
+    }
+
+    if (type === SETTING_TYPES.TEXT && editable && (typeof value === "string" || value === undefined)) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = value || "";
+      input.placeholder = _t("userscript.useSettingEditor.textValue", "Default text");
+      input.setAttribute("aria-label", input.placeholder);
+      input.addEventListener("input", () => onChange(false));
+      input.addEventListener("blur", () => onChange(true));
+      const wrap = _el("div", "us-ctl");
+      wrap.append(input);
+      return { el: wrap, editable: true, read: () => ({ ok: true, value: input.value }) };
+    }
+
+    if (type === SETTING_TYPES.SELECT && editable && (value === undefined || Array.isArray(value))) {
+      return this.buildSelectControl(Array.isArray(value) ? value : [], onChange);
+    }
+
+    const wrap = _el("div", "us-ctl us-custom");
+    wrap.append(_el("span", "us-caption", _t("userscript.useSettingEditor.customValue", "Custom value, edit it in the code.")));
+    if (setting && setting.defaultSrc) {
+      const preview = setting.defaultSrc.replace(/\s+/g, " ");
+      wrap.append(_el("code", "us-preview", preview.length > 80 ? preview.slice(0, 80) + "…" : preview));
+    }
+    return { el: wrap, editable: false, read: () => ({ ok: true, value: undefined }) };
+  }
+
+  buildSelectControl(options, onChange) {
+    const wrap = _el("div", "us-ctl us-select");
+
+    const ta = document.createElement("textarea");
+    ta.className = "us-options";
+    ta.spellcheck = false;
+    ta.placeholder = "value | Label";
+    ta.value = options
+      .filter((o) => o && typeof o === "object")
+      .map((o) => {
+        const v = String(o.value ?? "");
+        const l = String(o.label ?? v);
+        return l === v ? v : `${v} | ${l}`;
+      })
+      .join("\n");
+    ta.rows = Math.max(3, Math.min(8, options.length + 1));
+
+    const help = _el("small", "us-help", _t("userscript.useSettingEditor.optionsHelp", "One option per line: value | Label"));
+
+    const defRow = _el("label", "us-default-row");
+    defRow.append(_el("span", "us-caption", _t("userscript.useSettingEditor.defaultOption", "Default option")));
+    const sel = document.createElement("select");
+    defRow.append(sel);
+
+    const parse = () => {
+      const seen = [];
+      ta.value.split("\n").forEach((raw) => {
+        if (!raw.trim()) return;
+        const p = raw.indexOf("|");
+        const value = (p === -1 ? raw : raw.slice(0, p)).trim();
+        const label = p === -1 ? value : raw.slice(p + 1).trim() || value;
+        seen.push({ value, label });
+      });
+      return seen;
+    };
+
+    let selectedValue = (options.find((o) => o && o.selected) || options[0] || {}).value;
+    const syncDefault = () => {
+      const opts = parse();
+      sel.textContent = "";
+      opts.forEach((o) => {
+        const opt = document.createElement("option");
+        opt.value = o.value;
+        opt.textContent = o.label;
+        sel.append(opt);
+      });
+      if (opts.some((o) => o.value === selectedValue)) sel.value = selectedValue;
+      else selectedValue = sel.value = opts[0]?.value ?? "";
+    };
+    syncDefault();
+
+    ta.addEventListener("input", () => {
+      syncDefault();
+      onChange(false);
+    });
+    ta.addEventListener("blur", () => onChange(true));
+    sel.addEventListener("change", () => {
+      selectedValue = sel.value;
+      onChange(true);
+    });
+
+    wrap.append(ta, help, defRow);
+
+    return {
+      el: wrap,
+      editable: true,
+      read: () => {
+        const opts = parse();
+        if (opts.length < 2) return { ok: false, error: _t("userscript.useSettingEditor.warn.selectOptions", "Add at least two options.") };
+        if (opts.some((o) => !o.value))
+          return { ok: false, error: _t("userscript.useSettingEditor.warn.emptyLabelorOptions", "Every option needs a value and a label.") };
+        if (new Set(opts.map((o) => o.value)).size !== opts.length)
+          return { ok: false, error: _t("userscript.useSettingEditor.warn.duplicateOption", "Option values must be unique.") };
+        const chosen = opts.some((o) => o.value === sel.value) ? sel.value : opts[0].value;
+        return { ok: true, value: opts.map((o) => ({ value: o.value, label: o.label, selected: o.value === chosen })) };
+      },
+    };
+  }
+
+  /* ---------- code generation / writing ---------- */
+
+  literal(value, indent = "") {
+    if (value === undefined) return "null";
+    if (Array.isArray(value) && value.length && value.every((v) => v && typeof v === "object" && !Array.isArray(v))) {
+      const obj = (o) =>
+        "{ " +
+        Object.entries(o)
+          .map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .join(", ") +
+        " }";
+      return "[\n" + value.map((o) => `${indent}  ${obj(o)},`).join("\n") + `\n${indent}]`;
+    }
+    if (Array.isArray(value) || (value && typeof value === "object")) return JSON.stringify(value, null, 2).replace(/\n/g, "\n" + indent);
+    return JSON.stringify(value);
+  }
+
+  buildCall(key, label, type, defaultCode) {
+    return `useSetting(${JSON.stringify(key)}, ${JSON.stringify(label)}, ${JSON.stringify(type)}, ${defaultCode})`;
+  }
+
+  write(from, to, text) {
+    const cm = this.codeEditor;
+    this._writing = true;
+    try {
+      cm.operation(() => cm.replaceRange(text, cm.posFromIndex(from), cm.posFromIndex(to)));
+    } finally {
+      this._writing = false;
+    }
+  }
+
+  jump(i) {
+    const s = this.settings[i];
+    if (!s) return;
+    const pos = this.codeEditor.posFromIndex(s.from);
+    if (this.onJump) this.onJump(pos);
+    else {
+      this.codeEditor.setCursor(pos);
+      this.codeEditor.focus();
+    }
+  }
+
+  /** Two-step delete: first click arms the button, second click removes the whole statement. */
+  bindDelete(btn, i, s) {
+    if (!s.removable) {
+      btn.disabled = true;
+      btn.title = _t("userscript.useSettingEditor.deleteInCode", "Used inside another expression: remove it in the code.");
       return;
     }
-
-    const frag = document.createDocumentFragment();
-
-    this.settings.forEach((s, i) => {
-      const wrap = document.createElement("div");
-      wrap.className = `useSetting-item ${s.type}`;
-
-      const title = document.createElement("h4");
-      title.textContent = `${i + 1} — ${s.key} (${i18n.t("userscript.useSettingEditor.type." + s.type)})`;
-
-      // Label edit
-      const labelInput = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.label"), value: s.label });
-      labelInput.className = "edit-label";
-
-      // Value editor depends on type
-      const valueEditor = this.createSettingEditorInput(s);
-
-      // Save button
-      const footer = document.createElement("div");
-      footer.className = "footer";
-      const infoMessage = document.createElement("div");
-      const infoMessageIndicator = document.createElement("div");
-      infoMessageIndicator.className = "info-message-indicator";
-      let infoMessageTimeout = null;
-
-      const saveBtn = this.makeButton(i18n.t("userscript.useSettingEditor.buttons.change"), () => {
-        infoMessage.textContent = "";
-        infoMessage.className = "info-message";
-        infoMessage.style.animation = "none";
-        infoMessage.offsetHeight;
-        infoMessage.style.animation = null;
-        clearTimeout(infoMessageTimeout);
-        labelInput.value = labelInput.value.trim();
-        if (s.type === "select") {
-          let missingValue = false;
-          let checkedStatus = false;
-          let items = valueEditor.querySelectorAll(".select-item");
-          items.forEach((line) => {
-            const inputs = line.querySelectorAll("input");
-            const val = inputs[0]?.value.trim();
-            const lab = inputs[1]?.value.trim();
-            if (!val && !lab) {
-              line.removeBtn?.click?.();
-              if (line.isConnected) line.remove();
-            } else if (!val || !lab) {
-              missingValue = true;
-            }
-            if (inputs[2]?.checked) checkedStatus = true;
-          });
-          // Re-Check
-          items = valueEditor.querySelectorAll(".select-item");
-          if (items.length < 2) {
-            infoMessage.textContent = i18n.t("userscript.useSettingEditor.warn.selectOptions");
-            infoMessage.className = "info-message error";
-            return;
-          } else if (missingValue) {
-            infoMessage.textContent = i18n.t("userscript.useSettingEditor.warn.emptyLabelorOptions");
-            infoMessage.className = "info-message error";
-            return;
-          } else if (!checkedStatus) {
-            infoMessage.textContent = i18n.t("userscript.useSettingEditor.warn.activateOption");
-            infoMessage.className = "info-message error";
-            return;
-          }
-        }
-        if (labelInput.value.length < 3) {
-          infoMessage.textContent = i18n.t("userscript.useSettingEditor.warn.minLetter");
-          infoMessage.className = "info-message error";
-          return;
-        }
-
-        // Success Message
-        infoMessage.textContent = i18n.t("userscript.useSettingEditor.success");
-        infoMessage.className = "info-message success";
-        infoMessage.appendChild(infoMessageIndicator);
-        infoMessageIndicator.style.display = "none";
-        void infoMessageIndicator.offsetWidth;
-        infoMessageIndicator.style.display = "block";
-        infoMessageTimeout = setTimeout(() => {
-          infoMessage.textContent = "";
-          infoMessage.className = "";
-          infoMessageIndicator.style.display = "none";
+    let timer = null;
+    const original = btn.title;
+    btn.addEventListener("click", () => {
+      if (!btn.classList.contains("is-confirm")) {
+        btn.classList.add("is-confirm");
+        btn.title = _t("userscript.useSettingEditor.confirmDelete", "Click again to delete");
+        timer = setTimeout(() => {
+          btn.classList.remove("is-confirm");
+          btn.title = original;
         }, 3000);
-
-        // Update Code
-        this.updateCode(i, valueEditor, labelInput);
-      });
-
-      // Layout
-      const contentWrap = document.createElement("div");
-      contentWrap.className = "content";
-      contentWrap.append(
-        this.createRow(i18n.t("userscript.useSettingEditor.label"), labelInput),
-        this.createRow(i18n.t("userscript.useSettingEditor.value"), valueEditor),
-      );
-      footer.append(infoMessage, saveBtn);
-      wrap.append(title, contentWrap, footer);
-      frag.append(wrap);
+        return;
+      }
+      clearTimeout(timer);
+      const cur = this.settings[i];
+      if (!cur) return;
+      this.write(cur.stmtFrom, cur.stmtTo, "");
+      this.dirty = true;
+      this.refresh();
     });
-    this.container.append(frag);
   }
 
-  createSettingEditorInput(setting) {
-    if (setting.type === SETTING_TYPES.CHECKBOX) {
-      // createSwitch expects an object with checked and onChange optional
-      return this.createSwitch({ checked: !!setting.defaultValue });
+  /* ---------- adding a setting ---------- */
+
+  openDraft() {
+    if (this.draftEl) {
+      this.draftEl.querySelector(".us-draft-key")?.focus();
+      return;
     }
-
-    if (setting.type === SETTING_TYPES.SELECT) {
-      return this.renderSelectList(setting.defaultValue);
-    }
-
-    // Default: text
-    const inp = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.textValue"), value: setting.defaultValue || "" });
-    return inp;
-  }
-
-  renderSelectList(values = []) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "select-list-editor";
-
-    const listWrap = document.createElement("div");
-    listWrap.className = "select-list";
-
-    const renderOption = (opt = { value: "", label: "", selected: false }) => {
-      const line = document.createElement("div");
-      line.className = "select-item";
-
-      const val = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.value"), value: opt.value || "" });
-      const lab = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.label"), value: opt.label || "" });
-
-      const switchLabel = this.createSwitch({ checked: !!opt.selected });
-      const checkbox = switchLabel.querySelector("input[type='checkbox']");
-
-      // Ensure only one selected
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) {
-          listWrap.querySelectorAll("input[type='checkbox']").forEach((other) => {
-            if (other !== checkbox) other.checked = false;
-          });
-        }
-      });
-
-      const removeBtn = this.makeButton(
-        "",
-        () => {
-          line.remove();
-          updateRemoveButtons();
-        },
-        { className: "remove-btn" },
-      );
-      removeBtn.appendChild(createSVG(svg_paths.crossIconPaths));
-
-      line.removeBtn = removeBtn;
-      line.append(val, lab, switchLabel, removeBtn);
-      listWrap.append(line);
+    const defaults = {
+      [SETTING_TYPES.TEXT]: { defaultValue: "", defaultOk: true },
+      [SETTING_TYPES.CHECKBOX]: { defaultValue: true, defaultOk: true },
+      [SETTING_TYPES.SELECT]: {
+        defaultValue: [
+          { value: "option1", label: "Option 1", selected: true },
+          { value: "option2", label: "Option 2", selected: false },
+        ],
+        defaultOk: true,
+      },
     };
 
-    const updateRemoveButtons = () => {
-      const items = listWrap.querySelectorAll(".select-item");
-      const disable = items.length <= 2;
-      items.forEach((line) => {
-        const btn = line.querySelector("button.remove-btn");
-        if (btn) btn.disabled = disable;
-      });
+    const row = _el("div", "us-row us-draft");
+    this.draftEl = row;
+    let type = SETTING_TYPES.TEXT;
+    let ctl = null;
+
+    const seg = _el("div", "us-seg");
+    seg.setAttribute("role", "group");
+    const body = _el("div", "us-body");
+    const msg = _el("div", "us-msg");
+    msg.setAttribute("role", "status");
+    const say = (t) => {
+      msg.textContent = t || "";
+      msg.className = "us-msg" + (t ? " is-error" : "");
     };
 
-    // Populate initial
-    if (Array.isArray(values) && values.length) {
-      // Only keep first selected true
-      const firstSelected = values.findIndex((v) => v && v.selected);
-      values.forEach((v, idx) => renderOption({ ...v, selected: idx === firstSelected }));
-    } else {
-      // If none provided, create two empty options
-      renderOption({ value: "", label: "", selected: true });
-      renderOption({ value: "", label: "", selected: false });
-    }
+    const renderBody = () => {
+      body.textContent = "";
+      ctl = this.buildControl(type, defaults[type], () => {});
+      body.append(ctl.el);
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.type === type));
+    };
 
-    // Add button
-    const addBtn = this.makeButton(i18n.t("userscript.useSettingEditor.addOption"), () => {
-      renderOption({ value: "", label: "", selected: false });
-      updateRemoveButtons();
+    Object.values(SETTING_TYPES).forEach((t) => {
+      const b = this.makeButton(_t("userscript.useSettingEditor.type." + t, t), () => {
+        type = t;
+        renderBody();
+      });
+      b.dataset.type = t;
+      seg.append(b);
     });
 
-    wrapper.append(listWrap, addBtn);
-    updateRemoveButtons();
-    return wrapper;
+    const keyIn = document.createElement("input");
+    keyIn.type = "text";
+    keyIn.className = "us-draft-key";
+    keyIn.placeholder = _t("userscript.useSettingEditor.placeholder.variableName", "Variable name");
+    keyIn.spellcheck = false;
+    const labIn = document.createElement("input");
+    labIn.type = "text";
+    labIn.className = "us-label";
+    labIn.placeholder = _t("userscript.useSettingEditor.placeholder.label", "Label");
+
+    const fields = _el("div", "us-draft-fields");
+    fields.append(keyIn, labIn);
+
+    const actions = _el("div", "us-draft-actions");
+    const cancel = this.makeButton(_t("common.cancel", "Cancel"), () => {
+      row.remove();
+      this.draftEl = null;
+      this.addBtn.disabled = false;
+    });
+    const create = this.makeButton(
+      _t("userscript.useSettingEditor.createSetting", "Create setting"),
+      () => {
+        const key = keyIn.value.trim();
+        const label = labIn.value.trim();
+        if (!this.isValidVariable(key)) return say(_t("userscript.useSettingEditor.warn.validVariableName", "Enter a valid variable name."));
+        if (this.settings.some((s) => s.key === key)) return say(_t("userscript.useSettingEditor.warn.duplicateKey", "A setting with this name already exists."));
+        if (!label) return say(_t("userscript.useSettingEditor.warn.emptyLabel", "The label can't be empty."));
+        const r = ctl.read();
+        if (!r.ok) return say(r.error);
+        this.insertSetting(key, label, type, r.value);
+      },
+      { className: "btn-primary" },
+    );
+    actions.append(cancel, create);
+
+    row.append(seg, fields, body, msg, actions);
+    this.listEl.append(row);
+    this.addBtn.disabled = true;
+    renderBody();
+    keyIn.focus();
+    row.scrollIntoView({ block: "nearest" });
   }
 
-  // Update code (write back to editor)
-  updateCode(index, inputEl, labelEl) {
-    const code = this.codeEditor.getValue();
-    const setting = this.settings[index];
-    const newLabel = labelEl.value.trim() || setting.label;
+  insertSetting(key, label, type, value) {
+    const cm = this.codeEditor;
+    const code = cm.getValue();
+    const last = this.settings[this.settings.length - 1];
 
-    let newValueCode;
-    if (setting.type === SETTING_TYPES.CHECKBOX) {
-      const checked = !!inputEl.querySelector("input[type='checkbox']").checked;
-      newValueCode = checked ? "true" : "false";
-    } else if (setting.type === SETTING_TYPES.SELECT) {
-      const lines = inputEl.querySelectorAll(".select-item");
-      const options = Array.from(lines).map((line) => {
-        const inputs = line.querySelectorAll("input");
-        return {
-          value: inputs[0].value,
-          label: inputs[1].value,
-          selected: inputs[2].checked,
-        };
-      });
-      newValueCode = JSON.stringify(options, null, 2);
+    let at;
+    let text;
+    if (last) {
+      let end = code.indexOf("\n", last.to);
+      if (end === -1) end = code.length;
+      at = end;
+      text = "\n" + last.indent + this.statement(key, label, type, value, last.indent);
     } else {
-      // text
-      const val = inputEl.value;
-      newValueCode = JSON.stringify(val);
+      const line = cm.getCursor().line;
+      const indent = (/^\s*/.exec(cm.getLine(line)) || [""])[0];
+      at = cm.indexFromPos({ line, ch: 0 });
+      text = indent + this.statement(key, label, type, value, indent) + "\n";
     }
 
-    // Replace the matching useSetting(...) with updated one.
-    const replaceRegex = new RegExp(`useSetting\\s*\\(\\s*(['"])${this.escapeForRegex(setting.key)}\\1\\s*,[\\s\\S]*?\\)\\s*;`, "s");
-
-    const newCall = `useSetting("${setting.key}", "${this.escapeForRegexForCode(newLabel)}", "${setting.type}", ${newValueCode});`;
-    const newCode = code.replace(replaceRegex, newCall);
-
-    this.setCodeEditorValue(newCode);
+    this.write(at, at, text);
+    this.dirty = true;
+    this.refresh();
+    const rows = this.listEl.querySelectorAll(".us-row");
+    const idx = this.settings.findIndex((s) => s.key === key);
+    const added = rows[idx];
+    if (added) {
+      added.classList.add("is-new");
+      added.scrollIntoView({ block: "nearest" });
+      setTimeout(() => added.classList.remove("is-new"), 1200);
+    }
   }
 
-  escapeForRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  statement(key, label, type, value, indent) {
+    return `const ${key} = await ${this.buildCall(key, label, type, this.literal(value, indent))};`;
   }
 
-  escapeForRegexForCode(str) {
-    // only escape double quotes and backslashes for embedding into code string
-    return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
+  /* ---------- validation ---------- */
 
   reservedKeywords = new Set([
     "break",
@@ -432,216 +848,16 @@ class UseSettingEditor {
     "while",
     "with",
     "yield",
+    "await",
+    "enum",
+    "null",
+    "true",
+    "false",
   ]);
 
   isValidVariable(name) {
-    // should not be empty and must be a string
     if (typeof name !== "string" || name.trim() === "") return false;
-
-    // RegEx check
     if (!/^[$A-Z_a-z][0-9A-Z_a-z$]*$/.test(name)) return false;
-
-    // Keyword check
-    if (this.reservedKeywords.has(name)) return false;
-
-    return true;
-  }
-
-  // create generator UI
-  createGeneratorUI(builderContainer) {
-    builderContainer.innerHTML = "";
-
-    const contentWrapper = document.createElement("div");
-    contentWrapper.className = "build-content text";
-
-    const varInput = this.createInput({ id: "varName", placeholder: i18n.t("userscript.useSettingEditor.placeholder.variableName") });
-    const labelInput = this.createInput({ id: "label", placeholder: i18n.t("userscript.useSettingEditor.placeholder.label") });
-
-    const typeSelect = document.createElement("select");
-    [SETTING_TYPES.TEXT, SETTING_TYPES.CHECKBOX, SETTING_TYPES.SELECT].forEach((t) => {
-      const o = document.createElement("option");
-      o.value = t;
-      o.textContent = i18n.t("userscript.useSettingEditor.type." + t);
-      typeSelect.append(o);
-    });
-
-    const defaultContainer = document.createElement("div");
-    defaultContainer.className = "default-value-container";
-
-    const infoDiv = document.createElement("div");
-    infoDiv.className = "info-message";
-
-    const generateBtn = this.makeButton(i18n.t("userscript.useSettingEditor.createSetting"), () => {
-      infoDiv.style.animation = "none";
-      infoDiv.offsetHeight;
-      infoDiv.style.animation = null;
-      varInput.value = varInput.value.trim();
-      labelInput.value = labelInput.value.trim();
-
-      const variable = varInput.value;
-      const label = labelInput.value;
-      const type = typeSelect.value;
-
-      // Variable Name Check
-      if (!this.isValidVariable(variable)) {
-        infoDiv.textContent = i18n.t("userscript.useSettingEditor.warn.validVariableName");
-        infoDiv.className = "info-message error";
-        return;
-      }
-
-      // Label Check
-      if (!label) {
-        infoDiv.textContent = i18n.t("userscript.useSettingEditor.warn.emptyLabel");
-        infoDiv.className = "info-message error";
-        return;
-      }
-
-      // Clear empty select options
-      if (type === SETTING_TYPES.SELECT) {
-        let options = defaultContainer.querySelectorAll(".select-option");
-        let missingValue = false;
-        let checkedStatus = false;
-        options.forEach((opt) => {
-          const inputs = opt.querySelectorAll("input");
-          const val = inputs[0]?.value.trim();
-          const lab = inputs[1]?.value.trim();
-          if (!val && !lab) {
-            opt.removeBtn.disabled = false;
-            opt.removeBtn?.click();
-          } else if (!val || !lab) {
-            missingValue = "val";
-          }
-
-          if (inputs[2]?.checked) checkedStatus = true;
-        });
-        options = defaultContainer.querySelectorAll(".select-option");
-        if (options.length < 2) {
-          infoDiv.textContent = i18n.t("userscript.useSettingEditor.warn.selectOptions");
-          infoDiv.className = "info-message error";
-          return;
-        } else if (missingValue) {
-          infoDiv.textContent = i18n.t("userscript.useSettingEditor.warn.emptyLabelorOptions");
-          infoDiv.className = "info-message error";
-          return;
-        } else if (!checkedStatus) {
-          infoDiv.textContent = i18n.t("userscript.useSettingEditor.warn.activateOption");
-          infoDiv.className = "info-message error";
-          return;
-        }
-      }
-      infoDiv.textContent = "";
-      infoDiv.className = "info-message";
-
-      // code generation
-      let defaultValueCode = "null";
-      if (type === SETTING_TYPES.TEXT) {
-        const txt = defaultContainer.querySelector("#defaultText")?.value || "";
-        defaultValueCode = JSON.stringify(txt);
-      } else if (type === SETTING_TYPES.CHECKBOX) {
-        const checked = !!defaultContainer.querySelector("input[type='checkbox']")?.checked;
-        defaultValueCode = checked ? "true" : "false";
-      } else if (type === SETTING_TYPES.SELECT) {
-        const opts = Array.from(defaultContainer.querySelectorAll(".select-option")).map((el) => {
-          const inputs = el.querySelectorAll("input");
-          return {
-            value: inputs[0].value,
-            label: inputs[1].value,
-            selected: !!inputs[2].checked,
-          };
-        });
-        defaultValueCode = JSON.stringify(opts, null, 2);
-      }
-
-      const code = `const ${variable} = await useSetting("${variable}", "${label}", "${type}", ${defaultValueCode});`;
-
-      let outputDiv = builderContainer.querySelector("#output");
-      if (!outputDiv) {
-        outputDiv = document.createElement("pre");
-        outputDiv.id = "output";
-        builderContainer.append(outputDiv, this.makeCopyButton(outputDiv));
-      }
-      outputDiv.textContent = code;
-    });
-
-    generateBtn.id = "btnGenerate";
-
-    // Default render function
-    const renderDefault = (type) => {
-      defaultContainer.innerHTML = "";
-      if (type === SETTING_TYPES.TEXT) {
-        const ti = this.createInput({ id: "defaultText", placeholder: i18n.t("userscript.useSettingEditor.defaultText") });
-        defaultContainer.append(this.createRow(i18n.t("userscript.useSettingEditor.defaultText"), ti));
-      } else if (type === SETTING_TYPES.CHECKBOX) {
-        const sw = this.createSwitch({ checked: true });
-        defaultContainer.append(this.createRow(i18n.t("common.enabled"), sw));
-      } else if (type === SETTING_TYPES.SELECT) {
-        const updateRemoveButtons = () => {
-          const btns = optContainer.querySelectorAll(".select-option button");
-          const disable = optContainer.querySelectorAll(".select-option").length <= 2;
-          btns.forEach((b) => (b.disabled = disable));
-        };
-
-        const label = document.createElement("label");
-        label.textContent = i18n.t("userscript.useSettingEditor.selectOptions");
-        const optContainer = document.createElement("div");
-        optContainer.className = "selectOptions";
-
-        const addOption = (opt = { value: "", label: "", selected: false }) => {
-          const wrap = document.createElement("div");
-          wrap.className = "select-option";
-          const v = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.value"), value: opt.value });
-          const l = this.createInput({ placeholder: i18n.t("userscript.useSettingEditor.label"), value: opt.label });
-          const s = this.createSwitch({ checked: !!opt.selected });
-
-          s.querySelector("input").addEventListener("change", (e) => {
-            if (e.target.checked) {
-              optContainer.querySelectorAll(".select-option .switch-label input").forEach((sw) => {
-                if (sw !== e.target) sw.checked = false;
-              });
-            }
-          });
-
-          // Remove Button
-          const remove = this.makeButton(
-            "",
-            () => {
-              wrap.remove();
-              updateRemoveButtons();
-            },
-            { className: "remove-btn" },
-          );
-          remove.appendChild(createSVG(svg_paths.crossIconPaths));
-
-          wrap.append(v, l, s, remove);
-          wrap.removeBtn = remove;
-          optContainer.append(wrap);
-
-          const btns = optContainer.querySelectorAll(".select-option button");
-          const disable = optContainer.querySelectorAll(".select-option").length <= 2;
-          btns.forEach((b) => (b.disabled = disable));
-        };
-        updateRemoveButtons();
-        addOption({ value: "example1", label: "Example 1", selected: true });
-        addOption({ value: "example2", label: "Example 2", selected: false });
-
-        const addBtn = this.makeButton(i18n.t("userscript.useSettingEditor.addOption"), () => addOption({}));
-        defaultContainer.append(label, optContainer, addBtn);
-      }
-    };
-
-    // Type change events
-    typeSelect.addEventListener("change", () => {
-      renderDefault(typeSelect.value);
-      contentWrapper.className = `build-content ${typeSelect.value}`;
-    });
-
-    renderDefault(typeSelect.value);
-    contentWrapper.append(
-      this.createRow(i18n.t("userscript.useSettingEditor.variableName"), varInput),
-      this.createRow(i18n.t("userscript.useSettingEditor.label"), labelInput),
-      this.createRow(i18n.t("userscript.useSettingEditor.type"), typeSelect),
-      defaultContainer,
-    );
-    builderContainer.append(contentWrapper, generateBtn, infoDiv);
+    return !this.reservedKeywords.has(name);
   }
 }

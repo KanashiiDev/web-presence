@@ -142,7 +142,8 @@ async function createTutorial({ steps, storageKey, dialogWidth, onStart, onEnd }
 
   nextBtn.addEventListener(
     "click",
-    async () => {
+    async (e) => {
+      e.stopPropagation();
       currentStep++;
       if (currentStep >= steps.length) {
         ac.abort();
@@ -156,7 +157,8 @@ async function createTutorial({ steps, storageKey, dialogWidth, onStart, onEnd }
 
   skipBtn.addEventListener(
     "click",
-    () => {
+    (e) => {
+      e.stopPropagation();
       ac.abort();
       endTutorial();
     },
@@ -222,6 +224,15 @@ async function showUserScriptTutorial() {
   const editor = document.getElementById("editor");
   let createdSkeleton = false;
 
+  const pageClickBlocker = new AbortController();
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!e.target.closest?.(".tutorial-dialog")) e.stopPropagation();
+    },
+    { capture: true, signal: pageClickBlocker.signal },
+  );
+
   // Skeleton fallback when list is empty
   if (!ul.querySelector(".script-item")) {
     createSkeletonScriptItem();
@@ -229,10 +240,11 @@ async function showUserScriptTutorial() {
   }
 
   // Shared selectors queried once per fade call
-  const TABS_SEL = ".script-tab, #scriptSearch";
+  const TABS_SEL = ".script-tab, #usmBtnListToggle, #scriptSearch";
   const ITEMS_SEL = ".script-item";
   const TOOLBAR_SEL = "#btnNew, #btnImport, #btnExport, #btnGithubSettings";
   const ACTIONS_SEL = ".script-actions button";
+  const MENU_SEL = ".script-item .usm-overflow-menu";
 
   function fadeScriptItems(targetEl) {
     const parentItem = targetEl?.closest(".script-item");
@@ -248,13 +260,81 @@ async function showUserScriptTutorial() {
     return [...document.querySelectorAll(TABS_SEL), ...fadeScriptItems(targetEl), ...document.querySelectorAll(TOOLBAR_SEL)].filter((el) => el !== targetEl);
   }
 
+  function closeOverflowMenus() {
+    document.querySelectorAll(".usm-overflow-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
+  }
+
+  let revealedItem = null;
+
+  function revealActions(itemEl, reveal) {
+    const actions = itemEl?.querySelector(".script-actions");
+    if (!actions) return;
+    actions.style.opacity = reveal ? "1" : "";
+    actions.style.pointerEvents = reveal ? "auto" : "";
+  }
+
+  function toggleRowStatus(itemEl, hide) {
+    const status = itemEl?.querySelector(".script-status");
+    if (status) status.style.visibility = hide ? "hidden" : "";
+  }
+
+  function focusRow() {
+    revealActions(revealedItem, false);
+    revealedItem = document.querySelector(".script-item") ?? null;
+    revealActions(revealedItem, true);
+    return revealedItem;
+  }
+
+  function unfocusRow() {
+    toggleRowStatus(revealedItem, false);
+    revealActions(revealedItem, false);
+    revealedItem = null;
+  }
+
+  function openFirstMenu() {
+    const row = focusRow();
+    closeOverflowMenus();
+    const menu = row?.querySelector(".usm-overflow-menu");
+    if (menu) menu.hidden = false;
+  }
+
   const steps = [
-    { text: i18n.t("userscript.tutorial.btnToggle"), selector: ".script-item .btnToggle", getFadingEls: fadeScriptButtons },
-    { text: i18n.t("userscript.tutorial.btnEdit"), selector: ".script-item .btnEdit", getFadingEls: fadeScriptButtons },
-    { text: i18n.t("userscript.tutorial.btnExport"), selector: ".script-item .btnExport", getFadingEls: fadeScriptButtons },
-    { text: i18n.t("userscript.tutorial.btnContribute"), selector: ".script-item .btnContribute", getFadingEls: fadeScriptButtons },
-    { text: i18n.t("userscript.tutorial.btnDelete"), selector: ".script-item .btnDelete", getFadingEls: fadeScriptButtons },
-    { text: i18n.t("userscript.tutorial.btnNew"), selector: "#btnNew", getFadingEls: fadeToolbarBtns },
+    {
+      text: i18n.t("userscript.tutorial.scriptRow"),
+      selector: ".script-item",
+      getFadingEls: fadeScriptItems,
+      onShow: focusRow,
+    },
+    {
+      text: i18n.t("userscript.tutorial.btnToggle"),
+      selector: ".script-item .btnToggle",
+      getFadingEls: fadeScriptButtons,
+      onShow: () => {
+        closeOverflowMenus();
+        const row = focusRow();
+        toggleRowStatus(row, true);
+      },
+    },
+    {
+      text: i18n.t("userscript.tutorial.btnMore"),
+      selector: ".script-item .btnMore",
+      getFadingEls: fadeScriptButtons,
+      onShow: () => openFirstMenu(),
+    },
+    { text: i18n.t("userscript.tutorial.btnExport"), selector: `${MENU_SEL} .btnExport`, getFadingEls: fadeScriptButtons, onShow: () => openFirstMenu() },
+    { text: i18n.t("userscript.tutorial.btnContribute"), selector: `${MENU_SEL} .btnContribute`, getFadingEls: fadeScriptButtons, onShow: () => openFirstMenu() },
+    { text: i18n.t("userscript.tutorial.btnDelete"), selector: `${MENU_SEL} .btnDelete`, getFadingEls: fadeScriptButtons, onShow: () => openFirstMenu() },
+    {
+      text: i18n.t("userscript.tutorial.btnNew"),
+      selector: "#btnNew",
+      getFadingEls: fadeToolbarBtns,
+      onShow: () => {
+        closeOverflowMenus();
+        unfocusRow();
+      },
+    },
     { text: i18n.t("userscript.tutorial.btnImport"), selector: "#btnImport", getFadingEls: fadeToolbarBtns },
     { text: i18n.t("userscript.tutorial.btnExportAll"), selector: "#btnExport", getFadingEls: fadeToolbarBtns },
     { text: i18n.t("userscript.tutorial.btnGithubSettings"), selector: "#btnGithubSettings", getFadingEls: fadeToolbarBtns },
@@ -264,6 +344,9 @@ async function showUserScriptTutorial() {
     steps,
     storageKey: "userScriptTutorialDone",
     onEnd: async () => {
+      pageClickBlocker.abort();
+      closeOverflowMenus();
+      unfocusRow();
       if (createdSkeleton) ul.querySelector(".tutorial-skeleton-item")?.remove();
       const emptyMsg = document.querySelector(".script-empty-message");
       if (emptyMsg) emptyMsg.style.display = "";
@@ -462,28 +545,12 @@ function createSkeletonScriptItem() {
   scriptTitle.className = "script-title";
   scriptTitle.textContent = "Example Script (Tutorial)";
 
-  const scriptStatus = document.createElement("span");
-  scriptStatus.className = "script-status status-active";
-  scriptStatus.textContent = "✓ Active";
-
   scriptHeader.appendChild(iconContainer);
   scriptHeader.appendChild(scriptTitle);
-  scriptHeader.appendChild(scriptStatus);
 
   // Details section
   const scriptDetails = document.createElement("div");
   scriptDetails.className = "script-details";
-
-  const description = document.createElement("p");
-  description.className = "script-description";
-  description.textContent = "Example script description.";
-
-  const domain = document.createElement("small");
-  domain.className = "script-domain";
-  domain.textContent = "example.com [/*]";
-
-  scriptDetails.appendChild(description);
-  scriptDetails.appendChild(domain);
 
   scriptInfo.appendChild(scriptHeader);
   scriptInfo.appendChild(scriptDetails);
@@ -503,17 +570,19 @@ function createSkeletonScriptItem() {
 
   // Defining buttons
   const btnToggle = createActionButton("btnToggle btn-disable", "Disable", svg_paths.pauseIconPaths);
-  const btnEdit = createActionButton("btnEdit", "Edit", svg_paths.penIconPaths);
-  const btnExport = createActionButton("btnExport", "Export", svg_paths.exportIconPaths);
-  const btnContribute = createActionButton("btnContribute", "Contribute", svg_paths.githubIconPaths);
-  const btnDelete = createActionButton("btnDelete", "Delete", svg_paths.trashIconPaths);
+  const btnMore = createActionButton("btnMore", "More Actions", svg_paths.moreIconPaths);
+
+  const skeletonMenu = document.createElement("div");
+  skeletonMenu.className = "usm-overflow-menu";
+  skeletonMenu.hidden = true;
+  skeletonMenu.appendChild(createActionButton("btnExport", "Export", svg_paths.exportIconPaths));
+  skeletonMenu.appendChild(createActionButton("btnContribute", "Contribute", svg_paths.githubIconPaths));
+  skeletonMenu.appendChild(createActionButton("btnDelete", "Delete", svg_paths.trashIconPaths));
 
   // Adding action elements
   scriptActions.appendChild(btnToggle);
-  scriptActions.appendChild(btnEdit);
-  scriptActions.appendChild(btnExport);
-  scriptActions.appendChild(btnContribute);
-  scriptActions.appendChild(btnDelete);
+  scriptActions.appendChild(btnMore);
+  scriptActions.appendChild(skeletonMenu);
 
   // Combining the main element
   skeletonLi.appendChild(scriptInfo);

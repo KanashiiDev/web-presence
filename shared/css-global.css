@@ -606,10 +606,10 @@ html.setup-dialog-open #mainFooterButtons {
 
 .tutorialTooltip-highlight {
   position: relative;
-  z-index: 9999;
-  outline: 3px solid var(--text-color-muted);
+  z-index: 9999 !important;
+  outline: 3px solid var(--text-color-muted) !important;
   border-radius: var(--radius-lg);
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 .fading {

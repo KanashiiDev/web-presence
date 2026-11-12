@@ -234,6 +234,7 @@ class UserScriptUI {
   async init() {
     await i18n.load("extension");
     applyTranslations();
+    await this.restoreSidebarWidth();
     this.bindEvents();
     await this.refreshList();
     this.bindCodeEditor();
@@ -288,6 +289,21 @@ class UserScriptUI {
     // List events
     document.getElementById("scriptList").addEventListener("click", (e) => this.handleListClick(e));
 
+    document.querySelectorAll(".usm-tab").forEach((btn) => {
+      btn.addEventListener("click", () => this.switchEditorTab(btn.dataset.tab));
+    });
+
+    document.getElementById("usmListBtn")?.appendChild(createSVG(svg_paths.menuIconPaths));
+
+    document.getElementById("usmBtnListToggle")?.addEventListener("click", () => {
+      const sidebar = document.querySelector(".usm-sidebar");
+      sidebar?.classList.toggle("collapsed");
+      document.querySelectorAll(".script-item").forEach((li) => {
+        li.classList.toggle("collapsed", sidebar?.classList.contains("collapsed"));
+      });
+      this.saveSidebarWidth();
+    });
+
     // Search input - filter list client-side without refetching
     const scriptSearchEl = document.getElementById("scriptSearch");
     const scriptSearchResetBtn = document.getElementById("scriptSearchResetBtn");
@@ -296,6 +312,10 @@ class UserScriptUI {
       this.searchQuery = e.target.value.toLowerCase();
       scriptSearchResetBtn?.classList.toggle("filter-active", this.searchQuery.length > 0);
       debouncedRefreshList();
+    });
+
+    scriptSearchEl.addEventListener("click", async () => {
+      this.hideEditor();
     });
 
     scriptSearchResetBtn?.appendChild(createSVG(svg_paths.closeIconPaths ?? svg_paths.crossIconPaths));
@@ -329,7 +349,63 @@ class UserScriptUI {
       }
     });
 
-    this.syncSearchAvailability();
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".script-item")) this.closeOverflowMenus();
+    });
+
+    document.querySelectorAll(".usm-notes-toggle").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        // The notes body lives outside the status bar (panel grid row), so reach it via the bar's next sibling.
+        const body = btn.closest(".cm-status-bar")?.nextElementSibling;
+        activateSimpleBar(body);
+        if (body && body.classList.contains("usm-notes-body")) body.hidden = !body.hidden;
+      });
+    });
+
+    const resizer = document.querySelector(".usm-resizer");
+    const sidebar = document.querySelector(".usm-sidebar");
+    if (resizer && sidebar) {
+      let startX = 0;
+      let startWidth = 0;
+      const onMove = (e) => {
+        const width = startWidth + (e.clientX - startX);
+        sidebar.style.flexBasis = `${Math.round(Math.min(Math.max(width, 220), 520))}px`;
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        this.saveSidebarWidth();
+      };
+      resizer.addEventListener("mousedown", (e) => {
+        if (sidebar.classList.contains("collapsed")) return;
+        e.preventDefault();
+        startX = e.clientX;
+        startWidth = sidebar.getBoundingClientRect().width;
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+    }
+  }
+
+  async saveSidebarWidth() {
+    const sidebar = document.querySelector(".usm-sidebar");
+    if (!sidebar || sidebar.classList.contains("collapsed")) return;
+    const width = sidebar.getBoundingClientRect().width;
+    try {
+      await browser.storage.local.set({ usmSidebarWidth: width });
+    } catch (_) {}
+  }
+
+  async restoreSidebarWidth() {
+    try {
+      const { usmSidebarWidth } = await browser.storage.local.get("usmSidebarWidth");
+      const sidebar = document.querySelector(".usm-sidebar");
+      if (sidebar && usmSidebarWidth) {
+        const clamped = Math.round(Math.min(Math.max(usmSidebarWidth, 220), 520));
+        sidebar.style.flexBasis = `${clamped}px`;
+        sidebar.style.width = `${clamped}px`;
+      }
+    } catch (_) {}
   }
 
   async switchTab(tab) {
@@ -343,6 +419,25 @@ class UserScriptUI {
     });
     this.hideEditorCore();
     await this.refreshList();
+  }
+
+  // Switch between the editor's tabs (Code / Details / Advanced)
+  switchEditorTab(tab) {
+    const editor = document.getElementById("editor");
+    if (!editor || editor.hidden) return;
+    document.querySelectorAll(".usm-tab").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === tab);
+    });
+    document.querySelectorAll(".usm-panel").forEach((panel) => {
+      const isActive = panel.dataset.tab === tab;
+      panel.classList.toggle("active", isActive);
+      panel.hidden = !isActive;
+      if (isActive && panel.dataset.tab !== "code") activateSimpleBar(panel);
+    });
+    if (tab === "advanced") this.useSettingEditor?.refresh();
+    if (tab === "code") {
+      setTimeout(() => this.codeEditor.refresh(), 0);
+    }
   }
 
   handlePatternStatus() {
@@ -397,9 +492,8 @@ class UserScriptUI {
         "Alt-Up": "moveLinesUp",
         "Alt-Down": "moveLinesDown",
         "Shift-Alt-Down": "duplicateLines",
+        F8: (cm) => this.navigateLint(cm, 1),
         Esc: function (cm) {
-          // Close the search panel when it is open, otherwise restore the
-          // default single-selection behaviour (Esc -> singleSelection).
           if (cm.state.searchAdvanced && cm.state.searchAdvanced._panel) cm.execCommand("closeSearchAdvanced");
           else cm.execCommand("singleSelection");
         },
@@ -463,17 +557,6 @@ class UserScriptUI {
     );
     this.codeEditor.on("cursorActivity", () => this.updateStatusBar());
     this.buildEditorStatusBar();
-
-    this.codeEditor.on(
-      "change",
-      function (cm) {
-        const isMatch = this.checkSettings(cm);
-        if (isMatch && container.getAttribute("activeMode") === "edit") {
-          clearChildren(container);
-          this.useSettingEditor.loadFromCode();
-        }
-      }.bind(this),
-    );
 
     // Apply JsHint Filters
     applyJsHintFilters(CodeMirror, lintOptions);
@@ -589,56 +672,24 @@ class UserScriptUI {
       },
     });
 
-    this.useSettingEditor = new UseSettingEditor(this.codeEditor, document.getElementById("useSettingsContainer"));
-    const editBtn = document.getElementById("editSettingsBtn");
-    const createBtn = document.getElementById("createSettingsBtn");
-    const container = document.getElementById("useSettingsContainer");
-
-    editBtn.addEventListener("click", () => {
-      if (container.getAttribute("activeMode") === "edit") {
-        clearChildren(container);
-        container.removeAttribute("activeMode");
-        editBtn.classList.remove("active");
-      } else {
-        clearChildren(container);
-        container.setAttribute("activeMode", "edit");
-        editBtn.classList.add("active");
-        createBtn.classList.remove("active");
-        this.useSettingEditor.loadFromCode();
-      }
+    this.useSettingEditor = new UseSettingEditor(this.codeEditor, document.getElementById("useSettingsContainer"), {
+      onJump: (pos) => {
+        this.switchEditorTab("code");
+        const cm = this.codeEditor;
+        setTimeout(() => {
+          cm.refresh();
+          cm.setCursor(pos);
+          cm.scrollIntoView(pos, 120);
+          cm.focus();
+        }, 0);
+      },
     });
-
-    createBtn.addEventListener("click", () => {
-      if (container.getAttribute("activeMode") === "create") {
-        clearChildren(container);
-        container.removeAttribute("activeMode");
-        createBtn.classList.remove("active");
-      } else {
-        clearChildren(container);
-        container.setAttribute("activeMode", "create");
-        createBtn.classList.add("active");
-        editBtn.classList.remove("active");
-        this.useSettingEditor.createGeneratorUI(container);
-      }
-    });
-  }
-
-  // Show/Hide Edit Settings Button
-  checkSettings(cm) {
-    const useSetRegex = /useSetting\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*,\s*["']([^"']+)"(?:\s*,\s*([\s\S]*?))?\s*\)/g;
-    const code = cm.getValue();
-    const match = useSetRegex.exec(code);
-    if (match === null) {
-      document.getElementById("editSettingsBtn").hidden = true;
-    } else {
-      document.getElementById("editSettingsBtn").hidden = false;
-    }
-    return match;
   }
 
   updateWatchAutoDetectVisibility() {
     const isWatch = this.inModeTom.getValue() === "watch";
-    document.querySelector(".container.watchAutoDetect").style.display = isWatch ? "" : "none";
+    const container = document.querySelector(".usm-field-watchAutoDetect");
+    if (container) container.style.display = isWatch ? "" : "none";
   }
 
   buildEditorStatusBar() {
@@ -847,20 +898,20 @@ class UserScriptUI {
   async restoreContext() {
     const { managerContext } = await browser.storage.local.get("managerContext");
     if (!managerContext) return;
-    // Remove the stored context before opening: if the restore fails or is
-    // interrupted, a reload can never replay the edit-out-of-nowhere again.
     await browser.storage.local.remove("managerContext");
     if (managerContext.target) {
-      document.querySelector(`.btnEdit[data-id="${managerContext.target}"]`)?.click();
+      document.querySelector(`li[data-id="${managerContext.target}"]`)?.click();
     }
   }
 
   renderList(list) {
     this.hideEditor();
     const editor = document.getElementById("editor");
-    document.body.appendChild(editor);
+    const workspace = document.querySelector(".usm-workspace");
+    if (workspace && editor.parentElement !== workspace) workspace.appendChild(editor);
     const ul = document.getElementById("scriptList");
-    ul.innerHTML = "";
+    const host = ul.querySelector(".simplebar-content") || ul;
+    host.innerHTML = "";
 
     if (!list.length) {
       const emptyMsg = document.createElement("li");
@@ -875,7 +926,8 @@ class UserScriptUI {
               ? i18n.t("userscript.list.empty.edited")
               : i18n.t("userscript.list.empty.my");
       }
-      ul.appendChild(emptyMsg);
+      host.appendChild(emptyMsg);
+      this.refreshListScroll();
       return;
     }
 
@@ -885,7 +937,7 @@ class UserScriptUI {
       const li = document.createElement("li");
       li.dataset.id = script.id;
       li.dataset.title = script.title;
-      li.classList.add("script-item");
+      li.className = "script-item";
       li.classList.toggle("registered", !!script.registered);
       li.classList.toggle("enabled", !!script.enabled);
       li.classList.toggle("disabled", !script.enabled);
@@ -908,27 +960,22 @@ class UserScriptUI {
       // FavIcon
       const favIconContainer = document.createElement("div");
       favIconContainer.className = "parser-icon-container spinner";
+      favIconContainer.title = script.title || "";
 
       const favIcon = document.createElement("img");
-      favIcon.className = "parser-icon hidden-visibility";
+      favIcon.className = "script-favicon hidden-visibility";
       favIcon.dataset.src = primaryDomain;
       favIcon.loading = "lazy";
       favIcon.decoding = "async";
       favIconContainer.appendChild(favIcon);
 
-      // Favicon click
-      const handleFavIconClick = () => {
+      const handleFavIconClick = (ev) => {
+        ev.stopPropagation();
         const url = script.homepage || `https://${primaryDomain}`;
         window.open(url, "_blank", "noopener,noreferrer");
       };
-      const listeners = [];
-      const addListener = (el, event, handler, options = {}) => {
-        if (!el) return;
-        el.addEventListener(event, handler, options);
-        listeners.push({ el, event, handler, options });
-      };
-      addListener(favIcon, "click", handleFavIconClick);
-      header.prepend(favIconContainer);
+      favIcon.addEventListener("click", handleFavIconClick);
+      header.appendChild(favIconContainer);
 
       const status = document.createElement("span");
       status.className = "script-status badge badge-sm badge-rounded";
@@ -937,73 +984,86 @@ class UserScriptUI {
       const inactiveStatus =
         !script.registered && !script.enabled ? i18n.t("userscript.status.inactive") : !script.registered ? i18n.t("userscript.status.unregistered") : null;
       status.textContent = inactiveStatus || i18n.t("userscript.status.active");
+      status.title = status.textContent;
 
-      header.append(title, status);
+      header.appendChild(title);
+      header.appendChild(status);
+
+      const metaParts = [];
+      if (script.authors && Array.isArray(script.authors) && script.authors.length > 0) {
+        metaParts.push(`${script.authors.length > 1 ? "Authors" : "Author"}: ${script.authors.join(", ")}`);
+      }
+      if (script.lastUpdated) metaParts.push(new Date(script.lastUpdated).toLocaleDateString());
+      title.title = metaParts.join(" | ");
+      info.appendChild(header);
+
+      // script-details
+      const details = document.createElement("div");
+      details.className = "script-details";
 
       if (script._localEdited) {
         const editedBadge = document.createElement("span");
         editedBadge.className = "badge badge-sm badge-rounded status-edited";
         editedBadge.title = i18n.t("userscript.status.edited.title");
         editedBadge.textContent = i18n.t("userscript.status.edited");
-        header.append(editedBadge);
+        details.appendChild(editedBadge);
       }
 
-      // script-details
-      const details = document.createElement("div");
-      details.className = "script-details";
-
-      const description = document.createElement("p");
-      description.className = "script-description";
-      description.textContent = script.description || "";
-      details.appendChild(description);
-
-      const domain = document.createElement("small");
-      domain.className = "script-domain";
-      domain.textContent = `${Array.isArray(script.domain) ? script.domain.join(", ") : script.domain} [${this.formatPatterns(script.urlPatterns)}]`;
-      details.appendChild(domain);
-
-      // script-meta
-      const authors =
-        script.authors && Array.isArray(script.authors) && script.authors.length > 0
-          ? `${script.authors.length > 1 ? "Authors" : "Author"}: ${script.authors.join(", ")}`
-          : "";
-      const updated = script.lastUpdated ? `${new Date(script.lastUpdated).toLocaleDateString()}` : "";
-      const meta = `${authors}\n${updated}`.trim();
-      title.title = meta;
-      info.append(header, details);
+      info.appendChild(details);
 
       // script-actions
       const actions = document.createElement("div");
       actions.className = "script-actions";
 
       const isActivelyRunning = script.enabled && script.registered;
-      const { btnToggle, btnExport, btnDelete } = createListActionButtons(script.id, isActivelyRunning);
+      const btnToggle = createListActionButton(
+        isActivelyRunning ? svg_paths.pauseIconPaths : svg_paths.startIconPaths,
+        `btnToggle btn ${isActivelyRunning ? "btn-disable" : "btn-enable"}`,
+        isActivelyRunning ? i18n.t("common.disable") : i18n.t("common.enable"),
+        script.id,
+      );
+      actions.appendChild(btnToggle);
 
-      const btnEdit = document.createElement("button");
-      btnEdit.className = "btnEdit";
-      btnEdit.title = i18n.t("common.edit");
-      btnEdit.setAttribute("data-id", script.id);
-      btnEdit.appendChild(createSVG(svg_paths.penIconPaths));
+      const btnMore = document.createElement("button");
+      btnMore.type = "button";
+      btnMore.className = "btnMore btn";
+      btnMore.title = i18n.t("userscript.listControls.moreActions");
+      btnMore.appendChild(createSVG(svg_paths.moreIconPaths));
+      actions.appendChild(btnMore);
 
-      const btnContribute = document.createElement("button");
-      btnContribute.className = "btnContribute";
-      btnContribute.title = i18n.t("userscript.contribute.button");
-      btnContribute.setAttribute("data-id", script.id);
-      btnContribute.appendChild(createSVG(svg_paths.githubIconPaths));
+      const menu = document.createElement("div");
+      menu.className = "usm-overflow-menu";
+      menu.hidden = true;
+      const btnExport = createListActionButton(svg_paths.exportIconPaths, "btnExport", i18n.t("userscript.listControls.export"), script.id, { strokeWidth: 1.5 });
+      const btnContribute = createListActionButton(svg_paths.githubIconPaths, "btnContribute", i18n.t("userscript.contribute.button"), script.id);
+      const btnDelete = createListActionButton(svg_paths.trashIconPaths, "btnDelete", i18n.t("common.delete"), script.id);
+      menu.append(btnExport, btnContribute, btnDelete);
 
-      const btnRegister = document.createElement("button");
-      btnRegister.className = "btnRegister";
-      btnRegister.title = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
-      btnRegister.textContent = script.registered ? i18n.t("userscript.unregister") : i18n.t("userscript.register");
+      actions.appendChild(menu);
 
-      actions.append(btnToggle, btnEdit, btnExport, btnContribute, btnDelete);
-
-      li.append(info, actions);
-      ul.appendChild(li);
+      li.appendChild(info);
+      li.appendChild(actions);
+      host.appendChild(li);
     });
     // Favicon lazy load
-    const allFavIcons = document.querySelectorAll(".parser-icon");
+    const allFavIcons = document.querySelectorAll(".script-favicon");
     loadFavIcons(allFavIcons);
+    this.refreshListScroll();
+  }
+
+  refreshListScroll() {
+    const ul = document.getElementById("scriptList");
+    if (!ul) return;
+    Promise.resolve()
+      .then(() => activateSimpleBar("scriptList"))
+      .catch(() => {})
+      .then(() =>
+        requestAnimationFrame(() => {
+          try {
+            window.SimpleBar?.instances?.get(ul)?.recalculate();
+          } catch (_) {}
+        }),
+      );
   }
 
   formatPatterns(patterns) {
@@ -1026,30 +1086,56 @@ class UserScriptUI {
     });
   }
 
-  handleListClick(e) {
+  async handleListClick(e) {
     const button = e.target.closest("button");
-    if (!button) return;
+    if (button) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    e.preventDefault();
-    e.stopPropagation();
+      const li = button.closest("li");
+      if (!li) return;
+      const { id, title } = li.dataset;
 
-    const li = button.closest("li");
+      if (button.classList.contains("btnToggle")) return this.onToggle(id);
+      if (button.classList.contains("btnMore")) {
+        const menu = li.querySelector(".usm-overflow-menu");
+        if (menu && !menu.hidden) {
+          menu.hidden = true;
+          return;
+        }
+        this.closeOverflowMenus();
+        if (menu) menu.hidden = false;
+        return;
+      }
+      if (button.classList.contains("btnEdit")) return this.onEdit(id);
+      if (button.classList.contains("btnRegister")) return this.onRegisterToggle(id);
+      if (button.classList.contains("btnExport")) return this.exportMenuClick(e);
+      if (button.classList.contains("btnDelete")) return this.onDelete(id, title);
+      if (button.classList.contains("btnContribute")) return this.onContribute(id);
+      return;
+    }
+
+    this.closeOverflowMenus();
+    const li = e.target.closest("li.script-item");
     if (!li) return;
+    const id = li.dataset.id;
+    if (!id) return;
+    e.preventDefault();
 
-    const { id, title } = li.dataset;
-
-    if (button.classList.contains("btnEdit")) return this.onEdit(id);
-    if (button.classList.contains("btnRegister")) return this.onRegisterToggle(id);
-    if (button.classList.contains("btnExport")) return this.exportMenuClick(e);
-    if (button.classList.contains("btnDelete")) return this.onDelete(id, title);
-    if (button.classList.contains("btnToggle")) return this.onToggle(id);
-    if (button.classList.contains("btnContribute")) return this.onContribute(id);
+    const script = await this.fetchScriptById(id);
+    if (script) this.showEditor(script);
   }
 
-  async showEditor(script = null, insertAfterEl = null) {
+  closeOverflowMenus() {
+    document.querySelectorAll(".usm-overflow-menu").forEach((menu) => {
+      menu.hidden = true;
+    });
+  }
+
+  async showEditor(script = null) {
     const editor = document.getElementById("editor");
-    const listContainer = document.getElementById("scriptList");
-    if (!editor || !listContainer) return;
+    const editorEmpty = document.getElementById("editorEmpty");
+    if (!editor || !editorEmpty) return;
 
     // Data-loss guard: the editor is about to be closed (same-script toggle)
     // or refilled with another script; protect unsaved changes either way.
@@ -1065,13 +1151,6 @@ class UserScriptUI {
       return;
     } else {
       editor.setAttribute("current", currentSection);
-    }
-
-    // If insertAfterEl exists -> place it below it
-    if (insertAfterEl) {
-      insertAfterEl.insertAdjacentElement("afterend", editor);
-    } else {
-      listContainer.prepend(editor);
     }
 
     const authorsInput = document.getElementById("inAuthors");
@@ -1101,6 +1180,26 @@ class UserScriptUI {
     }
 
     document.getElementById("editorTitle").textContent = script ? `${i18n.t("userscript.editor.editScript")} [${script.title}]` : i18n.t("userscript.editor.newScript");
+
+    const isActivelyRunning = !!(script?.enabled && script?.registered);
+    const statusEl = document.getElementById("editorStatus");
+    const favEl = document.querySelector(".usm-editor-favicon");
+    if (statusEl) {
+      statusEl.textContent = isActivelyRunning ? i18n.t("userscript.status.active") : i18n.t("userscript.status.inactive");
+      statusEl.className = `usm-editor-status${isActivelyRunning ? " status-active" : " status-inactive"}`;
+    }
+    if (favEl && script) {
+      const rawDomain = Array.isArray(script.domain) ? script.domain[0] : script.domain;
+      const primaryDomain = (rawDomain || "").replace(/^\*\./, "");
+      favEl.dataset.src = primaryDomain;
+      favEl.classList.add("hidden-visibility");
+      favEl.src = "";
+    } else if (favEl) {
+      favEl.dataset.src = "";
+      favEl.src = "";
+    }
+    loadFavIcons([favEl]);
+
     document.getElementById("inTitle").value = script?.title || "";
 
     const [vMaj, vMin, vPat] = (script?.version || "1.0.0").split(".").map((n) => parseInt(n, 10) || 0);
@@ -1160,21 +1259,16 @@ class UserScriptUI {
          `,
     );
 
-    this.checkSettings(this.codeEditor);
     if (!script?.code) document.getElementById("btnFormat").click();
 
     document.getElementById("editorMsg").textContent = "";
     document.getElementById("editorMsg").classList = "";
-    document.getElementById("editor").hidden = false;
+    editor.hidden = false;
+    editorEmpty.hidden = true;
+    this.syncSelectedItem();
     this.codeEditor.refresh();
 
-    // Reset useSettings Container
-    const container = document.getElementById("useSettingsContainer");
-    container.removeAttribute("activeMode");
-    clearChildren(container);
-
-    const activeContainer = document.querySelector("div.code-notes.useSettings .active");
-    if (activeContainer) activeContainer.className = "";
+    this.useSettingEditor.loadFromCode();
 
     // Capture the clean-state baseline slightly AFTER the delayed
     // iframeSelectorsEditor fill above (10 ms timer) and the auto-format gap.
@@ -1256,11 +1350,14 @@ class UserScriptUI {
   /** Raw close without confirmation - only for callers that already confirmed. */
   hideEditorCore(btn) {
     const editor = document.getElementById("editor");
+    const editorEmpty = document.getElementById("editorEmpty");
     editor.hidden = true;
     editor.setAttribute("current", "0");
+    if (editorEmpty) editorEmpty.hidden = false;
     document.getElementById("editorMsg").classList = "";
     this.editingId = null;
     this.editingScript = null;
+    this.syncSelectedItem();
     this.syncSearchAvailability();
     const params = new URLSearchParams(window.location.search);
     const target = params.get("target");
@@ -1271,21 +1368,27 @@ class UserScriptUI {
     }
   }
 
+  syncSelectedItem() {
+    const editor = document.getElementById("editor");
+    const openId = editor && !editor.hidden ? this.editingId : null;
+    document.querySelectorAll("#scriptList .script-item").forEach((li) => {
+      li.classList.toggle("selected", !!openId && li.dataset.id === String(openId));
+    });
+  }
+
   /**
    * Keeps the client-side list search (input + reset button) unavailable while
    * the editor is open. Refreshing the list re-renders it and would close the
    * editor, so blocking the trigger while editing is the simplest safe rule.
    */
   syncSearchAvailability() {
-    const editor = document.getElementById("editor");
-    const disabled = !!editor && !editor.hidden;
     const searchInput = document.getElementById("scriptSearch");
     const searchResetBtn = document.getElementById("scriptSearchResetBtn");
     if (searchInput) {
-      searchInput.disabled = disabled;
-      searchInput.title = disabled ? i18n.t("userscript.editor.unsavedChanges.searchDisabled") : "";
+      searchInput.disabled = false;
+      searchInput.title = "";
     }
-    if (searchResetBtn) searchResetBtn.disabled = disabled;
+    if (searchResetBtn) searchResetBtn.disabled = false;
   }
 
   /**
@@ -1545,18 +1648,7 @@ class UserScriptUI {
   async onEdit(id) {
     const script = await this.fetchScriptById(id);
     if (!script) return;
-
-    const li = document.querySelector(`li[data-id="${id}"]`);
-    if (li) {
-      this.showEditor(script, li);
-      const offset = 10;
-      const rect = li.getBoundingClientRect();
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      window.scrollTo({
-        top: rect.top + scrollTop - offset,
-        behavior: "smooth",
-      });
-    }
+    this.showEditor(script);
   }
 
   async onRegisterToggle(id) {
@@ -2266,9 +2358,7 @@ ${codeIndented}
     editBtn.addEventListener("click", () => {
       modal.remove();
       // Open editor for this script
-      const li = document.querySelector(`li[data-id="${script.id}"]`);
-      const btnEdit = li?.querySelector(".btnEdit");
-      btnEdit?.click();
+      this.onEdit(script.id);
     });
 
     closeBtn.addEventListener("click", () => modal.remove());

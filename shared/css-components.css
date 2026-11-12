@@ -136,6 +136,7 @@
 }
 
 /* Input - shared text input styles */
+textarea,
 .ts-control,
 input[type="text"]:not(.ts-control),
 .input:not(.ts-control) {
@@ -153,6 +154,7 @@ input[type="text"]:not(.ts-control),
     border-color var(--transition-normal) ease,
     background var(--transition-normal) ease;
 }
+#editor textarea,
 #editor .ts-control,
 #editor .input:not(.ts-control),
 #editor input[type="text"]:not(.ts-control) {

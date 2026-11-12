@@ -22,134 +22,175 @@
       </div>
     </div>
 
-    <ul id="parserList"></ul>
-
-    <input type="file" id="fileInput" accept=".json, .js" />
-
-    <div id="editor" hidden>
-      <div id="editor-container">
-        <div id="editor-left">
-          <div class="container">
-            <p data-i18n="userscript.editor.scriptName.label">Title (Name):</p>
-            <input type="text" id="inTitle" data-i18n="userscript.editor.scriptName.placeholder" placeholder="Website" />
+    <div class="usm-main">
+      <div class="usm-split">
+        <aside class="usm-sidebar">
+          <div class="usm-sidebar-search-wrapper">
+            <button
+              id="usmBtnListToggle"
+              class="btn usm-btn-list-toggle"
+              type="button"
+              title="Show parser list"
+              aria-label="Show parser list"
+              data-i18n="userparser.listControls.showList"
+              data-i18n-attr="title"
+            >
+              <span id="usmListBtn" class="usm-list-icon"></span>
+            </button>
+            <div id="searchControls" class="usm-sidebar-search">
+              <input type="text" id="scriptSearch" placeholder="Search parsers..." data-i18n="userparser.search.placeholder" />
+              <span id="scriptSearchResetBtn" data-i18n="common.reset" data-i18n-attr="title" title="Clear Search"></span>
+            </div>
           </div>
-
-          <div class="container">
-            <p data-i18n="userscript.editor.domains.label">Domain(s) (comma separated):</p>
-            <input type="text" id="inDomain" placeholder="example.com, music.example.com" />
-            <small data-i18n="userscript.editor.domains.help">Enter the domains where this script should run.</small>
-          </div>
-
-          <div class="container">
-            <p data-i18n="userscript.editor.urlPatterns.label">URL Pattern(s) (comma separated):</p>
-            <input type="text" id="inUrlPatterns" placeholder=".*" />
-            <small data-i18n="userscript.editor.urlPatterns.help">Regex patterns to match specific URLs. (Optional)</small>
-            <br />
-            <small>
-              <span data-i18n="userscript.editor.urlPatterns.exampleLabel">Example:</span>
-              <code>home.*</code>
-              <span data-i18n="userscript.editor.urlPatterns.exampleDesc">will match URLs that start with "home"</span>
-            </small>
-          </div>
-
-          <div class="container mode">
-            <p data-i18n="userscript.editor.activityMode.label">Activity Mode</p>
-            <select id="inMode">
-              <option value="listen" data-i18n="userscript.editor.activityMode.listen">Listening</option>
-              <option value="watch" data-i18n="userscript.editor.activityMode.watch">Watching</option>
-              <option value="play" data-i18n="userscript.editor.activityMode.play">Playing</option>
-            </select>
-            <small data-i18n="userscript.editor.activityMode.help">Choose how the activity is displayed on Discord.</small>
-            <br />
-            <small data-i18n="userscript.editor.activityMode.note">
-              Note: If you are using
-              <code>Watching</code>
-              mode, the source section will only appear when hovering over the activity cover. This is an RPC limitation.
-            </small>
-          </div>
-
-          <div class="container watchAutoDetect">
-            <p data-i18n="selector.editor.activityMode.watch.autoDetect">Auto Detect Video Status</p>
-            <select id="inWatchAutoDetect">
-              <option value="enable" data-i18n="common.enable" selected>Enable</option>
-              <option value="disable" data-i18n="common.disable">Disable</option>
-            </select>
-            <small data-i18n="selector.editor.activityMode.watch.autoDetect.desc"></small>
-          </div>
-
-          <div class="container">
-            <button id="btnSave" class="btn-primary" data-i18n="common.save">Save Parser</button>
-            <button id="btnCancel" data-i18n="common.cancel">Cancel</button>
-          </div>
-        </div>
-
-        <div class="editor-right">
-          <div class="container code-notes useSettings">
-            <div class="selector-grid">
-              <div class="form-group">
-                <label data-i18n="selector.editor.title.label">Title</label>
-                <input type="text" id="selTitle" data-i18n="selector.editor.type.selectorText" />
+          <ul id="parserList"></ul>
+        </aside>
+        <div class="usm-resizer"></div>
+        <section class="usm-workspace">
+          <div id="editor" class="usm-editor" current="0" hidden>
+            <div class="usm-editor-header">
+              <div class="usm-editor-lead">
+                <img class="usm-editor-favicon" src="" alt="" />
+                <div class="usm-editor-title-wrap">
+                  <div class="usm-editor-title" id="editorTitle">New Parser</div>
+                  <span class="usm-editor-status" id="editorStatus"></span>
+                </div>
               </div>
-
-              <div class="form-group">
-                <label data-i18n="selector.editor.artist.label">Artist</label>
-                <input type="text" id="selArtist" data-i18n="selector.editor.type.selectorText" />
+              <div class="usm-editor-actions">
+                <button class="btn btn-primary" id="btnSave" data-i18n="common.save">Save Parser</button>
+                <button class="btn btn-secondary" id="btnCancel" data-i18n="common.cancel">Cancel</button>
               </div>
+            </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.source.label">Source</label>
-                <input type="text" id="selSource" data-i18n="selector.editor.type.selectorText" />
-              </div>
+            <div class="usm-editor-panels">
+              <div class="usm-panel active">
+                <div id="editor-container">
+                  <div id="editor-left">
+                    <div class="container">
+                      <p data-i18n="userparser.editor.parserName.label">Parser Name:</p>
+                      <input type="text" id="inTitle" data-i18n="userscript.editor.scriptName.placeholder" placeholder="Website" />
+                    </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.image.label">Image</label>
-                <input type="text" id="selImage" data-i18n="selector.editor.type.selectorUrl" />
-              </div>
+                    <div class="container">
+                      <p data-i18n="userscript.editor.domains.label">Domain(s) (comma separated):</p>
+                      <input type="text" id="inDomain" placeholder="example.com, music.example.com" />
+                      <small data-i18n="userparser.editor.domains.help">Enter the domains where this parser should run.</small>
+                    </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.isPlaying.label">Play Status</label>
-                <input type="text" id="selIsPlaying" data-i18n="selector.editor.type.selector" />
-              </div>
+                    <div class="container">
+                      <p data-i18n="userscript.editor.urlPatterns.label">URL Pattern(s) (comma separated):</p>
+                      <input type="text" id="inUrlPatterns" placeholder=".*" />
+                      <small data-i18n="userscript.editor.urlPatterns.help">Regex patterns to match specific URLs. (Optional)</small>
+                      <br />
+                      <small>
+                        <span data-i18n="userscript.editor.urlPatterns.exampleLabel">Example:</span>
+                        <code>home.*</code>
+                        <span data-i18n="userscript.editor.urlPatterns.exampleDesc">will match URLs that start with "home"</span>
+                      </small>
+                    </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.timePassed.label">Time Passed</label>
-                <input type="text" id="selTimePassed" data-i18n="selector.editor.type.selector" />
-              </div>
+                    <div class="container mode">
+                      <p data-i18n="userscript.editor.activityMode.label">Activity Mode</p>
+                      <select id="inMode">
+                        <option value="listen" data-i18n="userscript.editor.activityMode.listen">Listening</option>
+                        <option value="watch" data-i18n="userscript.editor.activityMode.watch">Watching</option>
+                        <option value="play" data-i18n="userscript.editor.activityMode.play">Playing</option>
+                      </select>
+                      <small data-i18n="userscript.editor.activityMode.help">Choose how the activity is displayed on Discord.</small>
+                      <br />
+                      <small data-i18n="userscript.editor.activityMode.note">
+                        Note: If you are using
+                        <code>Watching</code>
+                        mode, the source section will only appear when hovering over the activity cover. This is an RPC limitation.
+                      </small>
+                    </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.duration.label">Duration</label>
-                <input type="text" id="selDuration" data-i18n="selector.editor.type.selector" />
-              </div>
+                    <div class="container watchAutoDetect">
+                      <p data-i18n="selector.editor.activityMode.watch.autoDetect">Auto Detect Video Status</p>
+                      <select id="inWatchAutoDetect">
+                        <option value="enable" data-i18n="common.enable" selected>Enable</option>
+                        <option value="disable" data-i18n="common.disable">Disable</option>
+                      </select>
+                      <small data-i18n="selector.editor.activityMode.watch.autoDetect.desc"></small>
+                    </div>
+                  </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.link.label">Link</label>
-                <input type="text" id="selLink" data-i18n="selector.editor.type.selectorUrl" />
-              </div>
+                  <div class="editor-right">
+                    <div class="container code-notes useSettings">
+                      <div class="selector-grid">
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.title.label">Title</label>
+                          <input type="text" id="selTitle" data-i18n="selector.editor.type.selectorText" />
+                        </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.buttonText.label">Button 1 Text</label>
-                <input type="text" id="selButtonText" data-i18n="selector.editor.type.selectorText" />
-              </div>
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.artist.label">Artist</label>
+                          <input type="text" id="selArtist" data-i18n="selector.editor.type.selectorText" />
+                        </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.buttonLink.label">Button 1 URL</label>
-                <input type="text" id="selButtonLink" data-i18n="selector.editor.type.selectorUrl" />
-              </div>
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.source.label">Source</label>
+                          <input type="text" id="selSource" data-i18n="selector.editor.type.selectorText" />
+                        </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.buttonText2.label">Button 2 Text</label>
-                <input type="text" id="selButtonText2" data-i18n="selector.editor.type.selectorText" />
-              </div>
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.image.label">Image</label>
+                          <input type="text" id="selImage" data-i18n="selector.editor.type.selectorUrl" />
+                        </div>
 
-              <div class="form-group">
-                <label data-i18n="selector.editor.buttonLink2.label">Button 2 URL</label>
-                <input type="text" id="selButtonLink2" data-i18n="selector.editor.type.selectorUrl" />
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.isPlaying.label">Play Status</label>
+                          <input type="text" id="selIsPlaying" data-i18n="selector.editor.type.selector" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.timePassed.label">Time Passed</label>
+                          <input type="text" id="selTimePassed" data-i18n="selector.editor.type.selector" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.duration.label">Duration</label>
+                          <input type="text" id="selDuration" data-i18n="selector.editor.type.selector" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.link.label">Link</label>
+                          <input type="text" id="selLink" data-i18n="selector.editor.type.selectorUrl" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.buttonText.label">Button 1 Text</label>
+                          <input type="text" id="selButtonText" data-i18n="selector.editor.type.selectorText" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.buttonLink.label">Button 1 URL</label>
+                          <input type="text" id="selButtonLink" data-i18n="selector.editor.type.selectorUrl" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.buttonText2.label">Button 2 Text</label>
+                          <input type="text" id="selButtonText2" data-i18n="selector.editor.type.selectorText" />
+                        </div>
+
+                        <div class="form-group">
+                          <label data-i18n="selector.editor.buttonLink2.label">Button 2 URL</label>
+                          <input type="text" id="selButtonLink2" data-i18n="selector.editor.type.selectorUrl" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+          <div id="editorEmpty" class="usm-editor-empty">
+            <p data-i18n="userparser.editor.emptyState">Select a parser to start editing.</p>
+          </div>
+        </section>
       </div>
     </div>
+
+    <input type="file" id="fileInput" accept=".js" />
 
     <script src="../libs/browser-polyfill.js"></script>
     <script src="../libs/simplebar.js"></script>
