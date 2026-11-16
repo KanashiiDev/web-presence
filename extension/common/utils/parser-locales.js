@@ -384,42 +384,121 @@ function stripJsComments(text) {
   return out;
 }
 
-// Returns the index of the "}" matching the "{" at openIdx, quote- and
-// comment-aware, or -1 when unbalanced.
+// Is the "/" at idx the start of a regex literal (vs. a division operator)?
+function slashStartsRegex(text, idx) {
+  let j = idx - 1;
+  while (j >= 0 && /\s/.test(text[j])) j--;
+  if (j < 0) return true;
+  const p = text[j];
+  if (/[A-Za-z0-9_$]/.test(p)) {
+    let k = j;
+    while (k >= 0 && /[A-Za-z0-9_$]/.test(text[k])) k--;
+    return REGEX_PRECEDING_KEYWORDS.has(text.slice(k + 1, j + 1));
+  }
+  if (p === ")" || p === "]") return false; // a / b, (a + b) / 2, arr[0] / 2
+  return true; // operators, "(", ",", "=", ":", "{", "}", ";" ...
+}
+
+// Returns the index just past a regex literal starting at idx, or -1 if it isn't one.
+function skipRegexLiteral(text, idx) {
+  let inClass = false;
+  for (let i = idx + 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\n" || c === "\r") return -1;
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (c === "]") inClass = false;
+      continue;
+    }
+    if (c === "[") {
+      inClass = true;
+      continue;
+    }
+    if (c === "/") {
+      let k = i + 1;
+      while (k < text.length && /[a-z]/i.test(text[k])) k++; // flags
+      return k;
+    }
+  }
+  return -1;
+}
+
+// Returns the index of the closing quote of a "..." or '...' string starting at idx, or -1.
+function skipQuotedString(text, idx) {
+  const q = text[idx];
+  for (let i = idx + 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (c === q) return i;
+    if (c === "\n") return -1;
+  }
+  return -1;
+}
+
+// Returns the index of the closing backtick of a template literal starting at idx, or -1.
+// Handles nested ${ ... } expressions (which may contain strings, regexes, templates, braces).
+function skipTemplateLiteral(text, idx) {
+  for (let i = idx + 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (c === "`") return i;
+    if (c === "$" && text[i + 1] === "{") {
+      const e = matchBalancedBrace(text, i + 1);
+      if (e === -1) return -1;
+      i = e;
+    }
+  }
+  return -1;
+}
+
+// Returns the index of the "}" matching the "{" at openIdx, or -1 when unbalanced.
+// Aware of comments, "/'-strings, template literals (incl. nested ${}) and regex literals,
+// so braces/quotes inside them are not counted.
 function matchBalancedBrace(text, openIdx) {
   let depth = 0;
-  let inString = false;
-  let quote = null;
-  let escape = false;
   for (let i = openIdx; i < text.length; i++) {
     const c = text[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (c === "\\") {
-      escape = true;
-      continue;
-    }
-    if (inString) {
-      if (c === quote) inString = false;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "/") {
+    const n = text[i + 1];
+
+    if (c === "/" && n === "/") {
       const e = text.indexOf("\n", i);
       if (e === -1) return -1;
       i = e;
       continue;
     }
-    if (c === "/" && text[i + 1] === "*") {
+    if (c === "/" && n === "*") {
       const e = text.indexOf("*/", i + 2);
       if (e === -1) return -1;
       i = e + 1;
       continue;
     }
-    if (c === '"' || c === "'" || c === "`") {
-      inString = true;
-      quote = c;
+    if (c === "/" && slashStartsRegex(text, i)) {
+      const e = skipRegexLiteral(text, i);
+      if (e !== -1) {
+        i = e - 1;
+        continue;
+      }
+      continue; // not a valid regex after all: treat as a plain character
+    }
+    if (c === '"' || c === "'") {
+      const e = skipQuotedString(text, i);
+      if (e === -1) return -1;
+      i = e;
+      continue;
+    }
+    if (c === "`") {
+      const e = skipTemplateLiteral(text, i);
+      if (e === -1) return -1;
+      i = e;
       continue;
     }
     if (c === "{") depth++;
