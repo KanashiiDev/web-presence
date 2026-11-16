@@ -507,6 +507,7 @@ const CustomStatusPreview = {
       buttonEl.textContent = truncate(String(button.text).trim(), 32);
       elements.buttonsRow.appendChild(buttonEl);
     }
+    activateSimpleBar("csLayout");
   },
 };
 

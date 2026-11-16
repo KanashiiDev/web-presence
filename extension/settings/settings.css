@@ -4,6 +4,7 @@
   padding: 0;
 }
 
+#csLayout,
 #lfSourceList,
 #lfAllowList,
 #prioritySourceList,
@@ -16,6 +17,7 @@
   -ms-overflow-style: none;
 }
 
+#csLayout::-webkit-scrollbar,
 #lfSourceList::-webkit-scrollbar,
 #lfAllowList::-webkit-scrollbar,
 #prioritySourceList::-webkit-scrollbar,
@@ -55,6 +57,7 @@ body > .container {
 }
 
 .container > .content.card {
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -1431,10 +1434,16 @@ button.history-modal-close {
 }
 
 .cs-layout {
+  overflow-y: auto;
+  height: 100%;
+}
+
+.cs-layout-wrapper {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) 280px;
   gap: 24px;
   align-items: start;
+  padding: 4px;
 }
 
 .cs-form-column {
