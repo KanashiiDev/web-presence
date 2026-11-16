@@ -701,32 +701,7 @@ class GitHubStoreService {
   }
 
   _normalizeRegisterParser(jsText) {
-    try {
-      // 1. JSON check
-      const parsedJson = JSON.parse(jsText);
-      const scriptData = Array.isArray(parsedJson) ? parsedJson[0] : parsedJson;
-
-      if (scriptData && typeof scriptData.code === "string") {
-        return {
-          isParser: false,
-          code: scriptData.code,
-          title: scriptData.title,
-          description: scriptData.description,
-          domain: scriptData.domain,
-          homepage: scriptData.homepage,
-          authors: scriptData.authors,
-          authorsLinks: scriptData.authorsLinks,
-          mode: scriptData.mode,
-          urlPatterns: scriptData.urlPatterns,
-          category: scriptData.category ?? [],
-          tags: scriptData.tags ?? [],
-          locales: scriptData.locales ?? null,
-          iframeSelectors: scriptData.iframeSelectors ?? null,
-        };
-      }
-    } catch (_) {}
-
-    // 2. JS extraction
+    // 1. JS extraction
     const objText = extractRegisterParserObject(jsText);
     if (!objText) return { code: jsText };
 
@@ -830,44 +805,10 @@ class GitHubStoreService {
       const open = text.indexOf("{", start);
       if (open === -1) return null;
 
-      let depth = 1,
-        i = open + 1,
-        inString = false,
-        stringChar = null,
-        escape = false;
+      const end = matchBalancedBrace(text, open);
+      if (end === -1) return null;
 
-      while (i < text.length) {
-        const c = text[i];
-        if (escape) {
-          escape = false;
-          i++;
-          continue;
-        }
-        if (c === "\\") {
-          escape = true;
-          i++;
-          continue;
-        }
-        if (inString) {
-          if (c === stringChar) {
-            inString = false;
-            stringChar = null;
-          }
-          i++;
-          continue;
-        }
-        if (c === '"' || c === "'" || c === "`") {
-          inString = true;
-          stringChar = c;
-          i++;
-          continue;
-        }
-        if (c === "{") depth++;
-        if (c === "}") depth--;
-        if (depth === 0) return text.slice(open, i + 1);
-        i++;
-      }
-      return null;
+      return text.slice(open, end + 1);
     }
 
     function extractFnBody(objText) {
@@ -877,51 +818,15 @@ class GitHubStoreService {
       const start = objText.indexOf("{", fnMatch.index);
       if (start === -1) return null;
 
-      let depth = 1,
-        i = start + 1,
-        inString = false,
-        quote = null,
-        escape = false;
+      const end = matchBalancedBrace(objText, start);
+      if (end === -1) return null;
 
-      while (i < objText.length) {
-        const c = objText[i];
-        if (escape) {
-          escape = false;
-          i++;
-          continue;
-        }
-        if (c === "\\") {
-          escape = true;
-          i++;
-          continue;
-        }
-        if (inString) {
-          if (c === quote) {
-            inString = false;
-            quote = null;
-          }
-          i++;
-          continue;
-        }
-        if (c === "'" || c === '"' || c === "`") {
-          inString = true;
-          quote = c;
-          i++;
-          continue;
-        }
-        if (c === "{") depth++;
-        if (c === "}") depth--;
-        if (depth === 0) {
-          return objText
-            .slice(start + 1, i)
-            .split("\n")
-            .map((line) => (line.startsWith("  ") ? line.slice(2) : line))
-            .join("\n")
-            .trim();
-        }
-        i++;
-      }
-      return null;
+      return objText
+        .slice(start + 1, end)
+        .split("\n")
+        .map((line) => (line.startsWith("    ") ? line.slice(4) : line))
+        .join("\n")
+        .trim();
     }
 
     const obj = extractRegisterParserObject(jsText);

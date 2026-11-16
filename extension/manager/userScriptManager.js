@@ -2905,7 +2905,7 @@ ${codeIndented}
 
     try {
       const text = await file.text();
-      const scripts = file.name.endsWith(".js") ? this.importFromRegisterParser(text) : JSON.parse(text);
+      const scripts = this.importFromRegisterParser(text);
 
       if (!Array.isArray(scripts)) throw new Error("Invalid format: expected array");
       if (scripts.length === 0) {
