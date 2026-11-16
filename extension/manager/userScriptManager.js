@@ -689,6 +689,7 @@ class UserScriptUI {
 
     // Iframe Selector Default Value
     this.iframeSelectorsEditor.setValue(JSON.stringify({ fields: { $video: { type: "video" } } }, null, 2));
+    this.iframeSelectorsEditor.clearHistory();
 
     // Ctrl/Cmd+Click adds additional cursors (core CodeMirror.addSelection API).
     for (const editor of [this.codeEditor, this.iframeSelectorsEditor]) {
@@ -1449,6 +1450,7 @@ class UserScriptUI {
       iframeSelectorsBtn.textContent = i18n.t("common.close");
       setTimeout(() => {
         this.iframeSelectorsEditor.setValue(JSON.stringify(script.iframeSelectors, null, 2));
+        this.iframeSelectorsEditor.clearHistory();
         this.iframeSelectorsEditor.refresh();
       }, 10);
     } else {
@@ -1457,6 +1459,7 @@ class UserScriptUI {
       iframeSelectorsBtn.classList.remove("active");
       iframeSelectorsBtn.textContent = i18n.t("userscript.iframeSelectors.configure");
       this.iframeSelectorsEditor.setValue(JSON.stringify({ fields: { $video: { type: "video" } } }, null, 2));
+      this.iframeSelectorsEditor.clearHistory();
     }
 
     document.getElementById("inUrlPatterns").value = this.formatPatterns(script?.urlPatterns) || ".*";
@@ -1474,6 +1477,9 @@ class UserScriptUI {
          let isPlaying = false;
          `,
     );
+    // The initial fill is the undo baseline, not an edit.
+    // Otherwise, the last Ctrl+Z would undo setValue entirely.
+    this.codeEditor.clearHistory();
 
     if (!script?.code) document.getElementById("btnFormat").click();
 
