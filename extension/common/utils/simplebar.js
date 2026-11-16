@@ -61,6 +61,7 @@ async function activateSimpleBar(targets, timeout = 500, interval = 30) {
         allPanels.add(panel);
         panel.dataset.sbInit = "1";
         results.push({ id, success: true, action: "initialized" });
+        startZoomWatcher();
       }
 
       // Update the padding
@@ -213,6 +214,27 @@ async function updatePanelPadding(panel, timeout = 1000) {
 
   panelPromises.set(panel, promise);
   return promise;
+}
+
+// Auto-update active panel padding when the page zoom level changes
+let zoomWatcherStarted = false;
+const runZoomPaddingUpdate = debounce(() => {
+  allPanels.forEach((panel) => updatePanelPadding(panel));
+}, 200);
+
+function startZoomWatcher() {
+  if (zoomWatcherStarted) return;
+  zoomWatcherStarted = true;
+
+  const watch = () => {
+    // Re-register on every devicePixelRatio change so the watcher keeps firing on further zoom steps
+    const mql = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    mql.addEventListener("change", () => {
+      runZoomPaddingUpdate();
+      watch();
+    });
+  };
+  watch();
 }
 
 // Wait for scrollbar to appear
