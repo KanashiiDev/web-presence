@@ -1129,7 +1129,8 @@ const applyFiltersInPlace = (block, resetPage = false) => {
     let matchSearch = true;
     if (search) {
       const domain = Array.isArray(meta.domain) ? meta.domain.join(" ") : (meta.domain ?? "");
-      const haystack = [meta.title ?? "", domain, meta.description ?? "", (meta.tags ?? []).join(" ")].map((s) => s.toLowerCase());
+      const asText = (v) => (typeof v === "string" ? v : "");
+      const haystack = [asText(meta.title), domain, asText(meta.description), (meta.tags ?? []).join(" ")].map((s) => s.toLowerCase());
       matchSearch = haystack.some((s) => s.includes(search));
     }
 
@@ -1852,22 +1853,29 @@ const renderScriptRow = (meta, repoId, installedMap) => {
 
   // Description
   if (meta.description) {
-    const descEl = document.createElement("div");
-    descEl.className = "script-description";
-    descEl.textContent = meta.description;
+    let descText = null;
+    if (typeof meta.description === "string") descText = meta.description;
+    else if (isTranslationDescriptor(meta.description)) {
+      descText = resolveTranslationDescriptor(meta.description, meta?.locales, selectLocaleLang(meta.locales, i18n.lang)) || meta.description.key;
+    }
+    if (descText) {
+      const descEl = document.createElement("div");
+      descEl.className = "script-description";
+      descEl.textContent = descText;
 
-    info.appendChild(descEl);
+      info.appendChild(descEl);
 
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "script-description-toggle";
-    toggleBtn.appendChild(iconSVG("chevronRightIconPaths"));
-    toggleBtn.hidden = true;
-    info.appendChild(toggleBtn);
+      const toggleBtn = document.createElement("button");
+      toggleBtn.className = "script-description-toggle";
+      toggleBtn.appendChild(iconSVG("chevronRightIconPaths"));
+      toggleBtn.hidden = true;
+      info.appendChild(toggleBtn);
 
-    toggleBtn.addEventListener("click", () => {
-      const expanded = descEl.classList.toggle("script-description--expanded");
-      toggleBtn.classList.toggle("script-description-toggle--expanded", expanded);
-    });
+      toggleBtn.addEventListener("click", () => {
+        const expanded = descEl.classList.toggle("script-description--expanded");
+        toggleBtn.classList.toggle("script-description-toggle--expanded", expanded);
+      });
+    }
   }
 
   row.appendChild(info);

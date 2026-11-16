@@ -8,6 +8,7 @@
  * for the standard JavaScript hint helper).
  */
 const RUNTIME_HELPERS = {
+  t: true,
   setMemo: true,
   getMemo: true,
   useSetting: true,
@@ -26,6 +27,83 @@ const RUNTIME_HELPERS = {
 const REGION_OPEN_RE = /\/\/#region\b(?!-)/;
 const REGION_OPEN_ALL_RE = /\/\/#region\b(?!-)/g;
 const REGION_CLOSE_ALL_RE = /\/\/#endregion\b/g;
+
+/**
+ * Fixed language list offered in the Translations tab; arbitrary languages
+ * cannot be added. Codes are lowercase so they match the sanitized locales
+ * data and selectLocaleLang, which compares case-insensitively. "en" is the
+ * mandatory base column and is never offered.
+ */
+const PARSER_LOCALE_LANGS = [
+  { code: "de", name: "Deutsch" },
+  { code: "es", name: "Español" },
+  { code: "fr", name: "Français" },
+  { code: "ja", name: "日本語" },
+  { code: "ko", name: "한국어" },
+  { code: "pl", name: "Polski" },
+  { code: "pt-br", name: "Português (Brasil)" },
+  { code: "ru", name: "Русский" },
+  { code: "tr", name: "Türkçe" },
+  { code: "uk", name: "Українська" },
+  { code: "vi", name: "Tiếng Việt" },
+  { code: "zh-cn", name: "简体中文" },
+  { code: "zh-tw", name: "繁體中文" },
+];
+
+/**
+ * i18n lookup with an English fallback while a locale key is still missing
+ * (i18n.t returns the key itself for unknown keys). `{0}`-style placeholders
+ * are filled in the fallback too.
+ */
+function localeText(key, fallback, args) {
+  try {
+    const result = args ? i18n.t(key, args) : i18n.t(key);
+    if (result && result !== key) return result;
+  } catch (_) {}
+  return Array.isArray(args) ? fallback.replace(/\{(\d+)\}/g, (m, i) => (i < args.length ? String(args[i]) : m)) : fallback;
+}
+
+/**
+ * Builds the Translations tree from the code. Every useSetting() whose label is
+ * t("key") becomes a node; the t("key") labels of a select's options become its
+ * children, so `myList` shows its options underneath. Keys that belong to no
+ * setting are plain nodes. Nodes follow the order of the code; keys that the
+ * code does not use come last, in table order. Only keys that exist in the
+ * table are shown ("Scan Keys from Code" adds the missing ones), and each key
+ * appears once, at its first place in the code.
+ * @returns {Array<{key: string|null, setting: {key: string, type: string}|null, children: Array<{key: string, value: string}>}>}
+ */
+function buildLocaleTree(code, tableKeys, settings) {
+  const known = new Set(tableKeys);
+  const placed = new Set();
+  const entries = [];
+
+  for (const s of settings) {
+    let labelKey = s.labelCall ? UseSettingEditor.tCallKey(s.labelCall) : null;
+    if (labelKey && (!known.has(labelKey) || placed.has(labelKey))) labelKey = null;
+    const children = [];
+    if (s.type === "select" && s.defaultOk && Array.isArray(s.defaultValue)) {
+      for (const opt of s.defaultValue) {
+        const key = opt && opt.label && opt.label.__type === "translation" ? opt.label.key : null;
+        if (!key || !known.has(key) || placed.has(key) || key === labelKey || children.some((c) => c.key === key)) continue;
+        children.push({ key, value: String(opt.value ?? "") });
+      }
+    }
+    if (!labelKey && !children.length) continue;
+    if (labelKey) placed.add(labelKey);
+    for (const c of children) placed.add(c.key);
+    entries.push({ pos: s.from, node: { key: labelKey, setting: { key: s.key, type: s.type }, children } });
+  }
+
+  for (const key of tableKeys) {
+    if (placed.has(key)) continue;
+    const first = findTranslationKeyRanges(code, key)[0];
+    entries.push({ pos: first ? first.start : Infinity, node: { key, setting: null, children: [] } });
+  }
+
+  // Array.prototype.sort is stable, so equal positions keep their table order.
+  return entries.sort((a, b) => a.pos - b.pos).map((e) => e.node);
+}
 
 const LINT_FLASH_CLASS = "cm-lint-flash";
 const LINT_FLASH_DURATION = 700;
@@ -234,6 +312,10 @@ class UserScriptUI {
   async init() {
     await i18n.load("extension");
     applyTranslations();
+
+    const perm = await checkUserScriptsPermission();
+    if (!perm) return;
+
     await this.restoreSidebarWidth();
     this.bindEvents();
     await this.refreshList();
@@ -250,7 +332,6 @@ class UserScriptUI {
       },
     });
 
-    checkUserScriptsPermission();
     initApplyAttrs();
     initStorageListener();
 
@@ -280,6 +361,7 @@ class UserScriptUI {
     // Editor Input Checks
     document.getElementById("inDomain").addEventListener("input", () => this.handlePatternStatus());
     document.getElementById("inUrlPatterns").addEventListener("input", () => this.handlePatternStatus());
+    document.getElementById("inDesc")?.addEventListener("input", () => this.syncDescToLocales());
 
     // Header Tab
     document.getElementById("tabMyScripts")?.addEventListener("click", () => this.switchTab("my"));
@@ -292,6 +374,27 @@ class UserScriptUI {
     document.querySelectorAll(".usm-tab").forEach((btn) => {
       btn.addEventListener("click", () => this.switchEditorTab(btn.dataset.tab));
     });
+
+    // Translations (locales) editor
+    document.getElementById("btnAddLocaleKey")?.addEventListener("click", () => this.addLocaleKey());
+    document.getElementById("inLocaleLang")?.addEventListener("change", () => this.handleLocaleLangChange());
+    document.getElementById("localesTableContainer")?.addEventListener("input", (e) => this.handleLocaleCellInput(e));
+    document.getElementById("localesTableContainer")?.addEventListener("click", (e) => this.handleLocaleCellClick(e));
+    document.getElementById("localesTableContainer")?.addEventListener("change", (e) => this.handleLocaleKeyChange(e));
+    document.getElementById("btnPruneLocaleKeys")?.addEventListener("click", () => this.pruneUnusedLocaleKeys());
+    const localesSearchEl = document.getElementById("localesSearch");
+    const localesSearchResetBtn = document.getElementById("localesSearchResetBtn");
+    localesSearchEl?.addEventListener("input", () => {
+      localesSearchResetBtn?.classList.toggle("filter-active", localesSearchEl.value.length > 0);
+      this.applyLocaleFilter();
+    });
+    localesSearchResetBtn?.appendChild(createSVG(svg_paths.closeIconPaths ?? svg_paths.crossIconPaths));
+    localesSearchResetBtn?.addEventListener("click", () => {
+      localesSearchEl.value = "";
+      localesSearchResetBtn?.classList.remove("filter-active");
+      this.applyLocaleFilter();
+    });
+    document.getElementById("btnShowMissingTranslations")?.addEventListener("click", () => this.toggleShowMissingTranslations());
 
     document.getElementById("usmListBtn")?.appendChild(createSVG(svg_paths.menuIconPaths));
 
@@ -435,6 +538,12 @@ class UserScriptUI {
       if (isActive && panel.dataset.tab !== "code") activateSimpleBar(panel);
     });
     if (tab === "advanced") this.useSettingEditor?.refresh();
+    if (tab === "translations") {
+      // The code may have changed since the last visit: pick up new keys and
+      // rebuild the tree from it.
+      this.syncLocaleKeysFromCode();
+      this.renderLocalesTable();
+    }
     if (tab === "code") {
       setTimeout(() => this.codeEditor.refresh(), 0);
     }
@@ -683,6 +792,8 @@ class UserScriptUI {
           cm.focus();
         }, 0);
       },
+      getLocaleData: () => this.getLocalesSaveData() || {},
+      onLocalesChange: (key, value, overwrite) => this.addLocaleTranslation(key, value, overwrite),
     });
   }
 
@@ -831,14 +942,16 @@ class UserScriptUI {
       to = base.to || cursor;
       prefix = cm.getRange(base.from, to);
     } else if (isString) {
-      from = token.start;
+      // `from`/`to` must be CodeMirror positions ({line, ch}), not bare numbers.
+      let fromCh = token.start;
       const tokenText = token.string || "";
-      if (tokenText && /^["']/.test(tokenText.charAt(0))) from += 1;
-      if (cursor.ch <= from) return null;
-      const content = cm.getRange(from, cursor);
+      if (tokenText && /^["'`]/.test(tokenText.charAt(0))) fromCh += 1;
+      if (cursor.ch <= fromCh) return null;
+      const content = cm.getRange(CodeMirror.Pos(cursor.line, fromCh), cursor);
       let start = content.length;
       while (start > 0 && /[\w$-]/.test(content.charAt(start - 1))) start--;
-      from += start;
+      fromCh += start;
+      from = CodeMirror.Pos(cursor.line, fromCh);
       prefix = content.slice(start);
       to = cursor;
     } else {
@@ -1081,8 +1194,11 @@ class UserScriptUI {
     return list.filter((script) => {
       const title = (script.title || "").toLowerCase();
       const domain = Array.isArray(script.domain) ? script.domain.join(" ") : script.domain || "";
-      const description = (script.description || "").toLowerCase();
-      return title.includes(query) || domain.toLowerCase().includes(query) || description.includes(query);
+      // t() descriptors resolve to their English value
+      let description = script.description;
+      if (isTranslationDescriptor(description)) description = resolveScriptDescription(script);
+      description = typeof description === "string" ? description : "";
+      return title.includes(query) || domain.toLowerCase().includes(query) || description.toLowerCase().includes(query);
     });
   }
 
@@ -1202,12 +1318,21 @@ class UserScriptUI {
 
     document.getElementById("inTitle").value = script?.title || "";
 
+    // If the description is stored as a translation descriptor, show the
+    // English value from locales for editing; otherwise show the raw string.
+    const descRaw = script?.description;
+    let descText = "";
+    if (descRaw && typeof descRaw === "object" && descRaw.__type === "translation" && descRaw.key) {
+      descText = script?.locales?.en?.[descRaw.key] || "";
+    } else if (typeof descRaw === "string") {
+      descText = descRaw;
+    }
+    document.getElementById("inDesc").value = descText;
+
     const [vMaj, vMin, vPat] = (script?.version || "1.0.0").split(".").map((n) => parseInt(n, 10) || 0);
     document.getElementById("inVersionMajor").value = vMaj;
     document.getElementById("inVersionMinor").value = vMin;
     document.getElementById("inVersionPatch").value = vPat;
-    document.getElementById("inDesc").value = script?.description || "";
-
     document.getElementById("inDomain").value = Array.isArray(script?.domain) ? script.domain.join(", ") : script?.domain || "";
     document.getElementById("inHomepage").value = script?.homepage || "";
     this.inModeTom.setValue(script?.mode || "listen");
@@ -1268,6 +1393,11 @@ class UserScriptUI {
     this.syncSelectedItem();
     this.codeEditor.refresh();
 
+    // Render the translations table after the code editor holds the new script's
+    // code, so "not in code" badges reflect the current script rather than the
+    // previously opened one.
+    this.loadLocalesData(script?.locales, typeof script?.description === "string" ? script.description : "");
+
     this.useSettingEditor.loadFromCode();
 
     // Capture the clean-state baseline slightly AFTER the delayed
@@ -1302,6 +1432,7 @@ class UserScriptUI {
       tags: splitAndTrim(document.getElementById("inTags").value).join(","),
       code: this.codeEditor ? this.codeEditor.getValue() : "",
       iframeSelectors: this.iframeSelectorsEditor ? this.iframeSelectorsEditor.getValue() : "",
+      locales: JSON.stringify(this.getLocalesSaveData()),
     });
   }
 
@@ -1312,6 +1443,644 @@ class UserScriptUI {
     // treat the capture window as clean instead of trust false positives.
     if (this._dirtyBaseline == null) return false;
     return this._dirtyBaseline !== this.snapshotEditorState();
+  }
+
+  // ----- Translations (parser locales) editor -----
+
+  /** Loads a script's `locales` metadata into the Translations tab. */
+  loadLocalesData(raw, descriptionValue) {
+    this.localesData = sanitizeLocales(raw) || {};
+    // The description key exists only when the script has a description. If
+    // the script still carries a raw description string, use it as the English
+    // value so it shows up in the Translations tab automatically.
+    const en = (this.localesData.en ||= {});
+    if (en.description === undefined && typeof descriptionValue === "string" && descriptionValue.trim()) {
+      en.description = descriptionValue;
+    }
+    if (!en.description || !en.description.trim()) {
+      // No usable description: drop any leftover "description" key everywhere
+      // so the card stays hidden (legacy saves can carry an empty value).
+      for (const lang of Object.keys(this.localesData)) {
+        delete this.localesData[lang].description;
+        if (!Object.keys(this.localesData[lang]).length) delete this.localesData[lang];
+      }
+    }
+    this.localeViewLang = null;
+    this._showMissingTranslations = false;
+    this.renderLocalesTable();
+  }
+
+  /** Keeps locales.en["description"] in sync with the Description field (#inDesc). */
+  syncDescToLocales() {
+    const inDesc = document.getElementById("inDesc");
+    if (!inDesc) return;
+    const locales = (this.localesData ||= {});
+    const en = (locales.en ||= {});
+    // The description translation exists only while the script has a
+    // description; clearing the field removes the key and its card.
+    if (inDesc.value.trim()) {
+      en.description = inDesc.value;
+    } else {
+      delete en.description;
+      if (!Object.keys(en).length) delete locales.en;
+    }
+    const row = document.querySelector('#localesTableContainer .usm-loc-card[data-key="description"] .usm-loc-value[data-lang="en"]');
+    if (row) {
+      row.value = inDesc.value;
+      this.autosizeLocaleInput(row);
+      this.refreshLocaleLangProgress();
+    } else {
+      // The card appeared or disappeared with the Description field.
+      this.renderLocalesTable();
+    }
+  }
+
+  /**
+   * Sanitized `locales` object for saving. Languages/keys without any non-empty
+   * value are dropped entirely so empty editors do not add metadata noise.
+   */
+  getLocalesSaveData() {
+    const raw = this.localesData || {};
+    const out = {};
+    for (const lang of Object.keys(raw)) {
+      const map = {};
+      for (const key of Object.keys(raw[lang] || {})) {
+        const value = raw[lang][key];
+        if (key && typeof value === "string" && value.trim()) map[key] = value;
+      }
+      if (Object.keys(map).length) out[lang] = map;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  /** Column order: "en" is always the first (mandatory) column. */
+  getLocaleLangs() {
+    return ["en", ...Object.keys(this.localesData || {}).filter((lang) => lang !== "en")];
+  }
+
+  /** Unique key list: union of the keys of every language. */
+  getLocaleKeys() {
+    const keys = [];
+    for (const lang of Object.keys(this.localesData || {})) {
+      for (const key of Object.keys(this.localesData[lang])) {
+        if (!keys.includes(key)) keys.push(key);
+      }
+    }
+    return keys;
+  }
+
+  renderLocalesTable() {
+    const container = document.getElementById("localesTableContainer");
+    if (!container) return;
+    clearChildren(container);
+    this.refreshLocaleLangOptions();
+
+    // The source column is the English entries, the target column is the selected language only.
+    const viewLang = this.getLocaleViewLang();
+    const langs = ["en", viewLang];
+    const keys = this.getLocaleKeys();
+
+    this.refreshLocaleLangProgress(keys, viewLang);
+
+    if (!keys.length) {
+      const empty = document.createElement("div");
+      empty.className = "usm-loc-empty";
+      empty.textContent = localeText("userscript.translations.empty", "No translation keys yet. Use “Scan Keys from Code” or “+ Key”.");
+      container.append(empty);
+      this.refreshLocaleUsage();
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "usm-loc-list";
+
+    const code = this.codeEditor?.getValue?.() ?? "";
+    const settings = typeof UseSettingParser === "function" ? new UseSettingParser().parse(code) : [];
+    const collapsed = (this._locCollapsed ||= new Set());
+
+    for (const node of buildLocaleTree(code, keys, settings)) {
+      const settingHint = node.setting ? `${node.setting.type} · ${node.setting.key}` : "";
+
+      if (!node.children.length) {
+        list.append(this.buildLocaleCard(node.key, langs, { hint: settingHint }));
+        continue;
+      }
+
+      const group = document.createElement("section");
+      group.className = "usm-loc-group";
+      group.dataset.setting = node.setting.key;
+      if (collapsed.has(node.setting.key)) group.classList.add("is-collapsed");
+
+      if (node.key) {
+        group.append(this.buildLocaleCard(node.key, langs, { hint: settingHint, toggle: true }));
+      } else {
+        // The label is plain text, only its options are translatable.
+        const head = document.createElement("header");
+        head.className = "usm-loc-group-head";
+        head.append(this.makeLocaleToggle());
+        const title = document.createElement("span");
+        title.className = "usm-loc-hint";
+        title.textContent = settingHint;
+        head.append(title);
+        group.append(head);
+      }
+
+      const children = document.createElement("div");
+      children.className = "usm-loc-children";
+      for (const child of node.children) {
+        children.append(this.buildLocaleCard(child.key, langs, { hint: `value: ${child.value}`, child: true }));
+      }
+      group.append(children);
+      list.append(group);
+    }
+    container.append(list);
+    list.querySelectorAll(".usm-loc-value").forEach((el) => this.autosizeLocaleInput(el));
+    this.applyLocaleFilter();
+    this.refreshLocaleUsage();
+    this.refreshShowMissingButton();
+  }
+
+  makeLocaleToggle() {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn usm-loc-toggle";
+    toggle.textContent = "▾";
+    toggle.setAttribute("aria-expanded", "true");
+    return toggle;
+  }
+
+  /** One key: editable name, per-language fields, "not in code" badge, remove button. */
+  buildLocaleCard(key, langs, { hint = "", toggle = false, child = false } = {}) {
+    const card = document.createElement("article");
+    card.className = `usm-loc-card${child ? " is-child" : ""}`;
+    card.dataset.key = key;
+
+    const head = document.createElement("header");
+    head.className = "usm-loc-card-head";
+    if (toggle) head.append(this.makeLocaleToggle());
+
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.className = "usm-loc-key-input";
+    keyInput.value = key;
+    keyInput.spellcheck = false;
+    keyInput.placeholder = i18n.t("userscript.translations.keyColumn");
+    if (key === "description") keyInput.readOnly = true;
+    head.append(keyInput);
+
+    if (hint) {
+      const hintEl = document.createElement("span");
+      hintEl.className = "usm-loc-hint";
+      hintEl.textContent = hint;
+      head.append(hintEl);
+    }
+
+    const unused = document.createElement("span");
+    unused.className = "usm-loc-unused";
+    unused.hidden = true;
+    unused.textContent = localeText("userscript.translations.unused", "Not in code");
+    unused.title = localeText(
+      "userscript.translations.unusedHint",
+      'No literal t("key") call with this key was found in the code. Keys built dynamically cannot be detected.',
+    );
+    head.append(unused);
+
+    const removeKey = document.createElement("button");
+    removeKey.type = "button";
+    removeKey.className = "btn usm-loc-remove-key";
+    removeKey.appendChild(createSVG(svg_paths.crossIconPaths));
+    removeKey.title = i18n.t("userscript.translations.removeKey");
+    if (key !== "description") head.append(removeKey);
+    card.append(head);
+
+    const grid = document.createElement("div");
+    grid.className = "usm-loc-grid";
+    for (const lang of langs) {
+      const field = document.createElement("label");
+      field.className = `usm-loc-field${lang === "en" ? " is-base" : ""}`;
+
+      const tag = document.createElement("span");
+      tag.className = "usm-loc-lang";
+      // The English field is the translation source; the other is the target.
+      tag.textContent = lang;
+      field.append(tag);
+
+      const input = document.createElement("textarea");
+      input.rows = 1;
+      input.className = "usm-loc-value";
+      input.dataset.lang = lang;
+      input.spellcheck = false;
+      const value = this.localesData[lang]?.[key];
+      input.value = typeof value === "string" ? value : "";
+      if (lang !== "en" && !input.value.trim()) input.classList.add("usm-loc-missing");
+      field.append(input);
+      grid.append(field);
+    }
+    card.append(grid);
+    return card;
+  }
+
+  /** Live completion counter for the current target language. */
+  refreshLocaleLangProgress(keys = this.getLocaleKeys(), viewLang = this.getLocaleViewLang()) {
+    const el = document.getElementById("localesLangProgress");
+    if (!el) return;
+    const filled = keys.filter((k) => String(this.localesData?.[viewLang]?.[k] ?? "").trim()).length;
+    el.textContent = localeText("userscript.translations.langProgress", "{0}/{1} translated", [filled, keys.length]);
+    el.classList.toggle("is-complete", keys.length > 0 && filled === keys.length);
+  }
+
+  /** Grows a textarea to fit its content (cards stay compact for short strings). */
+  autosizeLocaleInput(el) {
+    el.style.height = "auto";
+    // Hidden panel (scrollHeight 0): keep CSS min-height, re-measured when the tab opens.
+    if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight}px`;
+  }
+
+  /**
+   * Hides what does not match the search box (key or any translation). A group
+   * stays visible when its own key, its setting name or any option matches; when
+   * only some options match, only those are shown. Collapsed groups open while
+   * a search is active.
+   */
+  applyLocaleFilter() {
+    const container = document.getElementById("localesTableContainer");
+    if (!container) return;
+    const q = (document.getElementById("localesSearch")?.value || "").trim().toLowerCase();
+    const showMissing = this._showMissingTranslations;
+    const missingKeys = showMissing ? new Set(this.getMissingTranslations()) : null;
+    container.querySelector(".usm-loc-list")?.classList.toggle("is-filtering", !!q || showMissing);
+
+    const matches = (card) => {
+      if (showMissing) {
+        if (!missingKeys.has(card.dataset.key)) return false;
+        if (!q) return true;
+        return (card.dataset.key || "").toLowerCase().includes(q) || [...card.querySelectorAll(".usm-loc-value")].some((i) => i.value.toLowerCase().includes(q));
+      }
+      if (!q) return true;
+      return (card.dataset.key || "").toLowerCase().includes(q) || [...card.querySelectorAll(".usm-loc-value")].some((i) => i.value.toLowerCase().includes(q));
+    };
+
+    container.querySelectorAll(".usm-loc-list > .usm-loc-card").forEach((card) => card.classList.toggle("is-hidden", !matches(card)));
+
+    container.querySelectorAll(".usm-loc-group").forEach((group) => {
+      const parent = group.querySelector(":scope > .usm-loc-card");
+      const kids = [...group.querySelectorAll(":scope > .usm-loc-children > .usm-loc-card")];
+      const selfHit = showMissing
+        ? parent
+          ? matches(parent)
+          : false
+        : !q || (group.dataset.setting || "").toLowerCase().includes(q) || (parent ? matches(parent) : false);
+      const kidHits = kids.map(matches);
+      group.classList.toggle("is-hidden", !(selfHit || kidHits.some(Boolean)));
+      kids.forEach((kid, i) => kid.classList.toggle("is-hidden", !selfHit && !kidHits[i]));
+    });
+  }
+
+  /** Live cell editing: updates this.localesData and the missing markers. */
+  handleLocaleCellInput(event) {
+    const target = event.target;
+    const row = target.closest(".usm-loc-card[data-key]");
+    if (!row) return;
+    const oldKey = row.dataset.key;
+
+    if (target.classList.contains("usm-loc-key-input")) {
+      // Renames are committed on change/blur (commitLocaleKeyRename), not per
+      // keystroke, so intermediate text never collides with other keys or
+      // rewrites the code. Typing only validates.
+      const problem = this.getLocaleKeyProblem(target.value.trim(), oldKey);
+      target.classList.toggle("is-invalid", !!problem);
+      target.title = problem || "";
+      return;
+    }
+
+    if (target.classList.contains("usm-loc-value")) {
+      const lang = target.dataset.lang;
+      if (!lang) return;
+      const locales = (this.localesData[lang] ||= {});
+      locales[oldKey] = target.value;
+      if (lang === "en" && oldKey === "description") {
+        const inDesc = document.getElementById("inDesc");
+        if (inDesc) inDesc.value = target.value;
+      }
+      target.classList.toggle("usm-loc-missing", lang !== "en" && !target.value.trim());
+      this.autosizeLocaleInput(target);
+      this.refreshLocaleLangProgress();
+      this.refreshShowMissingButton();
+    }
+  }
+
+  async handleLocaleCellClick(event) {
+    const toggle = event.target.closest(".usm-loc-toggle");
+    if (toggle) {
+      const group = toggle.closest(".usm-loc-group");
+      if (!group) return;
+      const isCollapsed = group.classList.toggle("is-collapsed");
+      group.querySelectorAll(":scope > .usm-loc-card .usm-loc-toggle, :scope > .usm-loc-group-head .usm-loc-toggle").forEach((btn) => {
+        btn.setAttribute("aria-expanded", String(!isCollapsed));
+      });
+      const collapsed = (this._locCollapsed ||= new Set());
+      if (isCollapsed) collapsed.add(group.dataset.setting);
+      else collapsed.delete(group.dataset.setting);
+      return;
+    }
+    const removeKey = event.target.closest(".usm-loc-remove-key");
+    if (removeKey) {
+      const row = removeKey.closest(".usm-loc-card[data-key]");
+      if (!row) return;
+      const key = row.dataset.key;
+      if (key === "description") return;
+      if (
+        !(await showConfirm("", {
+          heading: i18n.t("userscript.translations.confirmDelete"),
+          body: "",
+        }))
+      )
+        return;
+      for (const lang of Object.keys(this.localesData)) {
+        delete this.localesData[lang][key];
+        if (!Object.keys(this.localesData[lang]).length) delete this.localesData[lang];
+      }
+      this.renderLocalesTable();
+    }
+  }
+
+  handleLocaleKeyChange(event) {
+    if (event.target?.classList?.contains("usm-loc-key-input")) this.commitLocaleKeyRename(event.target);
+  }
+
+  /**
+   * Commits a key rename: moves the entries in every language, rewrites the
+   * literal t("old") calls in the code (one undoable edit in the code editor)
+   * and refreshes the badges. An invalid or duplicate name reverts the input to
+   * the last committed key.
+   */
+  commitLocaleKeyRename(input) {
+    const row = input.closest(".usm-loc-card[data-key]");
+    if (!row) return;
+    const oldKey = row.dataset.key;
+    const newKey = input.value.trim();
+    if (newKey === oldKey) {
+      input.value = oldKey;
+      return;
+    }
+    if (this.getLocaleKeyProblem(newKey, oldKey)) {
+      // Invalid names were already flagged while typing: go back to the last good key.
+      input.value = oldKey;
+      input.classList.remove("is-invalid");
+      input.title = "";
+      return;
+    }
+
+    for (const lang of Object.keys(this.localesData)) {
+      if (Object.prototype.hasOwnProperty.call(this.localesData[lang], oldKey)) {
+        this.localesData[lang][newKey] = this.localesData[lang][oldKey];
+        delete this.localesData[lang][oldKey];
+      }
+    }
+    row.dataset.key = newKey;
+    input.value = newKey;
+    input.classList.remove("is-invalid");
+    input.title = "";
+
+    this.renameTranslationKeyInCode(oldKey, newKey);
+    this.refreshLocaleLangProgress();
+    this.refreshLocaleUsage();
+  }
+
+  /** Why `key` can't be the name of this entry, or "" when it is fine. */
+  getLocaleKeyProblem(key, currentKey) {
+    if (!key) return localeText("userscript.translations.warn.emptyKey", "The key can't be empty.");
+    if ((key === "description") !== (currentKey === "description"))
+      return localeText("userscript.translations.warn.reservedKey", 'The "description" key is reserved and can\'t be renamed.');
+    if (key !== currentKey && this.getLocaleKeys().includes(key)) return localeText("userscript.translations.warn.duplicateKey", "This key already exists.");
+    if (!isRenamableTranslationKey(key)) return localeText("userscript.translations.warn.invalidKey", "A key can't contain quotes, backslashes or line breaks.");
+    return "";
+  }
+
+  /** Rewrites literal t("oldKey") calls to the new key. Returns how many were changed. */
+  renameTranslationKeyInCode(oldKey, newKey) {
+    const cm = this.codeEditor;
+    if (!cm || !oldKey || !isRenamableTranslationKey(newKey)) return 0;
+    const ranges = findTranslationKeyRanges(cm.getValue(), oldKey);
+    if (!ranges.length) return 0;
+    // Back to front, so earlier offsets stay valid while the code changes.
+    cm.operation(() => {
+      for (let i = ranges.length - 1; i >= 0; i--) {
+        const { start, end, quote } = ranges[i];
+        cm.replaceRange(`${quote}${newKey}${quote}`, cm.posFromIndex(start), cm.posFromIndex(end));
+      }
+    });
+    return ranges.length;
+  }
+
+  /** Commits key edits that are still pending (the input has not fired change yet). */
+  flushLocaleKeyEdits() {
+    document.querySelectorAll("#localesTableContainer .usm-loc-key-input").forEach((input) => {
+      const row = input.closest(".usm-loc-card[data-key]");
+      if (row && input.value.trim() !== row.dataset.key) this.commitLocaleKeyRename(input);
+    });
+  }
+
+  /**
+   * Keys without a literal t("key") call in the code. Dynamic calls such as
+   * t(variable) are invisible to the scan, so this is a hint, not proof. The
+   * "description" key is a system key for the script description and is never
+   * referenced via t() in code, so it is excluded.
+   */
+  getUnusedLocaleKeys() {
+    const code = this.codeEditor?.getValue?.() ?? "";
+    const used = new Set(scanTranslationKeys(code));
+    return this.getLocaleKeys().filter((key) => key.trim() && key !== "description" && !used.has(key));
+  }
+
+  /** Updates the "not in code" badges and the remove-unused button. */
+  refreshLocaleUsage() {
+    const unused = new Set(this.getUnusedLocaleKeys());
+    document.querySelectorAll("#localesTableContainer .usm-loc-card").forEach((card) => {
+      const isUnused = unused.has(card.dataset.key);
+      card.classList.toggle("is-unused", isUnused);
+      const badge = card.querySelector(".usm-loc-unused");
+      if (badge) badge.hidden = !isUnused;
+    });
+    const prune = document.getElementById("btnPruneLocaleKeys");
+    if (prune) {
+      prune.hidden = unused.size === 0;
+      prune.textContent = localeText("userscript.translations.pruneUnused", "Remove unused ({0})", [unused.size]);
+    }
+  }
+
+  /** Keys whose target-language value is empty or missing, including keys
+   * that exist only in other languages. */
+  getMissingTranslations(viewLang = this.getLocaleViewLang()) {
+    if (!viewLang) return [];
+    return this.getLocaleKeys().filter((key) => {
+      if (!key.trim()) return false;
+      const value = this.localesData?.[viewLang]?.[key];
+      return typeof value !== "string" || !value.trim();
+    });
+  }
+
+  /** Disables the "Show Missing Translations" button (all-ok) when no keys are
+   * missing a target-language value, and marks it active while the filter is on. */
+  refreshShowMissingButton() {
+    const btn = document.getElementById("btnShowMissingTranslations");
+    if (!btn) return;
+    const missing = this.getMissingTranslations();
+    btn.classList.toggle("all-ok", missing.length === 0);
+    btn.classList.toggle("active", this._showMissingTranslations);
+    btn.textContent = missing.length === 0 && this._showMissingTranslations ? i18n.t("header.back") : i18n.t("userscript.translations.showMissing");
+  }
+
+  /** Toggles the missing-translations view. When on, cards whose target
+   * language value is empty are highlighted and the table is filtered to show
+   * only those cards. Persists until the user clicks Save. */
+  toggleShowMissingTranslations() {
+    this._showMissingTranslations = !this._showMissingTranslations;
+    this.refreshShowMissingButton();
+    this.applyLocaleFilter();
+    this.renderLocalesTable();
+  }
+
+  /** Deletes keys that no t() call uses, from every language, after a confirmation. */
+  async pruneUnusedLocaleKeys() {
+    // An empty code editor would flag every key as unused: never prune then.
+    if (!(this.codeEditor?.getValue?.() ?? "").trim()) return;
+    this.flushLocaleKeyEdits();
+    const unused = this.getUnusedLocaleKeys();
+    if (!unused.length) {
+      this.refreshLocaleUsage();
+      return;
+    }
+    const preview = unused.slice(0, 8).join(", ") + (unused.length > 8 ? ", …" : "");
+    const proceed = await showConfirm(localeText("userscript.translations.pruneHeading", "Remove unused keys?"), {
+      type: "warn",
+      body: localeText(
+        "userscript.translations.pruneBody",
+        "These keys are not used by any literal t() call and will be deleted from all languages: {0}. Keys built dynamically, such as t(variable), cannot be detected.",
+        [preview],
+      ),
+      labelOk: localeText("userscript.translations.pruneConfirm", "Remove"),
+    });
+    if (!proceed) return;
+    for (const key of unused) {
+      for (const lang of Object.keys(this.localesData)) {
+        delete this.localesData[lang][key];
+        if (!Object.keys(this.localesData[lang]).length) delete this.localesData[lang];
+      }
+    }
+    this.renderLocalesTable();
+  }
+
+  /** Adds an empty key row (reusing the existing empty row when present). */
+  addLocaleKey() {
+    const locales = (this.localesData ||= {});
+    if (!locales.en) locales.en = {};
+    const existing = Object.keys(locales.en).find((key) => !key.trim());
+    if (existing !== undefined) {
+      this.renderLocalesTable();
+      this.focusLocaleKeyInput(existing);
+      return;
+    }
+    locales.en[""] = "";
+    this.renderLocalesTable();
+    this.focusLocaleKeyInput("");
+  }
+
+  focusLocaleKeyInput(key) {
+    const container = document.getElementById("localesTableContainer");
+    const row = container?.querySelector(`.usm-loc-card[data-key="${CSS.escape(key)}"]`);
+    row?.querySelector(".usm-loc-key-input")?.focus();
+  }
+
+  /**
+   * Synchronizes an English translation entry from the useSetting editor:
+   * setting creation passes overwrite=false (existing values are never
+   * replaced), label edits pass overwrite=true. Other languages are untouched.
+   */
+  addLocaleTranslation(key, value, overwrite = false) {
+    if (!key || typeof value !== "string" || !value.trim()) return;
+    const locales = (this.localesData ||= {});
+    const en = (locales.en ||= {});
+    if (!overwrite && typeof en[key] === "string" && en[key].trim()) return;
+    if (en[key] === value) return;
+    en[key] = value;
+    this.renderLocalesTable();
+  }
+
+  /**
+   * Populates the target language select: the fixed PARSER_LOCALE_LANGS list
+   * plus any legacy language already present in the data (so it stays visible
+   * and removable). The selection is the single-language view's target.
+   */
+  refreshLocaleLangOptions() {
+    const select = document.getElementById("inLocaleLang");
+    if (!select) return;
+    const fixed = PARSER_LOCALE_LANGS.map((l) => l.code);
+    const legacy = Object.keys(this.localesData || {}).filter((lang) => lang !== "en" && !fixed.includes(lang));
+    const labels = new Map(PARSER_LOCALE_LANGS.map((l) => [l.code, `${l.name} (${l.code})`]));
+    const options = [...fixed, ...legacy.sort()];
+    select.replaceChildren(
+      ...options.map((code) => {
+        const opt = document.createElement("option");
+        opt.value = code;
+        opt.textContent = labels.get(code) ?? code;
+        return opt;
+      }),
+    );
+    select.value = this.getLocaleViewLang();
+  }
+
+  /** Selecting a language opens its single-language view; nothing is created until a value is typed. */
+  handleLocaleLangChange() {
+    const code = document.getElementById("inLocaleLang")?.value;
+    if (!code) return;
+    this.localeViewLang = code;
+    this.renderLocalesTable();
+  }
+
+  /** Removes the selected target language from the data and re-renders. */
+  async removeLocaleViewLang() {
+    const viewLang = this.getLocaleViewLang();
+    if (!this.localesData?.[viewLang]) return;
+    if (
+      !(await showConfirm("", {
+        heading: i18n.t("userscript.translations.confirmDelete"),
+        body: "",
+      }))
+    )
+      return;
+    delete this.localesData[viewLang];
+    this.localeViewLang = null;
+    this.renderLocalesTable();
+  }
+
+  /** The target language of the single-language view, resolved when unset. */
+  getLocaleViewLang() {
+    const fixed = PARSER_LOCALE_LANGS.map((l) => l.code);
+    const view = this.localeViewLang;
+    if (view && (fixed.includes(view) || this.localesData?.[view])) return view;
+    const existing = Object.keys(this.localesData || {}).find((lang) => lang !== "en");
+    return existing || fixed[0];
+  }
+
+  /**
+   * Adds keys used by literal t("key") calls in the code but missing from the
+   * table, as empty English entries. Existing translations are never overwritten
+   * and entries are never removed. Returns how many keys were added.
+   */
+  syncLocaleKeysFromCode() {
+    const found = scanTranslationKeys(this.codeEditor?.getValue?.() ?? "");
+    if (!found.length) return 0;
+    const locales = (this.localesData ||= {});
+    const en = (locales.en ||= {});
+    const known = new Set(this.getLocaleKeys());
+    let added = 0;
+    for (const key of found) {
+      if (known.has(key)) continue;
+      en[key] = "";
+      added++;
+    }
+    return added;
   }
 
   /**
@@ -1412,6 +2181,9 @@ class UserScriptUI {
 
   /** Validation, the lint gate and the actual background save request. */
   async performSave() {
+    this.flushLocaleKeyEdits();
+    this._showMissingTranslations = false;
+    this.syncLocaleKeysFromCode();
     const domainRaw = document.getElementById("inDomain").value.trim();
     const domain = domainRaw.includes(",") ? splitAndTrim(domainRaw).map((d) => this.cleanDomain(d)) : this.cleanDomain(domainRaw);
     const domainEmpty = Array.isArray(domain) ? domain.length === 0 : !domain;
@@ -1423,61 +2195,89 @@ class UserScriptUI {
     const { normalizedList } = PatternValidator.processPatterns(rawPatterns);
     document.getElementById("editor").setAttribute("current", "0");
 
-    function extractSettingsFromCode(code) {
-      const regex = /useSetting\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*,\s*["']([^"']+)"(?:\s*,\s*([\s\S]*?))?\s*\)/g;
-      const settings = [];
-      let match;
-
-      while ((match = regex.exec(code)) !== null) {
-        // eslint-disable-next-line prefer-const
-        let [, key, label, type, rawDefaultValue] = match;
-        let defaultValue = "";
-
-        if (rawDefaultValue !== undefined) {
-          rawDefaultValue = rawDefaultValue.trim();
-
-          if (rawDefaultValue.startsWith("[{")) {
-            const fixed = rawDefaultValue.replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"');
-
-            try {
-              defaultValue = JSON.parse(fixed);
-            } catch {
-              defaultValue = fixed;
-            }
-          }
-
-          // Process defaultValue
-          // JSON array/object
-          else if (rawDefaultValue.startsWith("[") || rawDefaultValue.startsWith("{")) {
-            try {
-              defaultValue = JSON.parse(rawDefaultValue);
-            } catch {
-              defaultValue = rawDefaultValue;
-            }
-          }
-
-          // Boolean
-          else if (rawDefaultValue === "true") defaultValue = true;
-          else if (rawDefaultValue === "false") defaultValue = false;
-          // Number
-          else if (!isNaN(rawDefaultValue)) defaultValue = Number(rawDefaultValue);
-          // String
-          else if (/^["'].*["']$/.test(rawDefaultValue)) {
-            defaultValue = rawDefaultValue.slice(1, -1);
-          } else {
-            defaultValue = rawDefaultValue;
-          }
+    // Falls back to the editor's literal parser for arrays/objects the crude
+    // JSON fix cannot handle (e.g. t() descriptors inside option labels), and
+    // resolves descriptor labels for the settings preview.
+    function parseLiteralDefaultValue(src) {
+      try {
+        const value = new LiteralParser(src).parse();
+        if (Array.isArray(value)) {
+          return value.map((opt) =>
+            opt && typeof opt === "object" && opt.label && typeof opt.label === "object" && opt.label.__type === "translation"
+              ? { ...opt, label: resolveTranslation(opt.label.key) }
+              : opt,
+          );
         }
+        return value;
+      } catch {
+        return src;
+      }
+    }
 
+    function parseDefaultValue(rawDefaultValue) {
+      let defaultValue = "";
+      if (rawDefaultValue === undefined) return defaultValue;
+      rawDefaultValue = rawDefaultValue.trim();
+
+      // Translation descriptor default: t("key") -> resolved preview string
+      const tDefaultMatch = /^t\s*\(\s*(['"])([^'"\r\n]+)\1\s*\)$/.exec(rawDefaultValue);
+      if (tDefaultMatch) return resolveTranslation(tDefaultMatch[2]);
+
+      if (rawDefaultValue.startsWith("[{")) {
+        const fixed = rawDefaultValue.replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"');
+
+        try {
+          defaultValue = JSON.parse(fixed);
+        } catch {
+          defaultValue = parseLiteralDefaultValue(rawDefaultValue);
+        }
+      }
+
+      // Process defaultValue
+      // JSON array/object
+      else if (rawDefaultValue.startsWith("[") || rawDefaultValue.startsWith("{")) {
+        try {
+          defaultValue = JSON.parse(rawDefaultValue);
+        } catch {
+          defaultValue = parseLiteralDefaultValue(rawDefaultValue);
+        }
+      }
+
+      // Boolean
+      else if (rawDefaultValue === "true") defaultValue = true;
+      else if (rawDefaultValue === "false") defaultValue = false;
+      // Number
+      else if (!isNaN(rawDefaultValue)) defaultValue = Number(rawDefaultValue);
+      // String
+      else if (/^["'].*["']$/.test(rawDefaultValue)) {
+        defaultValue = rawDefaultValue.slice(1, -1);
+      } else {
+        defaultValue = rawDefaultValue;
+      }
+
+      return defaultValue;
+    }
+
+    function extractSettingsFromCode(code) {
+      // UseSettingParser matches brackets, so nested t() calls inside select
+      // option arrays or t() text defaults are captured completely; plain
+      // string labels keep the regex-free, lossless path as well.
+      const settings = [];
+      for (const call of new UseSettingParser().parse(code)) {
+        // The label is emitted RAW (t() descriptor) so it survives storage and
+        // the popup re-resolves it per `lang`; resolveTranslation stays for the
+        // manager-only default-value preview below.
+        const labelKey = UseSettingEditor.tCallKey(call.labelCall);
+        const label = call.labelCall && labelKey !== null ? { __type: "translation", key: labelKey } : call.label;
+        const defaultValue = call.defaultSrc ? parseDefaultValue(call.defaultSrc) : "";
         settings.push({
-          key,
+          key: call.key,
           label,
-          type,
+          type: call.type,
           defaultValue,
           value: defaultValue,
         });
       }
-
       return settings;
     }
 
@@ -1502,6 +2302,14 @@ class UserScriptUI {
     }
 
     const authorsData = splitAndTrim(document.getElementById("inAuthors").value);
+
+    // Resolves a t("labelKey") setting label for the Advanced settings preview
+    // against the current Translations table (chosen i18n language, en fallback).
+    const resolveTranslation = (labelKey) => {
+      // Same language selection and fallback chain as the runtime (mainParser.js).
+      const locales = this.getLocalesSaveData() || {};
+      return resolveTranslationDescriptor({ __type: "translation", key: labelKey }, locales, selectLocaleLang(locales, i18n.lang));
+    };
 
     const script = {
       id: this.editingId || generateParserKey(domain, normalizedList, authorsData),
@@ -1529,6 +2337,25 @@ class UserScriptUI {
       debug: document.getElementById("inDebug").checked,
       settings: extractSettingsFromCode(this.codeEditor.getValue()),
     };
+
+    // The description translation exists only when the script has a
+    // description. Its English value is stored under locales.en["description"]
+    // and script.description becomes a translation descriptor referencing that
+    // key. The key is excluded from the "not in code" check since it is a
+    // system key, not referenced via t() in code.
+    const descRaw = document.getElementById("inDesc").value.trim();
+    const en = (this.localesData.en ||= {});
+    if (descRaw) {
+      en["description"] = descRaw;
+      script.description = { __type: "translation", key: "description" };
+    } else {
+      // No description: keep the plain empty string and drop any stale key.
+      delete en["description"];
+      if (!Object.keys(en).length) delete this.localesData.en;
+    }
+
+    const locales = this.getLocalesSaveData();
+    if (locales) script.locales = locales;
 
     // Preserve store (repo) tracking fields of the script being edited so it
     // stays recognized as a repo script (list filtering, locked authors, sync)
@@ -1748,6 +2575,8 @@ class UserScriptUI {
         const authorsStr = authors.length ? `\n  authors: [${authors.map((a) => this._jsString(a)).join(", ")}],` : "";
         const authorsLinksStr = authorsLinks.length ? `\n  authorsLinks: [${authorsLinks.map((a) => this._jsString(a)).join(", ")}],` : "";
         const iframeSelectorsStr = script.iframeSelectors ? `\n  iframeSelectors: ${JSON.stringify(script.iframeSelectors, null, 2).split("\n").join("\n  ")},` : "";
+        const locales = script.locales && typeof script.locales === "object" ? script.locales : null;
+        const localesStr = locales && Object.keys(locales).length ? `\n  locales: ${JSON.stringify(locales, null, 2).split("\n").join("\n  ")},` : "";
         const tags = Array.isArray(script.tags)
           ? script.tags
           : script.tags
@@ -1773,11 +2602,11 @@ class UserScriptUI {
   domain: ${domainStr},${authorsStr}${authorsLinksStr}
   title: ${this._jsString(script.title)},
   version: ${this._jsString(script.version || "1.0.0")},
-  description: ${this._jsString(script.description || "")},
+  description: ${this._jsString(resolveScriptDescription(script))},
   lastUpdated: ${this._jsString(script.lastUpdated || "")},
   mode: ${this._jsString(script.mode || "listen")},
   watchAutoDetect: ${this._jsString(script.watchAutoDetect || "disable")},${homepageStr}${categoryStr}${tagsStr}
-  urlPatterns: [${urlPatterns}],${iframeSelectorsStr}
+  urlPatterns: [${urlPatterns}],${iframeSelectorsStr}${localesStr}
   fn: async function () {
 ${codeIndented}
   },
@@ -1803,26 +2632,10 @@ ${codeIndented}
         continue;
       }
 
-      let depth = 0;
-      let blockStart = -1;
-      let blockEnd = -1;
-      let j = callIdx + "registerParser(".length;
+      const blockStart = k;
+      const blockEnd = matchBalancedBrace(jsText, blockStart);
 
-      while (j < jsText.length) {
-        if (jsText[j] === "{") {
-          if (blockStart === -1) blockStart = j;
-          depth++;
-        } else if (jsText[j] === "}") {
-          depth--;
-          if (depth === 0) {
-            blockEnd = j;
-            break;
-          }
-        }
-        j++;
-      }
-
-      if (blockStart === -1 || blockEnd === -1) {
+      if (blockEnd === -1) {
         i = callIdx + 1;
         continue;
       }
@@ -1905,30 +2718,33 @@ ${codeIndented}
         }
       }
 
-      // fn body: balanced brace + 2-space dedent
+      // locales: nested { lang: { key: "value" } } (balanced brace match, JSON first)
+      let locales = null;
+      const localesIdx = block.indexOf("locales:");
+      if (localesIdx !== -1) {
+        const localesOpen = block.indexOf("{", localesIdx);
+        if (localesOpen !== -1) {
+          const localesEnd = matchBalancedBrace(block, localesOpen);
+          if (localesEnd !== -1) {
+            locales = parseLocalesObjectText(block.slice(localesOpen, localesEnd + 1));
+          }
+        }
+      }
+
+      // fn body: quote-aware balanced brace match + 2-space dedent, so braces
+      // inside string literals in the code cannot truncate the body.
       let code = "";
       const fnIdx = block.search(/\bfn:\s*(async\s+)?function\s*\(\s*\)/);
       if (fnIdx !== -1) {
-        let depth3 = 0,
-          fnBodyStart = -1,
-          m = fnIdx;
-        while (m < block.length) {
-          if (block[m] === "{") {
-            if (fnBodyStart === -1) fnBodyStart = m;
-            depth3++;
-          } else if (block[m] === "}") {
-            depth3--;
-            if (depth3 === 0 && fnBodyStart !== -1) {
-              code = block
-                .slice(fnBodyStart + 1, m)
-                .split("\n")
-                .map((line) => (line.startsWith("    ") ? line.slice(4) : line))
-                .join("\n")
-                .trim();
-              break;
-            }
-          }
-          m++;
+        const fnBodyStart = block.indexOf("{", fnIdx);
+        const fnBodyEnd = fnBodyStart !== -1 ? matchBalancedBrace(block, fnBodyStart) : -1;
+        if (fnBodyEnd !== -1) {
+          code = block
+            .slice(fnBodyStart + 1, fnBodyEnd)
+            .split("\n")
+            .map((line) => (line.startsWith("    ") ? line.slice(4) : line))
+            .join("\n")
+            .trim();
         }
       }
 
@@ -1973,6 +2789,7 @@ ${codeIndented}
         category,
         tags,
         iframeSelectors,
+        ...(locales && { locales }),
         code,
         id: extractStr("id") || generateParserKey(domain, urlPatterns, authors),
         lastUpdated: extractStr("lastUpdated"),
@@ -2521,7 +3338,8 @@ ${codeIndented}
         ];
 
         if (script.description) {
-          rows.splice(2, 0, [i18n.t("userscript.editor.description.label"), script.description]);
+          const descText = resolveScriptDescription(script);
+          rows.splice(2, 0, [i18n.t("userscript.editor.description.label"), descText]);
         }
 
         rows.forEach(([label, value]) => {

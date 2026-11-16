@@ -5,6 +5,16 @@ function q(value) {
   return JSON.stringify(value == null ? "" : String(value));
 }
 
+function descriptionText(script) {
+  const d = script && script.description;
+  if (typeof d === "string") return d;
+  if (d && typeof d === "object" && d.__type === "translation" && typeof d.key === "string") {
+    const value = script.locales?.en?.[d.key];
+    return typeof value === "string" ? value : "";
+  }
+  return "";
+}
+
 // One session nonce per user script id ("userScriptNonces"); the generated code
 // echoes it on every USER_SCRIPT_* message and mainParser.js validates it.
 const USER_SCRIPT_NONCES_KEY = "userScriptNonces";
@@ -374,6 +384,24 @@ class UserScriptManager {
         return fn();
       }
 
+      // Creates a serializable translation descriptor. The actual translation
+      // is resolved in mainParser.js against the parser's own locales metadata;
+      // the sandbox never resolves translations itself.
+      function t(key, args) {
+        const descriptor = { __type: "translation", key: typeof key === "string" ? key : String(key == null ? "" : key) };
+        if (Array.isArray(args)) {
+          descriptor.args = args.map((a) => (a == null || typeof a === "string" || typeof a === "number" || typeof a === "boolean" ? a : String(a)));
+        } else if (args && typeof args === "object") {
+          const named = {};
+          for (const name of Object.keys(args)) {
+            const value = args[name];
+            named[name] = value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : String(value);
+          }
+          descriptor.args = named;
+        }
+        return descriptor;
+      }
+
       function useSetting(key, label, type, defaultValue) {
         __userScriptUsedSettings.push({ key, label, type, defaultValue });
         // Wait for the parser first so the 5s timeout only measures the round trip.
@@ -386,7 +414,8 @@ class UserScriptManager {
             key,
             label,
             inputType: type,
-            defaultValue
+            defaultValue,
+            locales: ${JSON.stringify(script.locales || null)}
           };
 
           return __requestResponse(message, "USER_SCRIPT_USE_SETTING_RESPONSE", 5000, (resolve, reject) => {
@@ -676,7 +705,22 @@ class UserScriptManager {
       }
 
       // ---------- Track state ----------
-      const __asText = (value) => (typeof value === "string" || typeof value === "number" ? String(value) : null);
+      // Strict shape check for descriptors produced by the sandbox t() helper
+      // (mirrors isTranslationDescriptor in common/utils/parser-locales.js).
+      function __isTranslationDescriptor(value) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        if (value.__type !== "translation") return false;
+        if (typeof value.key !== "string" || value.key.length === 0) return false;
+        if (value.args !== undefined && !Array.isArray(value.args) && (typeof value.args !== "object" || value.args === null)) return false;
+        return true;
+      }
+
+      const __asText = (value) => {
+        if (typeof value === "string" || typeof value === "number") return String(value);
+        // Translation descriptors pass through; mainParser.js resolves them.
+        if (__isTranslationDescriptor(value)) return value;
+        return null;
+      };
       const __asNumberOrString = (value) => (typeof value === "number" || typeof value === "string" ? value : null);
 
       // Takes the values the script left in scope (see updateTrackData) and normalizes them.
@@ -707,9 +751,10 @@ class UserScriptManager {
           authors: ${JSON.stringify(script.authors || [])},
           authorsLinks: ${JSON.stringify(script.authorsLinks || [])},
           homepage: ${q(script.homepage || "")},
-          description: ${q(script.description || "")},
+          description: ${q(descriptionText(script))},
           urlPatterns: ${JSON.stringify(normalizedList)},
           title: ${q(script.title || "Unknown")},
+          locales: ${JSON.stringify(script.locales || null)},
           category: ${JSON.stringify(script.category || [])},
           mode: ${q(script.mode || "listen")},
           watchAutoDetect: ${watchAutoDetectLiteral},

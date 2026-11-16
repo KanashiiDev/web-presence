@@ -121,20 +121,47 @@ async function accessWindow(path, options = {}) {
   }
 }
 
-async function resolveLabel(label) {
-  if (!label || typeof label === "string") return label;
-  const browserLang = navigator.languages?.[0] || navigator.language;
-  const { lang } = await browser.storage.local.get("lang");
-  const currentLang = lang || browserLang || "en";
-  return label[currentLang] ?? label["en"] ?? Object.values(label)[0] ?? "";
+// Active language for parser `locales` resolution: storage override first, then
+// the browser language, normalized against the parser's available languages.
+async function resolveParserLocaleLang(locales) {
+  let lang = (await browser.storage.local.get("lang")).lang;
+  if (!lang) lang = navigator.languages?.[0] || navigator.language || "en";
+  return selectLocaleLang(locales, lang);
 }
 
-async function resolveSelectOptions(options) {
+// The only localized label format is the t() descriptor. Plain strings pass through.
+async function resolveLabel(label, locales) {
+  if (typeof label === "string") return label;
+  if (!isTranslationDescriptor(label)) return "";
+  return resolveTranslationDescriptor(label, locales, await resolveParserLocaleLang(locales));
+}
+
+// Stable identity for the RAW stored setting label so runtime re-runs do not
+// rewrite storage. Descriptors compare by key (locale content may change
+// freely); object maps and plain strings compare by value. Labels are stored
+// raw on purpose so the popup can re-resolve them per `lang`.
+function settingLabelIdentity(label) {
+  if (isTranslationDescriptor(label)) return `t:${label.key}`;
+  if (label && typeof label === "object") {
+    try {
+      return JSON.stringify(label);
+    } catch {
+      return undefined;
+    }
+  }
+  return label;
+}
+
+async function resolveSelectOptions(options, locales) {
   return Promise.all(
-    options.map(async (opt) => ({
-      ...opt,
-      label: await resolveLabel(opt.label),
-    })),
+    options.map(async (opt) => {
+      const resolved = { ...opt, label: await resolveLabel(opt.label, locales) };
+      // `label` is frozen to the language of this run. The raw descriptor is kept
+      // beside it so the popup can re-resolve the text per language, the same way
+      // it does for the setting label itself. Consumers that ignore it keep working.
+      if (isTranslationDescriptor(opt.label)) resolved.labelRaw = opt.label;
+      return resolved;
+    }),
   );
 }
 
@@ -151,7 +178,7 @@ async function resolveSelectOptions(options) {
  * @throws {Error} Will throw an error if id or key is not provided
  * @returns {Promise<*>} The current value of the setting
  */
-async function useSetting(id, key, label, type = "text", defaultValue = "", newValue) {
+async function useSetting(id, key, label, type = "text", defaultValue = "", newValue, locales) {
   if (!key) throw new Error("useSetting requires (id, key, ...)");
   const settingKey = `settings_${id}`;
 
@@ -169,8 +196,17 @@ async function useSetting(id, key, label, type = "text", defaultValue = "", newV
     shouldSave = true;
   }
 
-  const resolvedLabel = await resolveLabel(label);
-  const resolvedDefaultValue = type === "select" && Array.isArray(defaultValue) ? await resolveSelectOptions(defaultValue) : defaultValue;
+  // Select option labels are resolved for the current language, but the setting
+  // label itself is stored RAW (t() descriptor / plain string / object map) so
+  // the popup can re-resolve it per `lang` without a storage rewrite.
+  // A t() default value is resolved once to its canonical English text so the
+  // stored default stays a plain string.
+  const resolvedDefaultValue =
+    type === "select" && Array.isArray(defaultValue)
+      ? await resolveSelectOptions(defaultValue, locales)
+      : isTranslationDescriptor(defaultValue)
+        ? resolveTranslationDescriptor(defaultValue, locales, selectLocaleLang(locales, "en"))
+        : defaultValue;
 
   // Initialize if not existing
   if (current === undefined) {
@@ -184,7 +220,7 @@ async function useSetting(id, key, label, type = "text", defaultValue = "", newV
             })),
           }
         : {
-            label: resolvedLabel,
+            label,
             type: "select",
             value: resolvedDefaultValue.map((opt, i) => ({
               ...opt,
@@ -192,12 +228,12 @@ async function useSetting(id, key, label, type = "text", defaultValue = "", newV
             })),
           };
     } else {
-      current = isDefaultOption ? { type, value: resolvedDefaultValue } : { label: resolvedLabel, type, value: resolvedDefaultValue };
+      current = isDefaultOption ? { type, value: resolvedDefaultValue } : { label, type, value: resolvedDefaultValue };
     }
     shouldSave = true;
   } else {
-    if (!isDefaultOption && current.label !== resolvedLabel) {
-      current.label = resolvedLabel;
+    if (!isDefaultOption && label !== undefined && settingLabelIdentity(current.label) !== settingLabelIdentity(label)) {
+      current.label = label;
       shouldSave = true;
     }
     if (current.type !== type) {
@@ -211,7 +247,13 @@ async function useSetting(id, key, label, type = "text", defaultValue = "", newV
       const newOptions = resolvedDefaultValue;
 
       const isDifferent =
-        oldOptions.length !== newOptions.length || oldOptions.some((opt, i) => opt.value !== newOptions[i]?.value || opt.label !== newOptions[i]?.label);
+        oldOptions.length !== newOptions.length ||
+        oldOptions.some(
+          (opt, i) =>
+            opt.value !== newOptions[i]?.value ||
+            opt.label !== newOptions[i]?.label ||
+            settingLabelIdentity(opt.labelRaw) !== settingLabelIdentity(newOptions[i]?.labelRaw),
+        );
 
       if (isDifferent) {
         const selectedValue = oldOptions.find((o) => o.selected)?.value;
@@ -229,6 +271,11 @@ async function useSetting(id, key, label, type = "text", defaultValue = "", newV
     if (type !== "select") {
       if (current.value === undefined && resolvedDefaultValue !== undefined) {
         current.value = resolvedDefaultValue;
+        shouldSave = true;
+      } else if (isTranslationDescriptor(current.value)) {
+        // Repair stale entries whose stored value is an unresolved t()
+        // descriptor (seeded by an older build); new defaults are plain.
+        current.value = resolveTranslationDescriptor(current.value, locales, selectLocaleLang(locales, "en"));
         shouldSave = true;
       }
     }
@@ -355,6 +402,7 @@ window.registerParser = async function ({
   description = "",
   category = "",
   tags = [],
+  locales: rawLocales,
   mode = "listen",
   fn,
   iframeFn,
@@ -369,6 +417,10 @@ window.registerParser = async function ({
 }) {
   const domains = (Array.isArray(domain) ? domain : [domain]).filter(Boolean);
   if (!domains.length || typeof fn !== "function") return;
+
+  // Normalize once at the boundary (lowercase "-" codes, string values only) so
+  // every consumer below and the popup sees the same table.
+  const locales = sanitizeLocales(rawLocales);
 
   async function domReady() {
     if (document.readyState !== "loading") return Promise.resolve();
@@ -388,7 +440,7 @@ window.registerParser = async function ({
   // bind the id
   const primaryDomain = domains[0];
   const id = generateParserKey(primaryDomain, urlPatterns, authors);
-  const boundUseSetting = (key, label, type = "text", defaultValue = "", newValue) => useSetting(id, key, label, type, defaultValue, newValue);
+  const boundUseSetting = (key, label, type = "text", defaultValue = "", newValue) => useSetting(id, key, label, type, defaultValue, newValue, locales);
   const patternRegexes = (urlPatterns || []).map(parseUrlPattern);
 
   for (const d of domains) {
@@ -413,6 +465,7 @@ window.registerParser = async function ({
       description,
       category,
       tags,
+      ...(locales && { locales }),
       mode,
       iframeFn,
       iframeSelectors,
@@ -437,9 +490,14 @@ window.registerParser = async function ({
 
         if (!rawData || rawData?.__clear) return null;
 
+        // Resolve translation descriptors (the sandbox t() helper) into plain
+        // strings before normalization and RPC forwarding. The parser's own
+        // `locales` metadata is the single translation source.
+        const resolvedData = containsTranslationDescriptor(rawData) ? resolveTranslationDescriptors(rawData, locales, await resolveParserLocaleLang(locales)) : rawData;
+
         // RAW EXTRACTION
-        let { timePassed = "", duration: durationElem = "" } = rawData;
-        const { position: rawPosition, ...rest } = rawData;
+        let { timePassed = "", duration: durationElem = "" } = resolvedData;
+        const { position: rawPosition, ...rest } = resolvedData;
 
         if (!timePassed && typeof rawPosition === "number") timePassed = rawPosition;
         if (!durationElem && typeof rest.duration === "number") durationElem = rest.duration;
@@ -600,6 +658,7 @@ window.registerParser = async function ({
         tags,
         mode,
         homepage,
+        ...(locales && { locales }),
         userAdd,
         userScript,
       });
@@ -1090,7 +1149,7 @@ window.addEventListener("message", async (event) => {
       return;
     }
     try {
-      const result = await useSetting(id, key, label, inputType, defaultValue === "" ? undefined : defaultValue);
+      const result = await useSetting(id, key, label, inputType, defaultValue === "" ? undefined : defaultValue, undefined, sanitizeLocales(msg.locales));
       // Send back the result
       window.postMessage(
         {
@@ -1185,6 +1244,7 @@ window.addEventListener("message", async (event) => {
         urlPatterns: msg.data.urlPatterns,
         mode: msg.data.mode,
         watchAutoDetect: msg.data.watchAutoDetect,
+        ...(msg.data.locales && { locales: msg.data.locales }),
         userAdd: false,
         userScript: true,
         skipSave: true,

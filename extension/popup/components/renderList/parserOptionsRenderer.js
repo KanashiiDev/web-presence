@@ -1,4 +1,4 @@
-async function renderOptions(mode, container, parserOptions, settingKey, addListener) {
+async function renderOptions(mode, container, parserOptions, settingKey, addListener, locales) {
   const allDefaultKeys = Object.keys(DEFAULT_PARSER_OPTIONS);
 
   const sections = [
@@ -46,7 +46,7 @@ async function renderOptions(mode, container, parserOptions, settingKey, addList
 
     for (const key of keys) {
       if (parserOptions[key] !== undefined) {
-        await renderOption(key, mode, parserOptions[key], inner, settingKey, addListener);
+        await renderOption(key, mode, parserOptions[key], inner, settingKey, addListener, locales);
       }
     }
 
@@ -62,11 +62,11 @@ async function renderOptions(mode, container, parserOptions, settingKey, addList
   }
 }
 
-async function renderOption(key, mode, data, container, settingKey, addListener) {
+async function renderOption(key, mode, data, container, settingKey, addListener, locales) {
   const optionSpan = Object.assign(document.createElement("span"), { className: "parser-option" });
   const defaultMeta = DEFAULT_PARSER_OPTIONS[key];
 
-  const resolvedLabel = await resolveLabel(defaultMeta?.label ?? data.label ?? key);
+  const resolvedLabel = await resolveLabel(defaultMeta?.label ?? data.label ?? key, locales);
 
   const label = Object.assign(document.createElement("label"), {
     textContent: resolvedLabel,
@@ -84,7 +84,7 @@ async function renderOption(key, mode, data, container, settingKey, addListener)
     for (const opt of values) {
       const optEl = Object.assign(document.createElement("option"), {
         value: opt.value,
-        textContent: await resolveLabel(opt.label),
+        textContent: await resolveLabel(opt.label, locales),
       });
       if (opt.selected) optEl.selected = true;
       input.appendChild(optEl);

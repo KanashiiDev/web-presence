@@ -720,16 +720,17 @@ class GitHubStoreService {
           urlPatterns: scriptData.urlPatterns,
           category: scriptData.category ?? [],
           tags: scriptData.tags ?? [],
+          locales: scriptData.locales ?? null,
           iframeSelectors: scriptData.iframeSelectors ?? null,
         };
       }
     } catch (_) {}
 
-    // 2. JS Regex Extraction
-    const match = /registerParser\s*\(\s*\{([\s\S]*?)\}\s*\)/.exec(jsText);
-    if (!match) return { code: jsText };
+    // 2. JS extraction
+    const objText = extractRegisterParserObject(jsText);
+    if (!objText) return { code: jsText };
 
-    const block = match[1];
+    const block = objText.slice(1, -1);
 
     const extractStr = (key) => {
       return new RegExp(`${key}:\\s*["'\`](.*?)["'\`]`).exec(block)?.[1] || "";
@@ -802,6 +803,23 @@ class GitHubStoreService {
           }
         }
         k++;
+      }
+    }
+
+    // locales: nested { lang: { key: "value" } } matched with the quote-aware
+    // matchBalancedBrace helper; JSON first, tolerant fallback for hand-written
+    // blocks
+    let locales = null;
+    const localesIdx = block.indexOf("locales:");
+    if (localesIdx !== -1) {
+      const localesOpen = block.indexOf("{", localesIdx);
+      if (localesOpen !== -1) {
+        const localesEnd = matchBalancedBrace(block, localesOpen);
+        if (localesEnd !== -1) {
+          try {
+            locales = parseLocalesObjectText(block.slice(localesOpen, localesEnd + 1));
+          } catch (_) {}
+        }
       }
     }
 
@@ -922,6 +940,7 @@ class GitHubStoreService {
       urlPatterns,
       category,
       tags,
+      locales,
       iframeSelectors,
     };
   }
@@ -981,6 +1000,7 @@ class GitHubStoreService {
       code: parsed.code,
       version: meta.version ?? "1.0.0",
       iframeSelectors,
+      locales: sanitizeLocales(meta.locales ?? parsed.locales ?? null),
       category,
       tags,
 

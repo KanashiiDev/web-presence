@@ -70,6 +70,7 @@
               <button class="btn usm-tab active" data-tab="code" data-i18n="userscript.tabs.code">Code</button>
               <button class="btn usm-tab" data-tab="details" data-i18n="userscript.tabs.details">Details</button>
               <button class="btn usm-tab" data-tab="advanced" data-i18n="userscript.tabs.advanced">Advanced</button>
+              <button class="btn usm-tab" data-tab="translations" data-i18n="userscript.tabs.translations">Translations</button>
             </div>
 
             <div class="usm-editor-panels">
@@ -89,133 +90,177 @@
                   </div>
                 </div>
                 <div class="usm-notes-body" hidden>
-                  <p class="helpers note-section">
-                    <span data-i18n="userscript.codeEditor.requiredVariables.label">Required Variables:</span>
-                    <code>title</code>
-                    <code>artist</code>
-                    <code>image</code>
-                    <code>source</code>
-                    <code>link</code>
-                    <code>timePassed</code>
-                    <code>duration</code>
-                  </p>
-                  <p class="helpers note-section">
-                    <span data-i18n="userscript.codeEditor.helperFunctions.label">Helper Functions:</span>
-                    <a
-                      class="link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextselector-options"
-                    >
-                      <code>getText()</code>
-                    </a>
-                    <a
-                      class="link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextallselector-options"
-                    >
-                      <code>getTextAll()</code>
-                    </a>
-                    <a
-                      class="link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageselector-root"
-                    >
-                      <code>getImage()</code>
-                    </a>
-                    <a
-                      class="link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageallselector-root"
-                    >
-                      <code>getImageAll()</code>
-                    </a>
-                    <a
-                      class="link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#queryselectordeepselector-root-all"
-                    >
-                      <code>querySelectorDeep()</code>
-                    </a>
-                  </p>
-                  <p class="note-section">
-                    <span class="execution-world" data-i18n="userscript.codeEditor.executionWorld.label">Execution World:</span>
-                    <code>
-                      <code>//@world main</code>
-                      <span data-i18n="userscript.codeEditor.executionWorld.note">Use at the top of your script if you need access to page globals (e.g. window)</span>
-                    </code>
-                  </p>
-                  <p class="note-section">
-                    <span class="init-code-blocks" data-i18n="userscript.codeEditor.initCodeBlocks.label">Init Code Block:</span>
-                    <code>
-                      <code>// @init-code-start {code} // @init-code-end</code>
-                      <span data-i18n="userscript.codeEditor.initCodeBlocks.note">Runs once before the document loads (document_start).</span>
-                    </code>
-                  </p>
-                  <p class="note-section">
-                    <span class="cast-support" data-i18n="userscript.codeEditor.castSupport.label">Cast Support:</span>
-                    <code>
-                      <code>isPlaying</code>
-                      <span data-i18n="userscript.codeEditor.castSupport.note">Any truthy value indicating active playback; used for cast support (optional)</span>
-                    </code>
-                  </p>
-                  <p class="note-section">
-                    <span class="history-block" data-i18n="userscript.codeEditor.historyBlock.label">History Block:</span>
-                    <code>
-                      <code>blockHistorySave(reason) / allowHistorySave()</code>
-                      <span data-i18n="userscript.codeEditor.historyBlock.note">
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.requiredVariables.label">Required Variables:</span>
+                    <div class="note-chips">
+                      <code>title</code>
+                      <code>artist</code>
+                      <code>image</code>
+                      <code>source</code>
+                      <code>link</code>
+                      <code>timePassed</code>
+                      <code>duration</code>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.castSupport.label">Cast Support:</span>
+                    <div class="note-item">
+                      <code class="note-signature">isPlaying</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.castSupport.note">
+                        Any truthy value indicating active playback; used for cast support (optional)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="note-section helpers">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.helperFunctions.label">Helper Functions:</span>
+                    <div class="note-chips">
+                      <a
+                        class="link"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextselector-options"
+                      >
+                        <code>getText()</code>
+                      </a>
+                      <a
+                        class="link"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#gettextallselector-options"
+                      >
+                        <code>getTextAll()</code>
+                      </a>
+                      <a
+                        class="link"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageselector-root"
+                      >
+                        <code>getImage()</code>
+                      </a>
+                      <a
+                        class="link"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#getimageallselector-root"
+                      >
+                        <code>getImageAll()</code>
+                      </a>
+                      <a
+                        class="link"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="https://github.com/KanashiiDev/web-presence/wiki/Selectors-and-Helpers#queryselectordeepselector-root-all"
+                      >
+                        <code>querySelectorDeep()</code>
+                      </a>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.clearActivity.label">Clear Activity:</span>
+                    <div class="note-item">
+                      <code class="note-signature">clearActivity()</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.clearActivity.note">
+                        Clears the activity and ends the current run; code after it is not executed.
+                      </span>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.memo.label">Memo:</span>
+                    <div class="note-item">
+                      <code class="note-signature">setMemo({...}, "scope") / getMemo("key", "scope")</code>
+                      <span>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.memo.note"></span>
+                        <a
+                          class="link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          href="https://github.com/KanashiiDev/web-presence/wiki/UserScript-Method#sharing-data-between-pages-memo"
+                          data-i18n="userscript.codeEditor.memo.helpLink"
+                        ></a>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.translations.label">Translations (t):</span>
+                    <div class="note-item">
+                      <code class="note-signature">t("key", [args])</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.translations.note">
+                        Marks a string for translation with the keys defined in the Translations tab. Resolved at runtime in the main context with a fallback to English.
+                      </span>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.executionWorld.label">Execution World:</span>
+                    <div class="note-item">
+                      <code class="note-signature">//@world main</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.executionWorld.note">
+                        Use at the top of your script if you need access to page globals (e.g. window)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.initCodeBlocks.label">Init Code Block:</span>
+                    <div class="note-item">
+                      <code class="note-signature">// @init-code-start {code} // @init-code-end</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.initCodeBlocks.note">Runs once before the document loads (document_start).</span>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.historyBlock.label">History Block:</span>
+                    <div class="note-item">
+                      <code class="note-signature">blockHistorySave(reason) / allowHistorySave()</code>
+                      <span class="note-desc" data-i18n="userscript.codeEditor.historyBlock.note">
                         Call blockHistorySave() inside your script to skip history saves while a condition matches (e.g. if(location.href === "xxx")
                         blockHistorySave("reason");). Call allowHistorySave() to resume. Only one log is shown per block.
                       </span>
-                    </code>
-                  </p>
-                  <p class="note-section">
-                    <span class="keyboard-shortcuts" data-i18n="userscript.codeEditor.keyboardShortcuts.label">Keyboard Shortcuts:</span>
-                    <code>
-                      <code>Ctrl+/</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.toggleComment">Toggle Comment</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+Alt+[</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.foldAll">Fold All</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+Alt+]</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.unfoldAll">Unfold All</span>
-                    </code>
-                    <code>
-                      <code>F8</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.nextError">Next lint issue</span>
-                    </code>
-                    <code>
-                      <code>Alt+Up/Down</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.moveLines">Move Lines</span>
-                    </code>
-                    <code>
-                      <code>Shift+Alt+Down</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.duplicateLine">Duplicate Line</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+Z</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.undo">Undo</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+Y</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.redo">Redo</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+F</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.find">Find</span>
-                    </code>
-                    <code>
-                      <code>Ctrl+S</code>
-                      <span data-i18n="userscript.codeEditor.keyboardShortcuts.save">Save</span>
-                    </code>
-                  </p>
+                    </div>
+                  </div>
+                  <div class="note-section">
+                    <span class="note-section-title" data-i18n="userscript.codeEditor.keyboardShortcuts.label">Keyboard Shortcuts:</span>
+                    <div class="note-items">
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+/</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.toggleComment">Toggle Comment</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+Alt+[</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.foldAll">Fold All</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+Alt+]</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.unfoldAll">Unfold All</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">F8</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.nextError">Next lint issue</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Alt+Up/Down</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.moveLines">Move Lines</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Shift+Alt+Down</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.duplicateLine">Duplicate Line</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+Z</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.undo">Undo</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+Y</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.redo">Redo</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+F</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.find">Find</span>
+                      </div>
+                      <div class="note-item">
+                        <code class="note-signature">Ctrl+S</code>
+                        <span class="note-desc" data-i18n="userscript.codeEditor.keyboardShortcuts.save">Save</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -360,6 +405,41 @@
                         </p>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="usm-panel" data-tab="translations" hidden>
+                <div class="usm-form">
+                  <div class="usm-field usm-field-wide usm-locales-field">
+                    <label data-i18n="userscript.translations.label">Translations</label>
+                    <small data-i18n="userscript.translations.help">
+                      Define translations for your parser's t() helper. Keys are resolved at runtime against the user's language with a fallback to English.
+                    </small>
+                    <div class="usm-locales-toolbar">
+                      <button class="btn" id="btnAddLocaleKey" data-i18n="userscript.translations.addKey">+ Key</button>
+                      <button class="btn" id="btnPruneLocaleKeys" type="button" hidden>Remove unused</button>
+                      <select id="inLocaleLang" class="usm-loc-lang-input" autocomplete="off"></select>
+                    </div>
+                    <div class="locales-search-filter">
+                      <div class="locales-search-input">
+                        <input
+                          type="text"
+                          id="localesSearch"
+                          class="usm-loc-search"
+                          data-i18n="userscript.translations.search"
+                          data-i18n-attr="placeholder"
+                          placeholder="Filter keys or text..."
+                          autocomplete="off"
+                        />
+                        <span id="localesSearchResetBtn" data-i18n="common.reset" data-i18n-attr="title" title="Clear Search"></span>
+                      </div>
+                      <button class="btn usm-loc-show-missing" id="btnShowMissingTranslations" type="button" data-i18n="userscript.translations.showMissing">
+                        Show Missing Translations
+                      </button>
+                    </div>
+                    <span id="localesLangProgress" class="usm-loc-lang-progress"></span>
+                    <div id="localesTableContainer" class="usm-locales-container"></div>
                   </div>
                 </div>
               </div>

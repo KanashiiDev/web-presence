@@ -103,10 +103,10 @@ function createAuthorsSection(authors, authorsLinks) {
   return div;
 }
 
-async function createDescriptionSection(description) {
+async function createDescriptionSection(description, locales) {
   if (!description) return null;
 
-  const resolvedText = await resolveLabel(description);
+  const resolvedText = await resolveLabel(description, locales);
 
   if (!resolvedText) return null;
 
@@ -224,10 +224,15 @@ function createEditScriptButton(id, addListener) {
   return btn;
 }
 
-async function resolveLabel(label) {
-  if (!label || typeof label === "string") return label;
+async function resolveLabel(label, locales) {
+  if (typeof label === "string") return label;
   const browserLang = navigator.languages?.[0] || navigator.language;
   const { lang } = await browser.storage.local.get("lang");
   const currentLang = lang || browserLang || "en";
-  return label[currentLang] ?? label["en"] ?? Object.values(label)[0] ?? "";
+  // A t() descriptor resolves against the parser's own locales metadata;
+  // without it only the raw key can be shown.
+  if (label?.__type === "translation" && typeof label.key === "string") {
+    return locales ? resolveTranslationDescriptor(label, locales, selectLocaleLang(locales, currentLang)) : label.key;
+  }
+  return "";
 }

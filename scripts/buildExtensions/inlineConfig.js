@@ -15,6 +15,9 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   // Logs
   inlineUtilsFunctions(["background.js", "mainParser.js"], "common/utils/logging.js", [], "start");
 
+  // Parser Locales
+  inlineUtilsFunctions(["mainParser.js", "background.js"], "common/utils/parser-locales.js", [], "start", true);
+
   // Shared
   inlineUtilsFunctions(["common/utils.js", "popup/selector/selector.js"], ["../shared/dialog.js", "../shared/i18n.js"], [], [], "start");
 

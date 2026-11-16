@@ -1,5 +1,5 @@
 async function buildParserEntry({ entry, parserEnabledState, parserSettings, container, tabHostname, tabPath, addListener }) {
-  const { id, domain, title, userAdd, userScript, storeFilePath, urlPatterns = [], authors, authorsLinks, homepage, description, tags, category, mode } = entry;
+  const { id, domain, title, userAdd, userScript, storeFilePath, urlPatterns = [], authors, authorsLinks, homepage, description, tags, category, mode, locales } = entry;
   const isEnabled = parserEnabledState[`enable_${id}`] !== false;
 
   const wrapper = document.createElement("div");
@@ -25,7 +25,7 @@ async function buildParserEntry({ entry, parserEnabledState, parserSettings, con
   const authorsSection = createAuthorsSection(authors, authorsLinks);
   if (authorsSection) optionsInner.appendChild(authorsSection);
 
-  const descriptionSection = await createDescriptionSection(description);
+  const descriptionSection = await createDescriptionSection(description, locales);
   if (descriptionSection) optionsInner.appendChild(descriptionSection);
 
   const categoryTagsSection = createCategoryTagsSection(entry.category ?? [], entry.tags ?? []);
@@ -44,7 +44,7 @@ async function buildParserEntry({ entry, parserEnabledState, parserSettings, con
     }
   }
 
-  await renderOptions(mode, optionsInner, parserOptions, settingKey, addListener);
+  await renderOptions(mode, optionsInner, parserOptions, settingKey, addListener, locales);
   await new Promise((r) => requestAnimationFrame(r));
 
   if (optionsInner.querySelectorAll(".parser-option").length < 1) {

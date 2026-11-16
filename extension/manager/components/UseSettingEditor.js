@@ -222,6 +222,20 @@ class LiteralParser {
       }
     }
     const rest = this.s.slice(this.i);
+    // Translation descriptor call: t("key"). Only plain string keys are
+    // accepted; the descriptor is resolved in the main context at runtime.
+    const tm = /^t(?![\w$.])(\s*)\(/.exec(rest);
+    if (tm) {
+      this.i += tm[0].length;
+      this.ws();
+      const q = this.s[this.i];
+      if (q !== '"' && q !== "'") throw new Error("t() expects a string key");
+      const key = this.string();
+      this.ws();
+      if (this.s[this.i] !== ")") throw new Error("Expected )");
+      this.i++;
+      return { __type: "translation", key };
+    }
     let m = /^(true|false|null)(?![\w$])/.exec(rest);
     if (m) {
       this.i += m[0].length;
@@ -274,15 +288,39 @@ class UseSettingParser {
     const args = JsScan.splitArgs(code, open, close);
     if (args.length < 3 || args.length > 4) return null;
     const [key, label, type] = args.slice(0, 3).map(([a, b]) => JsScan.decodeString(code.slice(a, b)));
-    if (key === null || label === null || type === null) return null;
+    if (key === null || type === null) return null;
+
+    // The label may also be a translation key call: t("labelKey"). Keep the
+    // original source so editing stays lossless.
+    let labelValue = label;
+    let labelCall = null;
+    if (labelValue === null) {
+      const labelSrc = code.slice(args[1][0], args[1][1]).trim();
+      const callMatch = /^t\s*\(\s*(['"])([^'"\r\n]+)\1\s*\)$/.exec(labelSrc);
+      if (!callMatch) return null;
+      labelCall = labelSrc;
+      labelValue = callMatch[2];
+    }
 
     const defaultSrc = args[3] ? code.slice(args[3][0], args[3][1]).trim() : "";
     let defaultValue;
     let defaultOk = true;
-    try {
-      defaultValue = defaultSrc ? new LiteralParser(defaultSrc).parse() : undefined;
-    } catch (_) {
-      defaultOk = false;
+    // A text default may also be a translation key call: t("defaultKey").
+    // The call stays lossless in the code; the editor shows it as a custom value.
+    let defaultTCall = null;
+    let defaultTKey = null;
+    if (defaultSrc) {
+      const tDefaultMatch = /^t\s*\(\s*(['"])([^'"\r\n]+)\1\s*\)$/.exec(defaultSrc);
+      if (tDefaultMatch) {
+        defaultTCall = defaultSrc;
+        defaultTKey = tDefaultMatch[2];
+      } else {
+        try {
+          defaultValue = new LiteralParser(defaultSrc).parse();
+        } catch (_) {
+          defaultOk = false;
+        }
+      }
     }
 
     const to = close + 1;
@@ -295,10 +333,13 @@ class UseSettingParser {
 
     return {
       key,
-      label,
+      label: labelValue,
+      labelCall,
       type,
       defaultValue,
       defaultSrc,
+      defaultTCall,
+      defaultTKey,
       defaultOk,
       from,
       to,
@@ -320,6 +361,14 @@ class UseSettingEditor {
     this.codeEditor = codeEditor;
     this.container = container;
     this.onJump = options.onJump || null;
+    /** Optional callback returning the parser's `locales` table for t() label previews. */
+    this.getLocaleData = options.getLocaleData || null;
+    /**
+     * Optional callback (key, englishValue, overwrite) for locale synchronization:
+     * setting creation adds `locales.en[key]` (never overwriting), and editing an
+     * existing t() label updates `locales.en[key]`.
+     */
+    this.onLocalesChange = options.onLocalesChange || null;
     this.parser = new UseSettingParser();
     this.settings = [];
     this.dirty = true;
@@ -413,6 +462,57 @@ class UseSettingEditor {
     this.container.append(list, footer);
   }
 
+  /** Chosen i18n language -> en lookup for a translation key; null when missing. */
+  lookupLocaleValue(key) {
+    if (!key) return null;
+    const locales = this.getLocaleData ? this.getLocaleData() : null;
+    if (!locales) return null;
+    return lookupTranslation(locales, selectLocaleLang(locales, i18n.lang), key);
+  }
+
+  /** The canonical English value of a translation key; null when missing. */
+  lookupEnValue(key) {
+    if (!key) return null;
+    const locales = this.getLocaleData ? this.getLocaleData() : null;
+    const value = locales?.en?.[key];
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+
+  /** Resolves a translation key for display, falling back to the key itself. */
+  resolveLocaleKey(key) {
+    return this.lookupLocaleValue(key) ?? key;
+  }
+
+  /**
+   * Resolves a t("labelKey") label against the parser's locale table (device
+   * language, en fallback) for display in the settings editor.
+   */
+  resolveLocaleLabel(labelCall, key) {
+    const match = /^t\s*\(\s*(['"])([^'"\r\n]+)\1\s*\)$/.exec(labelCall || "");
+    const labelKey = match ? match[2] : key;
+    if (!labelKey) return labelKey;
+    return this.resolveLocaleKey(labelKey);
+  }
+
+  /** Extracts the key from a t("labelKey") call, or null when not a t() call. */
+  static tCallKey(labelCall) {
+    const match = /^t\s*\(\s*(['"])([^'"\r\n]+)\1\s*\)$/.exec(labelCall || "");
+    return match ? match[2] : null;
+  }
+
+  /** Union of translation keys across every language of the parser locales. */
+  localeKeySet() {
+    const locales = this.getLocaleData ? this.getLocaleData() : null;
+    const keys = new Set();
+    if (locales && typeof locales === "object") {
+      for (const lang of Object.keys(locales)) {
+        const map = locales[lang];
+        if (map && typeof map === "object") for (const key of Object.keys(map)) keys.add(key);
+      }
+    }
+    return keys;
+  }
+
   buildRow(s, i) {
     const supported = Object.values(SETTING_TYPES).includes(s.type);
     const row = _el("div", `us-row us-type-${supported ? s.type : "custom"}`);
@@ -423,7 +523,14 @@ class UseSettingEditor {
     const label = document.createElement("input");
     label.type = "text";
     label.className = "us-label";
-    label.value = s.label;
+    // English is the canonical editing language; fall back to the device
+    // language display only when locales.en has no entry yet.
+    const tKey = s.labelCall ? UseSettingEditor.tCallKey(s.labelCall) : null;
+    const labelShown = s.labelCall ? (tKey && this.lookupEnValue(tKey)) || this.resolveLocaleLabel(s.labelCall, s.label) : s.label;
+    label.value = labelShown;
+    if (s.labelCall) {
+      label.title = `${s.labelCall} - ${labelShown}`;
+    }
     label.placeholder = _t("userscript.useSettingEditor.label", "Label");
     label.setAttribute("aria-label", label.placeholder);
     top.append(label);
@@ -464,8 +571,24 @@ class UseSettingEditor {
       const r = ctl.read();
       if (!r.ok) return say(r.error, "error");
 
+      // t() labels keep their call form in the code. Unmodified labels rewrite
+      // nothing; an edit updates locales.en[<t-key>] instead of replacing the
+      // call with a hardcoded string.
+      let labelArg = lab;
+      if (cur.labelCall) {
+        labelArg = cur.labelCall;
+        const tKey = UseSettingEditor.tCallKey(cur.labelCall);
+        // Only an explicit label edit rewrites locales.en[<t-key>]; the input
+        // shows the English value, which is the canonical text.
+        if (tKey && labelDirty && lab !== this.lookupEnValue(tKey)) this.onLocalesChange?.(tKey, lab, true);
+      }
+      // Select option rows may carry their own locale writes: labels edited in
+      // the row editor get auto-generated keys written to locales.en.
+      if (Array.isArray(r.localeWrites)) {
+        for (const w of r.localeWrites) this.onLocalesChange?.(w.key, w.value, w.overwrite);
+      }
       const defaultCode = ctl.editable ? this.literal(r.value, cur.indent) : cur.defaultSrc;
-      const call = this.buildCall(cur.key, lab, cur.type, defaultCode);
+      const call = this.buildCall(cur.key, labelArg, cur.type, defaultCode);
       const code = this.codeEditor.getValue();
       if (code.slice(cur.from, cur.to) !== call) {
         this.write(cur.from, cur.to, call);
@@ -476,9 +599,13 @@ class UseSettingEditor {
         }
       }
       say(_t("userscript.useSettingEditor.success", "Saved"), "ok");
-    }, 450);
+    }, 1000);
 
-    label.addEventListener("input", () => commit(false));
+    let labelDirty = false;
+    label.addEventListener("input", () => {
+      labelDirty = true;
+      commit(false);
+    });
     label.addEventListener("blur", () => commit(true));
 
     const ctl = this.buildControl(supported ? s.type : "custom", s, (immediate) => commit(immediate));
@@ -507,7 +634,9 @@ class UseSettingEditor {
       return { el: wrap, editable: true, read: () => ({ ok: true, value: input.checked }) };
     }
 
-    if (type === SETTING_TYPES.TEXT && editable && (typeof value === "string" || value === undefined)) {
+    // Plain text default. A t() default is left to the custom-value UI below
+    // so the call stays lossless in the code.
+    if (type === SETTING_TYPES.TEXT && editable && (typeof value === "string" || value === undefined) && !setting?.defaultTKey) {
       const input = document.createElement("input");
       input.type = "text";
       input.value = value || "";
@@ -533,86 +662,179 @@ class UseSettingEditor {
     return { el: wrap, editable: false, read: () => ({ ok: true, value: undefined }) };
   }
 
+  /**
+   * Builds the select option editor: one row per option with a value input and
+   * a label input. Editing a label automatically generates a translation key
+   * from the English text (locales.en entry written at commit); labels the
+   * user never touches stay plain. Option values are never localized.
+   */
   buildSelectControl(options, onChange) {
     const wrap = _el("div", "us-ctl us-select");
 
-    const ta = document.createElement("textarea");
-    ta.className = "us-options";
-    ta.spellcheck = false;
-    ta.placeholder = "value | Label";
-    ta.value = options
+    // Row state: { value, label, tKey, startEn, dirty }. `tKey` marks a
+    // localized label; `startEn` is the label text when the key was assigned,
+    // used to detect explicit edits (overwrite) versus untouched entries.
+    const rows = options
       .filter((o) => o && typeof o === "object")
       .map((o) => {
-        const v = String(o.value ?? "");
-        const l = String(o.label ?? v);
-        return l === v ? v : `${v} | ${l}`;
-      })
-      .join("\n");
-    ta.rows = Math.max(3, Math.min(8, options.length + 1));
+        const key = o.label && typeof o.label === "object" && o.label.__type === "translation" ? o.label.key : null;
+        return {
+          value: String(o.value ?? ""),
+          label: key ? (this.lookupEnValue(key) ?? "") : String(o.label ?? ""),
+          tKey: key,
+          startEn: key ? (this.lookupEnValue(key) ?? "") : null,
+          dirty: false,
+        };
+      });
 
-    const help = _el("small", "us-help", _t("userscript.useSettingEditor.optionsHelp", "One option per line: value | Label"));
+    const listEl = _el("div", "us-options-list");
+    const takenKeys = () => new Set([...this.settings.map((s) => s.key), ...this.localeKeySet()]);
+
+    // Assigns a translation key to every edited plain row, before commit.
+    const ensureKeys = () => {
+      for (const row of rows) {
+        if (row.tKey || !row.dirty || !row.label.trim()) continue;
+        row.tKey = generateSettingKey(row.label, takenKeys());
+        row.startEn = row.label;
+      }
+    };
+
+    const rerender = () => {
+      listEl.textContent = "";
+      rows.forEach((row) => listEl.append(this.buildOptionRow(row, rows, onChange, rerender, takenKeys, syncDefault)));
+    };
+
+    const help = _el(
+      "small",
+      "us-help",
+      _t("userscript.useSettingEditor.optionsHelp", "Each option needs a value and a label. Edited labels automatically get a translation key."),
+    );
 
     const defRow = _el("label", "us-default-row");
     defRow.append(_el("span", "us-caption", _t("userscript.useSettingEditor.defaultOption", "Default option")));
     const sel = document.createElement("select");
     defRow.append(sel);
 
-    const parse = () => {
-      const seen = [];
-      ta.value.split("\n").forEach((raw) => {
-        if (!raw.trim()) return;
-        const p = raw.indexOf("|");
-        const value = (p === -1 ? raw : raw.slice(0, p)).trim();
-        const label = p === -1 ? value : raw.slice(p + 1).trim() || value;
-        seen.push({ value, label });
-      });
-      return seen;
-    };
-
     let selectedValue = (options.find((o) => o && o.selected) || options[0] || {}).value;
     const syncDefault = () => {
-      const opts = parse();
       sel.textContent = "";
-      opts.forEach((o) => {
+      rows.forEach((o) => {
         const opt = document.createElement("option");
         opt.value = o.value;
-        opt.textContent = o.label;
+        opt.textContent = o.tKey ? this.resolveLocaleKey(o.tKey) : o.label;
         sel.append(opt);
       });
-      if (opts.some((o) => o.value === selectedValue)) sel.value = selectedValue;
-      else selectedValue = sel.value = opts[0]?.value ?? "";
+      if (rows.some((o) => o.value === selectedValue)) sel.value = selectedValue;
+      else selectedValue = sel.value = rows[0]?.value ?? "";
     };
+    rerender();
     syncDefault();
 
-    ta.addEventListener("input", () => {
-      syncDefault();
-      onChange(false);
-    });
-    ta.addEventListener("blur", () => onChange(true));
     sel.addEventListener("change", () => {
       selectedValue = sel.value;
       onChange(true);
     });
 
-    wrap.append(ta, help, defRow);
+    const addBtn = this.makeButton(
+      "+ " + _t("userscript.useSettingEditor.addOption", "Option"),
+      () => {
+        rows.push({ value: "", label: "", tKey: null, startEn: null, dirty: false });
+        rerender();
+        syncDefault();
+        onChange(true);
+      },
+      { className: "us-add-option" },
+    );
+
+    wrap.append(listEl, addBtn, help, defRow);
 
     return {
       el: wrap,
       editable: true,
       read: () => {
-        const opts = parse();
-        if (opts.length < 2) return { ok: false, error: _t("userscript.useSettingEditor.warn.selectOptions", "Add at least two options.") };
-        if (opts.some((o) => !o.value))
+        ensureKeys();
+        if (rows.length < 2) return { ok: false, error: _t("userscript.useSettingEditor.warn.selectOptions", "Add at least two options.") };
+        if (rows.some((o) => !o.value.trim() || !o.label.trim()))
           return { ok: false, error: _t("userscript.useSettingEditor.warn.emptyLabelorOptions", "Every option needs a value and a label.") };
-        if (new Set(opts.map((o) => o.value)).size !== opts.length)
+        if (new Set(rows.map((o) => o.value.trim())).size !== rows.length)
           return { ok: false, error: _t("userscript.useSettingEditor.warn.duplicateOption", "Option values must be unique.") };
-        const chosen = opts.some((o) => o.value === sel.value) ? sel.value : opts[0].value;
-        return { ok: true, value: opts.map((o) => ({ value: o.value, label: o.label, selected: o.value === chosen })) };
+        const chosen = rows.some((o) => o.value === selectedValue) ? selectedValue : rows[0].value;
+        return {
+          ok: true,
+          value: rows.map((o) => ({
+            value: o.value.trim(),
+            label: o.tKey ? { __type: "translation", key: o.tKey } : o.label.trim(),
+            selected: o.value === chosen,
+          })),
+          localeWrites: rows.filter((o) => o.tKey).map((o) => ({ key: o.tKey, value: o.label.trim(), overwrite: o.label !== o.startEn })),
+        };
       },
     };
   }
 
+  /** Builds one editable option row for buildSelectControl(). */
+  buildOptionRow(row, rows, onChange, rerender, takenKeys, syncDefault) {
+    const rowEl = _el("div", "us-opt-row");
+
+    const value = document.createElement("input");
+    value.type = "text";
+    value.className = "us-opt-value";
+    value.value = row.value;
+    value.spellcheck = false;
+    value.placeholder = _t("userscript.useSettingEditor.optionValue", "value");
+    value.setAttribute("aria-label", value.placeholder);
+    value.addEventListener("input", () => {
+      row.value = value.value;
+      onChange(false);
+    });
+
+    const label = document.createElement("input");
+    label.type = "text";
+    label.className = "us-opt-label";
+    label.value = row.label;
+    if (row.tKey) label.title = `t(${JSON.stringify(row.tKey)})`;
+    label.placeholder = _t("userscript.useSettingEditor.optionLabel", "Label");
+    label.setAttribute("aria-label", label.placeholder);
+    label.addEventListener("input", () => {
+      row.label = label.value;
+      row.dirty = true;
+      onChange(false);
+    });
+    // Editing a plain label assigns it a translation key automatically.
+    label.addEventListener("blur", () => {
+      if (!row.tKey && row.label.trim()) {
+        row.tKey = generateSettingKey(row.label, takenKeys());
+        row.startEn = row.label;
+        label.title = `t(${JSON.stringify(row.tKey)})`;
+      }
+      onChange(true);
+    });
+
+    const delBtn = this.makeIconButton(
+      typeof svg_paths !== "undefined" ? svg_paths.crossIconPaths : null,
+      () => {
+        rows.splice(rows.indexOf(row), 1);
+        rerender();
+        syncDefault();
+        onChange(true);
+      },
+      _t("common.delete", "Delete"),
+      "us-opt-del",
+    );
+
+    rowEl.append(value, label, delBtn);
+    return rowEl;
+  }
+
   /* ---------- code generation / writing ---------- */
+
+  /** Serializes a value; translation descriptors become t("key") calls. */
+  encodeValue(value) {
+    if (value && typeof value === "object" && !Array.isArray(value) && value.__type === "translation" && typeof value.key === "string") {
+      return `t(${JSON.stringify(value.key)})`;
+    }
+    return JSON.stringify(value);
+  }
 
   literal(value, indent = "") {
     if (value === undefined) return "null";
@@ -620,7 +842,7 @@ class UseSettingEditor {
       const obj = (o) =>
         "{ " +
         Object.entries(o)
-          .map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${JSON.stringify(v)}`)
+          .map(([k, v]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${this.encodeValue(v)}`)
           .join(", ") +
         " }";
       return "[\n" + value.map((o) => `${indent}  ${obj(o)},`).join("\n") + `\n${indent}]`;
@@ -630,7 +852,9 @@ class UseSettingEditor {
   }
 
   buildCall(key, label, type, defaultCode) {
-    return `useSetting(${JSON.stringify(key)}, ${JSON.stringify(label)}, ${JSON.stringify(type)}, ${defaultCode})`;
+    // t("key") label calls are kept verbatim instead of being stringified.
+    const labelArg = /^t\s*\(\s*(['"])[^'"]+\1\s*\)$/.test(label) ? label : JSON.stringify(label);
+    return `useSetting(${JSON.stringify(key)}, ${labelArg}, ${JSON.stringify(type)}, ${defaultCode})`;
   }
 
   write(from, to, text) {
@@ -734,16 +958,36 @@ class UseSettingEditor {
 
     const keyIn = document.createElement("input");
     keyIn.type = "text";
-    keyIn.className = "us-draft-key";
+    keyIn.className = "us-draft-key is-auto";
     keyIn.placeholder = _t("userscript.useSettingEditor.placeholder.variableName", "Variable name");
     keyIn.spellcheck = false;
     const labIn = document.createElement("input");
     labIn.type = "text";
     labIn.className = "us-label";
-    labIn.placeholder = _t("userscript.useSettingEditor.placeholder.label", "Label");
+    labIn.placeholder = _t("userscript.useSettingEditor.placeholder.englishLabel", "English label (required)");
+    labIn.setAttribute("aria-label", labIn.placeholder);
+
+    // The key is generated from the English label until the user edits it by
+    // hand (any input event on keyIn counts as a manual edit).
+    let keyAuto = true;
+    const hint = _el(
+      "small",
+      "us-draft-hint",
+      _t("userscript.useSettingEditor.keyGeneratedHint", "The key is generated automatically from the English label. You can edit it."),
+    );
+    const takenKeys = () => new Set([...this.settings.map((s) => s.key), ...this.localeKeySet()]);
+    keyIn.addEventListener("input", () => {
+      if (!keyAuto) return;
+      keyAuto = false;
+      keyIn.classList.remove("is-auto");
+      hint.hidden = true;
+    });
+    labIn.addEventListener("input", () => {
+      if (keyAuto && labIn.value.trim()) keyIn.value = generateSettingKey(labIn.value, takenKeys());
+    });
 
     const fields = _el("div", "us-draft-fields");
-    fields.append(keyIn, labIn);
+    fields.append(keyIn, labIn, hint);
 
     const actions = _el("div", "us-draft-actions");
     const cancel = this.makeButton(_t("common.cancel", "Cancel"), () => {
@@ -756,12 +1000,22 @@ class UseSettingEditor {
       () => {
         const key = keyIn.value.trim();
         const label = labIn.value.trim();
-        if (!this.isValidVariable(key)) return say(_t("userscript.useSettingEditor.warn.validVariableName", "Enter a valid variable name."));
-        if (this.settings.some((s) => s.key === key)) return say(_t("userscript.useSettingEditor.warn.duplicateKey", "A setting with this name already exists."));
         if (!label) return say(_t("userscript.useSettingEditor.warn.emptyLabel", "The label can't be empty."));
+        if (!this.isValidVariable(key)) return say(_t("userscript.useSettingEditor.warn.validVariableName", "Enter a valid variable name."));
+        // The key doubles as the translation key, so it must not collide with
+        // an existing setting or locale entry (never overwrite either).
+        if (this.settings.some((s) => s.key === key) || this.localeKeySet().has(key)) {
+          return say(_t("userscript.useSettingEditor.warn.duplicateKey", "A setting with this name already exists."));
+        }
         const r = ctl.read();
         if (!r.ok) return say(r.error);
-        this.insertSetting(key, label, type, r.value);
+        this.insertSetting(key, `t(${JSON.stringify(key)})`, type, r.value);
+        // Register the English translation; other languages stay untouched.
+        this.onLocalesChange?.(key, label, false);
+        // Select rows may already carry auto-generated option keys.
+        if (Array.isArray(r.localeWrites)) {
+          for (const w of r.localeWrites) this.onLocalesChange?.(w.key, w.value, w.overwrite);
+        }
       },
       { className: "btn-primary" },
     );

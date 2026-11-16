@@ -35,6 +35,40 @@
     return str;
   }
 
+  /**
+   * Ordered language/folder candidates for a requested tag, most specific first:
+   * exact tag, script variant ("zh-Hans-CN" -> "zh-CN"), base language, then the
+   * other Chinese variant as a last resort (Traditional-leaning tags prefer
+   * zh-TW first). Shared by the UI loader below and the parser `locales`
+   * selection (parser-locales.js), so both always resolve the same language.
+   * @param {string} lang
+   * @returns {string[]}
+   */
+  function getLangCandidates(lang) {
+    if (typeof lang !== "string" || !lang) return [];
+    const shortLang = lang.split("-")[0];
+
+    // Known script-to-region variants so tags like "zh-Hans-CN" resolve to the
+    // Simplified Chinese folder instead of falling back to English.
+    const lowerLang = lang.toLowerCase();
+    const scriptVariant = lowerLang.startsWith("zh-hans") ? "zh-CN" : lowerLang.startsWith("zh-hant") ? "zh-TW" : null;
+
+    // Candidate folder names, most specific first: exact tag, script variant,
+    // then the base language. Deduped so repeated candidates fetch only once.
+    const candidates = [...new Set([lang, scriptVariant, shortLang].filter(Boolean))];
+
+    // Last-resort Chinese cross-variant matching: when the exact tag, script
+    // variant and base language folder all miss, try the other Chinese variant
+    // before falling back to English. Traditional-leaning requests prefer the
+    // Traditional folder first.
+    if (lowerLang.startsWith("zh")) {
+      const traditional = scriptVariant === "zh-TW" || /^(zh-hant|zh-tw|zh-hk|zh-mo)/.test(lowerLang);
+      const cross = traditional ? ["zh-TW", "zh-CN"] : ["zh-CN", "zh-TW"];
+      candidates.push(...cross.filter((code) => !candidates.includes(code)));
+    }
+    return candidates;
+  }
+
   const LOG_PREFIX = "[WEB PRESENCE - i18n]:";
 
   // Class
@@ -172,10 +206,14 @@
       const shortLang = lang.split("-")[0];
       const sharedBase = this._isExtension() ? browser.runtime.getURL("locales") : "/locales";
 
+      const langCandidates = getLangCandidates(lang);
+
       const fetchWithFallback = async (base, file) => {
-        let data = await this._fetch(`${base}/${shortLang}/${file}`);
-        if (data == null && shortLang !== lang) data = await this._fetch(`${base}/${lang}/${file}`);
-        return data;
+        for (const candidate of langCandidates) {
+          const data = await this._fetch(`${base}/${candidate}/${file}`);
+          if (data != null) return { data, lang: candidate };
+        }
+        return { data: null, lang: null };
       };
 
       const [sharedMain, sharedFallback, fetchedMain] = await Promise.all([
@@ -184,8 +222,10 @@
         fetchWithFallback(base, `${ns}.json`),
       ]);
 
-      this.lang = shortLang;
-      let main = fetchedMain;
+      // Track the folder that actually served the namespace file; only when
+      // nothing resolved keep the legacy short code for the fallback check below.
+      this.lang = fetchedMain.lang ?? shortLang;
+      let main = fetchedMain.data;
 
       if (main == null) {
         if (this.lang !== this.fallbackLang) {
@@ -200,7 +240,7 @@
 
       const fallback = this.lang !== this.fallbackLang ? ((await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? {}) : main;
 
-      this._translations[ns] = { ...(sharedMain ?? {}), ...main };
+      this._translations[ns] = { ...(sharedMain?.data ?? {}), ...main };
       this._fallback[ns] = { ...(sharedFallback ?? {}), ...fallback };
       this.activeNamespace = ns;
 
@@ -295,6 +335,14 @@
      * @returns {Promise<void>}
      */
     async setLang(lang, namespace) {
+      const ns = namespace ?? this.activeNamespace;
+      if (this._isExtension() && ns === "extension") {
+        try {
+          await browser.storage.local.set({ lang });
+        } catch (e) {
+          console.warn(`${LOG_PREFIX} Could not persist language to extension storage:`, e);
+        }
+      }
       if (typeof localStorage !== "undefined") {
         try {
           localStorage.setItem("lang", lang);
@@ -302,7 +350,7 @@
           /* quota / private mode */
         }
       }
-      return this.load(namespace ?? this.activeNamespace, lang);
+      return this.load(ns, lang);
     }
   }
 
@@ -364,6 +412,10 @@
   // Exports
 
   const i18n = new I18n();
+
+  // Pure helpers shared with other modules
+  I18n.interpolate = interpolate;
+  I18n.getLangCandidates = getLangCandidates;
 
   global.I18n = I18n;
   global.i18n = i18n;
