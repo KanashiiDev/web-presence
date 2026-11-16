@@ -146,6 +146,7 @@ jobs:
           HOME: /root
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ github.token }}
           LOCAL_DEB_DIR: "./dist"
         run: |
           Xvfb :99 -screen 0 1024x768x24 -ac &

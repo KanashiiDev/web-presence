@@ -17,11 +17,11 @@ pacman -Syu --noconfirm \
   git-lfs \
   gnome-keyring \
   libcurl-gnutls \
-  pre-commit || true
+  pre-commit
 
 echo "Installing debloated packages..."
 echo "---------------------------------------------------------------"
-get-debloated-pkgs --add-common --prefer-nano || true
+get-debloated-pkgs --add-common --prefer-nano
 
 if [ -z "${VERSION:-}" ]; then
   VERSION=$(sed -n 's/.*"version": *"\(.*\)".*/\1/p' package.json)
