@@ -4,6 +4,11 @@
     "extension": true,
     "server": true
   },
+  "es": {
+    "label": "Spanish",
+    "extension": true,
+    "server": true
+  },
   "fr": {
     "label": "French",
     "extension": true,
