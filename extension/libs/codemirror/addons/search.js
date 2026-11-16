@@ -143,7 +143,7 @@
     // Replace area (collapsed by default)
     var replaceToggle = el("button", { type: "button", className: "cm-search-replace-toggle", title: "Replace" }, "Replace");
     var replaceArea = el("div", { className: "cm-search-replace hidden" });
-    var replaceInput = el("input", { type: "text", className: "cm-replace-field", "aria-label": "Replacement" });
+    var replaceInput = el("input", { type: "search", className: "cm-replace-field", "aria-label": "Replacement" });
     var replaceBtn = el("button", { type: "button", className: "cm-search-replace-btn" }, "Replace");
     var replaceNextBtn = el("button", { type: "button", className: "cm-search-replace-next-btn" }, "Replace");
     var replaceAllBtn = el("button", { type: "button", className: "cm-search-replace-all-btn" }, "Replace All");
