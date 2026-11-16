@@ -494,6 +494,8 @@
   "userscript.codeEditor.status.errors": "{0} erreurs",
   "userscript.codeEditor.status.warnings": "{0} avertissements",
   "userscript.codeEditor.status.selection": "{0} sélectionnés",
+  "userscript.codeEditor.problems.toggle": "Problèmes",
+  "userscript.codeEditor.problems.empty": "Aucun problème détecté",
   "userscript.iframeSelectors.label": "Accès iframe",
   "userscript.iframeSelectors.configure": "Configurer",
   "userscript.iframeSelectors.help": "Utilisé pour récupérer les données des lecteurs iframe du site.",

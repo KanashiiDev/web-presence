@@ -709,6 +709,16 @@ li.CodeMirror-hint-active {
           filter: saturate(600%) hue-rotate(140deg) brightness(1.7);
 }
 
+.CodeMirror-linebackground,
+.CodeMirror-activeline-gutter {
+  transition: background var(--transition-reduced-fast, 0.2s) ease;
+}
+
+.cm-lint-flash .CodeMirror-linebackground,
+.cm-lint-flash .CodeMirror-activeline-gutter {
+  background: var(--foreground-color-600, #666) !important;
+}
+
 @media (max-width: 600px) {
   .cm-search-advanced-panel {
     -ms-flex-wrap: wrap;

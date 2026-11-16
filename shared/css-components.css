@@ -269,6 +269,7 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text-color-primary);
   background: var(--foreground-color-300);
   transition:
+    color var(--transition-normal) ease,
     border-color var(--transition-normal) ease,
     background var(--transition-normal) ease;
   user-select: none;

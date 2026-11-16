@@ -76,17 +76,24 @@
             <div class="usm-editor-panels">
               <div class="usm-panel usm-panel-code active" data-tab="code">
                 <textarea id="inCode" rows="15" data-i18n="userscript.codeEditor.placeholder" placeholder="// Your javaScript code here..."></textarea>
-                <div class="cm-status-bar">
+                <div class="cm-status-bar" id="cmStatusBar">
                   <span id="cmStatusPos"></span>
                   <span id="cmStatusSel" hidden></span>
-                  <button type="button" id="cmStatusErrors" class="btn chip error" hidden></button>
-                  <button type="button" id="cmStatusWarnings" class="btn chip warning" hidden></button>
+                  <button class="btn" id="btnProblemsToggle" type="button">
+                    <span data-i18n="userscript.codeEditor.problems.toggle">Problems</span>
+                    <span class="problems-count errors" id="problemsCountErrors" hidden></span>
+                    <span class="problems-count warnings" id="problemsCountWarnings" hidden></span>
+                  </button>
                   <button class="btn usm-notes-toggle" type="button" data-i18n="userscript.codeEditor.help">Show required variables and helpers</button>
                   <div class="usm-code-toolbar">
-                    <button class="btn" id="btnFoldAll" data-i18n="userscript.codeEditor.foldAll">Fold All</button>
-                    <button class="btn" id="btnUnfoldAll" data-i18n="userscript.codeEditor.unfoldAll">Unfold All</button>
+                    <button class="btn" id="btnFoldToggle" data-i18n="userscript.codeEditor.foldAll">Fold All</button>
                     <button class="btn" id="btnWrapToggle" data-i18n="userscript.codeEditor.wrapToggle">Wrap</button>
                     <button class="btn" id="btnFormat" data-i18n="userscript.codeEditor.beautify">Beautify</button>
+                  </div>
+                </div>
+                <div class="usm-problems-panel" id="usmProblemsPanel" hidden>
+                  <div class="usm-problems-list" id="usmProblemsList">
+                    <div class="usm-problems-content" id="usmProblemsContent"></div>
                   </div>
                 </div>
                 <div class="usm-notes-body" hidden>

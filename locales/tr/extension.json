@@ -494,6 +494,8 @@
   "userscript.codeEditor.status.errors": "{0} hata",
   "userscript.codeEditor.status.warnings": "{0} uyarı",
   "userscript.codeEditor.status.selection": "{0} seçili",
+  "userscript.codeEditor.problems.toggle": "Sorunlar",
+  "userscript.codeEditor.problems.empty": "Sorun tespit edilmedi",
   "userscript.iframeSelectors.label": "Iframe Erişimi",
   "userscript.iframeSelectors.configure": "Düzenle",
   "userscript.iframeSelectors.help": "Sitedeki iframe player'larından veriyi almak için kullanılır.",

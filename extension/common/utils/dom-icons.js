@@ -222,6 +222,11 @@ function createListActionButtons(itemId, isEnabled) {
 }
 
 const svg_paths = {
+  PROBLEM_SEVERITY_ICONS: {
+    error: ["M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z", "M15 9l-6 6", "M9 9l6 6"],
+    warning: ["M10.3 3.9L1.8 18.5a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z", "M12 9v4", "M12 17h.01"],
+    info: ["M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z", "M12 8v4", "M12 16h.01"],
+  },
   menuIconPaths: ["M4 6h16", "M4 12h16", "M4 18h16"],
   moreIconPaths: ["M2 8a2 2 0 1 0 4 0a2 2 0 1 0-4 0", "M10 8a2 2 0 1 0 4 0a2 2 0 1 0-4 0", "M18 8a2 2 0 1 0 4 0a2 2 0 1 0-4 0"],
   redirectIconPaths: ["M18 3h3v3", "M21 3l-9 9", "M15 3H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9"],

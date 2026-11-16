@@ -494,6 +494,8 @@
   "userscript.codeEditor.status.errors": "{0} errors",
   "userscript.codeEditor.status.warnings": "{0} warnings",
   "userscript.codeEditor.status.selection": "{0} selected",
+  "userscript.codeEditor.problems.toggle": "Problems",
+  "userscript.codeEditor.problems.empty": "No problems detected",
   "userscript.iframeSelectors.label": "Iframe Access",
   "userscript.iframeSelectors.configure": "Configure",
   "userscript.iframeSelectors.help": "Used to retrieve data from iframe players on the site.",

@@ -35,7 +35,8 @@ body {
 .usm-panel,
 #scriptList,
 #parserList,
-#importResultList {
+#importResultList,
+.usm-problems-list {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -44,7 +45,8 @@ body {
 .usm-panel::-webkit-scrollbar,
 #scriptList::-webkit-scrollbar,
 #parserList::-webkit-scrollbar,
-#importResultList::-webkit-scrollbar {
+#importResultList::-webkit-scrollbar,
+.usm-problems-list::-webkit-scrollbar {
   display: none;
 }
 
@@ -313,11 +315,6 @@ input[disabled] {
   width: 100%;
   box-sizing: content-box !important;
   line-height: 1.4 !important;
-}
-
-/* Temporary highlight for the line targeted by lint navigation (F8) */
-.cm-lint-flash {
-  background: var(--foreground-color-600) !important;
 }
 
 .message {
@@ -1386,7 +1383,7 @@ button.btnMore.btn svg {
 
 .usm-panel-code.active {
   display: grid;
-  grid-template-rows: minmax(160px, 1fr) auto auto;
+  grid-template-rows: minmax(160px, 1fr) auto auto auto;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -1412,8 +1409,13 @@ button.btnMore.btn svg {
   min-height: 0;
 }
 
-.usm-panel-code .cm-status-bar {
+.usm-panel-code .usm-problems-panel {
   grid-row: 3;
+  min-height: 0;
+}
+
+.usm-panel-code .cm-status-bar {
+  grid-row: 4;
 }
 
 .cm-status-bar {
@@ -1429,37 +1431,12 @@ button.btnMore.btn svg {
   color: var(--text-color-muted);
 }
 
-.cm-status-bar .chip {
-  padding: 0 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-color-primary);
-  font-size: var(--font-sm);
-  cursor: pointer;
-}
-
-.cm-status-bar .chip[hidden] {
-  display: none;
-}
-
-.cm-status-bar .chip:hover {
-  background: var(--foreground-color-500);
-}
-
-.cm-status-bar .chip.error {
-  color: var(--red-color);
-}
-
-.cm-status-bar .chip.warning {
-  color: var(--yellow-color);
-}
-
 .cm-status-bar button {
   padding: 2px 8px;
   font-size: var(--font-sm);
 }
 
+#btnProblemsToggle,
 .cm-status-bar .usm-notes-toggle {
   flex: 0 1 auto;
   min-width: 0;
@@ -1470,6 +1447,10 @@ button.btnMore.btn svg {
   color: var(--text-color-muted);
 }
 
+#btnProblemsToggle {
+  margin-right: 5px;
+}
+
 .usm-code-toolbar {
   display: flex;
   align-items: center;
@@ -1477,9 +1458,112 @@ button.btnMore.btn svg {
   gap: 2px;
 }
 
-#btnWrapToggle.active {
+#cmStatusPos,
+#cmStatusSel {
+  padding: 0 5px 0 0;
+  border-right: 1px solid var(--border-color);
+  margin-right: 5px;
+}
+
+.usm-notes-toggle.active,
+#btnWrapToggle.active,
+#btnProblemsToggle.active {
   background: var(--foreground-color-500);
   color: var(--text-color-primary);
+}
+
+.cm-status-bar .problems-count {
+  min-width: 12px;
+  font-size: var(--font-xs);
+  border-left: 1px solid var(--border-color);
+  padding-left: 5px;
+}
+
+.cm-status-bar .problems-count.errors {
+  color: var(--red-color);
+}
+
+.cm-status-bar .problems-count.warnings {
+  color: var(--yellow-color);
+}
+
+.cm-status-bar .problems-count[hidden] {
+  display: none;
+}
+
+.usm-problems-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 30vh;
+  border-top: 1px solid var(--border-color);
+  background: var(--foreground-color-200);
+  font-size: var(--font-sm);
+}
+
+.usm-problems-panel[hidden] {
+  display: none;
+}
+
+.usm-problems-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  color: var(--text-color-secondary);
+}
+
+.usm-problems-empty {
+  padding: 10px 12px;
+  color: var(--text-color-muted);
+}
+
+.usm-problem-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.usm-problem-item:hover {
+  background: var(--foreground-color-500);
+}
+
+.usm-problem-item .problem-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.usm-problem-item.severity-error .problem-icon {
+  color: var(--red-color);
+}
+
+.usm-problem-item.severity-warning .problem-icon {
+  color: var(--yellow-color);
+}
+
+.usm-problem-item.severity-info .problem-icon {
+  color: var(--blue-color);
+}
+
+.usm-problem-item .problem-message {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.usm-problem-item .problem-location {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-color-muted);
+  white-space: nowrap;
 }
 
 .usm-notes-body {

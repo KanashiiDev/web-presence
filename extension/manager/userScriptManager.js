@@ -458,10 +458,14 @@ class UserScriptUI {
 
     document.querySelectorAll(".usm-notes-toggle").forEach((btn) => {
       btn.addEventListener("click", () => {
-        // The notes body lives outside the status bar (panel grid row), so reach it via the bar's next sibling.
-        const body = btn.closest(".cm-status-bar")?.nextElementSibling;
+        // The notes body is a sibling of the status bar.
+        const bar = btn.closest(".cm-status-bar");
+        const body = bar?.parentElement?.querySelector(":scope > .usm-notes-body");
         activateSimpleBar(body);
-        if (body && body.classList.contains("usm-notes-body")) body.hidden = !body.hidden;
+        if (body) {
+          body.hidden = !body.hidden;
+          btn.classList.toggle("active", !body.hidden);
+        }
       });
     });
 
@@ -691,14 +695,28 @@ class UserScriptUI {
       editor.on("mousedown", (cm, event) => this.addMultiCursor(cm, event));
     }
 
-    // Toolbar controls: fold all, unfold all and the line wrap toggle.
-    const btnFoldAll = document.getElementById("btnFoldAll");
-    const btnUnfoldAll = document.getElementById("btnUnfoldAll");
+    // Toolbar controls: fold toggle and the line wrap toggle.
+    const btnFoldToggle = document.getElementById("btnFoldToggle");
     const btnWrapToggle = document.getElementById("btnWrapToggle");
     const syncWrapButton = () => btnWrapToggle.classList.toggle("active", this.lineWrapEnabled);
 
-    btnFoldAll?.addEventListener("click", () => this.codeEditor.execCommand("foldAll"));
-    btnUnfoldAll?.addEventListener("click", () => this.codeEditor.execCommand("unfoldAll"));
+    // The label reflects the next action based on the editor's current fold state,
+    // keeping manual folds and keyboard shortcuts in sync.
+    const hasFoldedRanges = (cm) => cm.findMarks(CodeMirror.Pos(cm.firstLine(), 0), CodeMirror.Pos(cm.lastLine() + 1, 0)).some((mark) => mark.__isFold);
+    const syncFoldToggle = (cm = this.codeEditor) => {
+      if (!btnFoldToggle) return;
+      const folded = hasFoldedRanges(cm);
+      btnFoldToggle.textContent = i18n.t(folded ? "userscript.codeEditor.unfoldAll" : "userscript.codeEditor.foldAll");
+    };
+
+    btnFoldToggle?.addEventListener("click", () => {
+      const cm = this.codeEditor;
+      cm.execCommand(hasFoldedRanges(cm) ? "unfoldAll" : "foldAll");
+      syncFoldToggle(cm);
+    });
+    // External fold changes trigger the foldcode addon's fold/unfold signals.
+    this.codeEditor.on("fold", () => syncFoldToggle(this.codeEditor));
+    this.codeEditor.on("unfold", () => syncFoldToggle(this.codeEditor));
 
     syncWrapButton();
     btnWrapToggle?.addEventListener("click", async () => {
@@ -809,11 +827,16 @@ class UserScriptUI {
     this.statusBarBuilt = true;
     this.statusPos = document.getElementById("cmStatusPos");
     this.statusSel = document.getElementById("cmStatusSel");
-    this.statusErrors = document.getElementById("cmStatusErrors");
-    this.statusWarnings = document.getElementById("cmStatusWarnings");
 
-    this.statusErrors?.addEventListener("click", () => this.navigateLint(this.codeEditor, 1, "error"));
-    this.statusWarnings?.addEventListener("click", () => this.navigateLint(this.codeEditor, 1, "warning"));
+    // Problems panel
+    this.problemsPanel = document.getElementById("usmProblemsPanel");
+    this.problemsList = document.getElementById("usmProblemsList");
+    this.problemsContent = document.getElementById("usmProblemsContent");
+    this.problemsCountErrors = document.getElementById("problemsCountErrors");
+    this.problemsCountWarnings = document.getElementById("problemsCountWarnings");
+    this.btnProblemsToggle = document.getElementById("btnProblemsToggle");
+    this.btnProblemsToggle?.addEventListener("click", () => this.toggleProblemsPanel());
+    this.renderProblemsPanel();
     this.updateStatusBar();
   }
 
@@ -832,16 +855,84 @@ class UserScriptUI {
     const errors = this.lintAnnotations.filter((ann) => ann.severity === "error").length;
     const warnings = this.lintAnnotations.filter((ann) => ann.severity === "warning").length;
 
-    this.statusWarnings.hidden = warnings === 0;
-    this.statusErrors.hidden = errors === 0;
-    if (errors) {
-      this.statusErrors.textContent = i18n.t("userscript.codeEditor.status.errors", [errors]);
-      this.statusErrors.title = i18n.t("userscript.codeEditor.keyboardShortcuts.nextError");
+    // Problems button counts and panel content mirror every lint run.
+    if (this.problemsCountErrors) {
+      this.problemsCountErrors.hidden = errors === 0;
+      this.problemsCountErrors.textContent = String(errors);
     }
-    if (warnings) {
-      this.statusWarnings.textContent = i18n.t("userscript.codeEditor.status.warnings", [warnings]);
-      this.statusWarnings.title = i18n.t("userscript.codeEditor.keyboardShortcuts.nextError");
+    if (this.problemsCountWarnings) {
+      this.problemsCountWarnings.hidden = warnings === 0;
+      this.problemsCountWarnings.textContent = String(warnings);
     }
+    this.renderProblemsPanel();
+  }
+
+  toggleProblemsPanel() {
+    if (!this.problemsPanel) return;
+    const willOpen = this.problemsPanel.hidden;
+    this.problemsPanel.hidden = !willOpen;
+    this.btnProblemsToggle?.classList.toggle("active", willOpen);
+    if (willOpen && this.problemsList) activateSimpleBar(this.problemsList);
+    // The panel shares the grid with the editor: re-measure after the row changes.
+    setTimeout(() => this.codeEditor.refresh(), 0);
+  }
+
+  /**
+   * Renders the latest lint annotations in the Problems panel.
+   * Called by lint.js's onUpdateLinting hook.
+   */
+  renderProblemsPanel() {
+    if (!this.problemsList) return;
+
+    // Preserve SimpleBar's scroll structure by clearing only the inner content.
+    const target = this.problemsContent ?? this.problemsList;
+    clearChildren(target);
+
+    if (!this.lintAnnotations.length) {
+      const empty = document.createElement("div");
+      empty.className = "usm-problems-empty";
+      empty.textContent = i18n.t("userscript.codeEditor.problems.empty");
+      target.appendChild(empty);
+    } else {
+      const sorted = this.lintAnnotations.slice().sort((a, b) => a.from.line - b.from.line || a.from.ch - b.from.ch);
+      for (const ann of sorted) {
+        const severityClass = ann.severity === "error" || ann.severity === "warning" ? ann.severity : "info";
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = `usm-problem-item severity-${severityClass}`;
+
+        const icon = document.createElement("span");
+        icon.className = "problem-icon";
+        icon.appendChild(createSVG(svg_paths.PROBLEM_SEVERITY_ICONS[severityClass], { width: 12, height: 12, stroke: "currentColor" }));
+
+        const message = document.createElement("span");
+        message.className = "problem-message";
+        message.textContent = ann.message;
+
+        const location = document.createElement("span");
+        location.className = "problem-location";
+        location.textContent = `Ln ${ann.from.line + 1}, Col ${ann.from.ch + 1}`;
+
+        item.append(icon, message, location);
+        item.addEventListener("click", () => this.jumpToProblem(ann));
+        target.appendChild(item);
+      }
+    }
+
+    // Keep the SimpleBar scrollbar in sync while the panel is visible
+    if (!this.problemsPanel?.hidden) activateSimpleBar(this.problemsList);
+  }
+
+  /**
+   * Moves the cursor to a clicked diagnostic, mirroring the F8 navigation.
+   *
+   * @param {{from: {line: number, ch: number}}} ann Lint annotation.
+   */
+  jumpToProblem(ann) {
+    this.codeEditor.setCursor(ann.from);
+    this.codeEditor.scrollIntoView(null, 120);
+    this.codeEditor.focus();
+    this.flashLintLine(this.codeEditor, ann.from.line);
   }
 
   /**
