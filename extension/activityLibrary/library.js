@@ -469,7 +469,7 @@ const handleAddRepo = async () => {
   toggleAddRepoPanel(false);
   await loadAll();
   renderAll();
-  showStatus(i18n.t("library.status.repoAdded", [result.repo?.scripts?.length ?? 0]), false, 3500);
+  showStatus(i18n.t("library.status.repoAdded", { count: result.repo?.scripts?.length ?? 0 }), false, 3500);
 };
 
 const handleCheckUpdates = async () => {
@@ -491,7 +491,7 @@ const handleCheckUpdates = async () => {
   renderAll();
 
   const total = result.totalUpdates ?? 0;
-  showStatus(total === 0 ? i18n.t("library.status.allUpToDate") : i18n.t("library.status.updatesFound", [result.totalUpdates ?? 0]), false, 4000);
+  showStatus(total === 0 ? i18n.t("library.status.allUpToDate") : i18n.t("library.status.updatesFound", { count: result.totalUpdates ?? 0 }), false, 4000);
 };
 
 const handleBatchUpdate = async () => {
@@ -502,7 +502,7 @@ const handleBatchUpdate = async () => {
   if (!btn) return;
 
   btn.disabled = true;
-  showStatus(i18n.t("library.status.updatingBatch", [updates.length]), true, 0);
+  showStatus(i18n.t("library.status.updatingBatch", { count: updates.length }), true, 0);
 
   const result = await batchUpdate(updates).catch((err) => ({ ok: false, error: err.message }));
   btn.disabled = false;
@@ -516,7 +516,11 @@ const handleBatchUpdate = async () => {
   const failCount = result.failed?.length ?? 0;
   await loadAll();
   renderAll();
-  showStatus(failCount > 0 ? i18n.t("library.status.batchPartial", [okCount, failCount]) : i18n.t("library.status.batchDone", [okCount]), false, 3500);
+  showStatus(
+    failCount > 0 ? i18n.t("library.status.batchPartial", { count: okCount, failed: failCount }) : i18n.t("library.status.batchDone", { count: okCount }),
+    false,
+    3500,
+  );
 };
 
 const handleRepoListClick = async (e) => {
@@ -638,7 +642,7 @@ const handleScriptAction = async (btn, action) => {
   btn.replaceChildren(iconSVG("spinnerIconPaths", 13));
 
   const isInstall = action === "install";
-  showStatus(i18n.t(isInstall ? "library.status.installing" : "library.status.updating", [scriptMeta.title ?? "Script"]), true, 0);
+  showStatus(i18n.t(isInstall ? "library.status.installing" : "library.status.updating", { name: scriptMeta.title ?? "Script" }), true, 0);
 
   let fn = isInstall ? () => installScript(repoId, scriptMeta) : () => updateScript(repoId, scriptMeta);
   let result = await fn().catch((err) => ({ ok: false, error: err.message }));
@@ -655,7 +659,7 @@ const handleScriptAction = async (btn, action) => {
       fn = isInstall ? () => installScript(repoId, scriptMeta, { confirmMain: true }) : () => updateScript(repoId, scriptMeta, { confirmMain: true });
       result = await fn().catch((err) => ({ ok: false, error: err.message }));
     } else {
-      showStatus(i18n.t("library.warn.mainWorldCancelled", [scriptMeta.title ?? "Script"]), false, 5000);
+      showStatus(i18n.t("library.warn.mainWorldCancelled", { title: scriptMeta.title ?? "Script" }), false, 5000);
       btn.disabled = false;
       return;
     }
@@ -669,7 +673,7 @@ const handleScriptAction = async (btn, action) => {
     return;
   }
 
-  showStatus(i18n.t(isInstall ? "library.status.installed" : "library.status.updated", [scriptMeta.title]), false, 3000);
+  showStatus(i18n.t(isInstall ? "library.status.installed" : "library.status.updated", { name: scriptMeta.title }), false, 3000);
 
   state.installed = await getInstalledScripts();
   recomputePendingUpdates();
@@ -734,7 +738,7 @@ const renderUpdateBanner = () => {
 
   const count = state.pendingUpdates.length;
   banner.hidden = count === 0;
-  if (count > 0) textEl.textContent = i18n.t("library.banner.updatesAvailable", [count]);
+  if (count > 0) textEl.textContent = i18n.t("library.banner.updatesAvailable", { count });
 };
 
 const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
@@ -968,7 +972,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
 
       const text = document.createElement("span");
       text.className = "repo-new-banner-text";
-      text.textContent = i18n.t("library.banner.newActivities", [newInRepo.length]);
+      text.textContent = i18n.t("library.banner.newActivities", { count: newInRepo.length });
 
       const dismissBanner = () => {
         newBanner.remove();
@@ -1974,28 +1978,28 @@ function relativeTime(dateValue) {
 
   const s = Math.floor((Date.now() - past) / 1000);
   if (s < 0 || s < 45) return i18n.t("time.just_now");
-  if (s < 90) return i18n.t("time.minute_ago.one", [1]);
-  if (s < 3600) return i18n.t("time.minute_ago.other", [Math.floor(s / 60)]);
+  if (s < 90) return i18n.t("time.minute_ago.one", { count: 1 });
+  if (s < 3600) return i18n.t("time.minute_ago.other", { count: Math.floor(s / 60) });
 
   const mins = Math.floor(s / 60);
-  if (mins < 90) return i18n.t("time.hour_ago.one", [1]);
-  if (mins < 1440) return i18n.t("time.hour_ago.other", [Math.floor(mins / 60)]);
+  if (mins < 90) return i18n.t("time.hour_ago.one", { count: 1 });
+  if (mins < 1440) return i18n.t("time.hour_ago.other", { count: Math.floor(mins / 60) });
 
   const days = Math.floor(mins / 1440);
   if (days === 1) return i18n.t("time.yesterday");
-  if (days < 7) return i18n.t("time.days_ago", [days]);
+  if (days < 7) return i18n.t("time.days_ago", { count: days });
 
   const weeks = Math.floor(days / 7);
-  if (weeks === 1) return i18n.t("time.week_ago.one", [1]);
-  if (weeks < 5) return i18n.t("time.week_ago.other", [weeks]);
+  if (weeks === 1) return i18n.t("time.week_ago.one", { count: 1 });
+  if (weeks < 5) return i18n.t("time.week_ago.other", { count: weeks });
 
   const months = Math.floor(days / 30.4);
-  if (months === 1) return i18n.t("time.month_ago.one", [1]);
-  if (months < 12) return i18n.t("time.month_ago.other", [months]);
+  if (months === 1) return i18n.t("time.month_ago.one", { count: 1 });
+  if (months < 12) return i18n.t("time.month_ago.other", { count: months });
 
   const years = Math.floor(months / 12);
-  if (years === 1) return i18n.t("time.year_ago.one", [1]);
-  return i18n.t("time.year_ago.other", [years]);
+  if (years === 1) return i18n.t("time.year_ago.one", { count: 1 });
+  return i18n.t("time.year_ago.other", { count: years });
 }
 
 if (document.readyState === "loading") {

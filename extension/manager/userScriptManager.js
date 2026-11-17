@@ -52,15 +52,18 @@ const PARSER_LOCALE_LANGS = [
 
 /**
  * i18n lookup with an English fallback while a locale key is still missing
- * (i18n.t returns the key itself for unknown keys). `{0}`-style placeholders
- * are filled in the fallback too.
+ * (i18n.t returns the key itself for unknown keys). Placeholders in the
+ * fallback are filled too: `{0}`-style for array args, `{name}`-style for
+ * object args.
  */
 function localeText(key, fallback, args) {
   try {
     const result = args ? i18n.t(key, args) : i18n.t(key);
     if (result && result !== key) return result;
   } catch (_) {}
-  return Array.isArray(args) ? fallback.replace(/\{(\d+)\}/g, (m, i) => (i < args.length ? String(args[i]) : m)) : fallback;
+  if (Array.isArray(args)) return fallback.replace(/\{(\d+)\}/g, (m, i) => (i < args.length ? String(args[i]) : m));
+  if (args && typeof args === "object") return fallback.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(args, k) ? String(args[k]) : m));
+  return fallback;
 }
 
 /**
@@ -846,7 +849,7 @@ class UserScriptUI {
     this.statusPos.textContent = `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
     const selectedLength = this.codeEditor.somethingSelected() ? this.codeEditor.getSelection().length : 0;
     this.statusSel.hidden = !selectedLength;
-    this.statusSel.textContent = selectedLength ? i18n.t("userscript.codeEditor.status.selection", [selectedLength]) : "";
+    this.statusSel.textContent = selectedLength ? i18n.t("userscript.codeEditor.status.selection", { count: selectedLength }) : "";
   }
 
   updateLintSummary(annotations) {
@@ -1781,7 +1784,7 @@ class UserScriptUI {
     const el = document.getElementById("localesLangProgress");
     if (!el) return;
     const filled = keys.filter((k) => String(this.localesData?.[viewLang]?.[k] ?? "").trim()).length;
-    el.textContent = localeText("userscript.translations.langProgress", "{0}/{1} translated", [filled, keys.length]);
+    el.textContent = localeText("userscript.translations.langProgress", "{translated}/{total} translated", { translated: filled, total: keys.length });
     el.classList.toggle("is-complete", keys.length > 0 && filled === keys.length);
   }
 
@@ -2001,7 +2004,7 @@ class UserScriptUI {
     const prune = document.getElementById("btnPruneLocaleKeys");
     if (prune) {
       prune.hidden = unused.size === 0;
-      prune.textContent = localeText("userscript.translations.pruneUnused", "Remove unused ({0})", [unused.size]);
+      prune.textContent = localeText("userscript.translations.pruneUnused", "Remove unused ({count})", { count: unused.size });
     }
   }
 
@@ -2052,8 +2055,8 @@ class UserScriptUI {
       type: "warn",
       body: localeText(
         "userscript.translations.pruneBody",
-        "These keys are not used by any literal t() call and will be deleted from all languages: {0}. Keys built dynamically, such as t(variable), cannot be detected.",
-        [preview],
+        "These keys are not used by any literal t() call and will be deleted from all languages: {keys}. Keys built dynamically, such as t(variable), cannot be detected.",
+        { keys: preview },
       ),
       labelOk: localeText("common.remove", "Remove"),
     });
@@ -2507,7 +2510,7 @@ class UserScriptUI {
     // (hint: F8) or to save anyway.
     const lintErrorCount = this.lintAnnotations.filter((ann) => ann.severity === "error").length;
     if (lintErrorCount > 0) {
-      const body = i18n.t("userscript.editor.warn.lintErrors.body", [lintErrorCount]);
+      const body = i18n.t("userscript.editor.warn.lintErrors.body", { count: lintErrorCount });
       const proceed = await showConfirm(i18n.t("userscript.editor.warn.lintErrors.heading"), {
         type: "warn",
         body,

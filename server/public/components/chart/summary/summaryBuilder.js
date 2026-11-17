@@ -217,7 +217,7 @@ export function buildRankedList(items, type) {
     sub.className = "summary-sub";
     if ((isSongs && !item.artist) || !isSongs) {
       sub.dataset.i18n = `${item.uniqueSongs !== 1 ? "chart.summary.uniqueTrack.other" : "chart.summary.uniqueTrack.one"}`;
-      sub.dataset.i18nParams = JSON.stringify([item.uniqueSongs]);
+      sub.dataset.i18nParams = JSON.stringify({ count: item.uniqueSongs });
     }
     sub.textContent = isSongs ? item.artist || "" : `${item.uniqueSongs} unique track${item.uniqueSongs !== 1 ? "s" : ""}`;
 

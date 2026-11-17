@@ -35,25 +35,25 @@ export function relativeTime(dateValue) {
   if (s < 0) return t("time.just_now");
 
   if (s < 45) return t("time.just_now");
-  if (s < 90) return t("time.minute_ago.one", [1]);
-  if (s < 3600) return t("time.minute_ago.other", [Math.floor(s / 60)]);
+  if (s < 90) return t("time.minute_ago.one", { count: 1 });
+  if (s < 3600) return t("time.minute_ago.other", { count: Math.floor(s / 60) });
 
   const mins = Math.floor(s / 60);
-  if (mins < 90) return t("time.hour_ago.one", [1]);
-  if (mins < 1440) return t("time.hour_ago.other", [Math.floor(mins / 60)]);
+  if (mins < 90) return t("time.hour_ago.one", { count: 1 });
+  if (mins < 1440) return t("time.hour_ago.other", { count: Math.floor(mins / 60) });
 
   const days = Math.floor(mins / 1440);
   if (days === 1) return t("time.yesterday");
-  if (days < 7) return t("time.days_ago", [days]);
+  if (days < 7) return t("time.days_ago", { count: days });
 
   const weeks = Math.floor(days / 7);
-  if (weeks === 1) return t("time.week_ago.one", [1]);
-  if (weeks < 5) return t("time.week_ago.other", [weeks]);
+  if (weeks === 1) return t("time.week_ago.one", { count: 1 });
+  if (weeks < 5) return t("time.week_ago.other", { count: weeks });
 
   const months = Math.floor(days / 30.4);
-  if (months < 12) return t("time.month_ago.other", [months]);
+  if (months < 12) return t("time.month_ago.other", { count: months });
 
-  return t("time.year_ago.other", [Math.floor(months / 12)]);
+  return t("time.year_ago.other", { count: Math.floor(months / 12) });
 }
 
 // Full Date Time

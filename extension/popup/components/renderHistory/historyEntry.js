@@ -59,7 +59,7 @@ function createHistoryEntry(entry, historyIndex, type, filteredHistory = []) {
       playsSpan.className = "history-plays";
       playsSpan.textContent = `${totalPlays} plays`;
       playsSpan.dataset.i18n = "stats.totalPlays.count";
-      playsSpan.dataset.i18nParams = JSON.stringify([totalPlays]);
+      playsSpan.dataset.i18nParams = JSON.stringify({ count: totalPlays });
       small.appendChild(playsSpan);
     }
   } else {
