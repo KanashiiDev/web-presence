@@ -20,5 +20,17 @@
   "time.month_ago.one": "{0} ay önce",
   "time.month_ago.other": "{0} ay önce",
   "time.year_ago.one": "{0} yıl önce",
-  "time.year_ago.other": "{0} yıl önce"
+  "time.year_ago.other": "{0} yıl önce",
+  "common.settings": "Ayarlar",
+  "common.back": "Geri Dön",
+  "common.language": "Dil",
+  "common.goToLink": "Bağlantıya git",
+  "common.errorLabel": "Hata",
+  "common.info": "Bilgi",
+  "common.logs": "Günlükler",
+  "common.musicStats": "Müzik İstatistikleri",
+  "common.topArtists": "En Çok Dinlenen Sanatçılar",
+  "common.allTime": "Tüm Zamanlar",
+  "common.artist": "Sanatçı",
+  "common.source": "Kaynak"
 }

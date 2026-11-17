@@ -338,7 +338,7 @@ const LastFmListController = {
 
     const action = createIconButton(member ? svg_paths.crossIconPaths : svg_paths.plusIconPaths, {
       className: member ? "icon-btn icon-btn-danger priority-action" : "icon-btn priority-action",
-      title: i18n.t(member ? "settings.lastfm.remove" : "settings.lastfm.add"),
+      title: i18n.t(member ? "settings.lastfm.remove" : "common.add"),
     });
     action.dataset.role = wantedRole;
     action.addEventListener("click", () => {

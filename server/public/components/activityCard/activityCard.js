@@ -31,8 +31,8 @@ function updateactivityCardUI() {
   if (!act?.details) {
     if (activityCardState.lastKnownActivity.isPlaying !== false) {
       dom.activityCard.trackTitle.textContent = i18n.t("activity.empty");
-      dom.activityCard.trackArtist.textContent = i18n.t("activity.empty.artist");
-      dom.activityCard.trackSource.textContent = i18n.t("activity.empty.source");
+      dom.activityCard.trackArtist.textContent = i18n.t("common.artist");
+      dom.activityCard.trackSource.textContent = i18n.t("common.source");
       dom.activityCard.coverImage.src = "assets/icon-dark.png";
       dom.activityCard.progressFill.style.width = "0%";
       dom.activityCard.timePassed.textContent = "0:00";

@@ -6,7 +6,7 @@ const statsOptions = [
   { value: "week", label: "This Week", i18n: "stats.week" },
   { value: "month", label: "This Month", i18n: "stats.month" },
   { value: "year", label: "This Year", i18n: "stats.year" },
-  { value: "all", label: "All Time", i18n: "stats.all" },
+  { value: "all", label: "All Time", i18n: "common.allTime" },
   { value: "custom", label: "Custom", i18n: "stats.custom" },
 ];
 

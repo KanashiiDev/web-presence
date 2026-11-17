@@ -3,17 +3,17 @@
 // Discord only ever receives the saved profile data: form edits apply once the profile is saved.
 
 const CS_TYPE_OPTIONS = [
-  { value: "play", labelKey: "settings.customstatus.type.play", verbKey: "settings.customstatus.verb.play" },
-  { value: "listen", labelKey: "settings.customstatus.type.listen", verbKey: "settings.customstatus.verb.listen" },
-  { value: "watch", labelKey: "settings.customstatus.type.watch", verbKey: "settings.customstatus.verb.watch" },
+  { value: "play", labelKey: "userscript.editor.activityMode.play", verbKey: "settings.customstatus.verb.play" },
+  { value: "listen", labelKey: "userscript.editor.activityMode.listen", verbKey: "settings.customstatus.verb.listen" },
+  { value: "watch", labelKey: "userscript.editor.activityMode.watch", verbKey: "settings.customstatus.verb.watch" },
 ];
 
 // Top-level form fields built as label + input rows. The activity type select is built separately.
 const CS_FIELDS = [
   { key: "name", labelKey: "settings.customstatus.nameLabel", placeholderKey: "settings.customstatus.namePlaceholder" },
   { key: "state", labelKey: "settings.customstatus.stateLabel", placeholderKey: "settings.customstatus.statePlaceholder" },
-  { key: "details", labelKey: "settings.customstatus.detailsLabel", placeholderKey: "settings.customstatus.detailsPlaceholder" },
-  { key: "link", labelKey: "settings.customstatus.linkLabel", placeholderKey: "settings.customstatus.linkPlaceholder" },
+  { key: "details", labelKey: "userscript.tabs.details", placeholderKey: "settings.customstatus.detailsPlaceholder" },
+  { key: "link", labelKey: "settings.customstatus.linkLabel", placeholderKey: "settings.customstatus.largeImagePlaceholder" },
   { key: "largeImage", labelKey: "settings.customstatus.largeImageLabel", placeholderKey: "settings.customstatus.largeImagePlaceholder" },
 ];
 
@@ -157,8 +157,8 @@ const CustomStatusProfilesRow = {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "btn icon-btn-danger";
-    deleteBtn.title = i18n.t("settings.customstatus.deleteProfile");
-    deleteBtn.setAttribute("aria-label", i18n.t("settings.customstatus.deleteProfile"));
+    deleteBtn.title = i18n.t("common.delete");
+    deleteBtn.setAttribute("aria-label", i18n.t("common.delete"));
     deleteBtn.appendChild(createSVG(svg_paths.trashIconPaths));
     deleteBtn.addEventListener("click", () => CustomStatusController.onDeleteProfile());
 
@@ -190,7 +190,7 @@ const CustomStatusProfilesRow = {
     saveBtn.type = "button";
     saveBtn.className = "btn btn-primary";
     saveBtn.style.flex = "1";
-    saveBtn.textContent = i18n.t("settings.customstatus.saveProfile");
+    saveBtn.textContent = i18n.t("common.save");
 
     const saveAsNewBtn = document.createElement("button");
     saveAsNewBtn.type = "button";

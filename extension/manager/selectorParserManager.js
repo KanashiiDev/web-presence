@@ -662,11 +662,11 @@ class UserParserUI {
       }
       if (newParsers.length) {
         sections.push({
-          header: i18n.t("userparser.import.new"),
+          header: i18n.t("userparser.editor.newParser"),
           list: newParsers,
           prefix: "new",
           options: [
-            ["add", i18n.t("userscript.import.conflict.add")],
+            ["add", i18n.t("common.add")],
             ["skip", i18n.t("button.skip")],
           ],
         });

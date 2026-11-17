@@ -20,13 +20,13 @@
       <!-- Navigation -->
       <span id="actions">
         <span id="toggleContainer" data-i18n="actions.toggle_view" data-i18n-attr="title" role="button" aria-label="Toggle Grid/List View"></span>
-        <span id="settingsToggle" data-i18n="actions.settings" data-i18n-attr="title" role="button" aria-label="Open Settings"></span>
-        <span id="settingsBack" data-i18n="actions.back" data-i18n-attr="title" style="display: none" role="button" aria-label="Back to Dashboard"></span>
+        <span id="settingsToggle" data-i18n="common.settings" data-i18n-attr="title" role="button" aria-label="Open Settings"></span>
+        <span id="settingsBack" data-i18n="common.back" data-i18n-attr="title" style="display: none" role="button" aria-label="Back to Dashboard"></span>
       </span>
 
       <!-- Settings Container -->
       <div id="settingsContainer" style="display: none">
-        <h2 id="settingsTitle" data-i18n="settings.title"></h2>
+        <h2 id="settingsTitle" data-i18n="common.settings"></h2>
         <form id="settingsForm"></form>
         <div class="buttons">
           <button id="saveSettingsBtn" class="save-settings-btn" type="button" data-i18n="settings.save">Save Changes</button>
@@ -150,13 +150,13 @@
         <!-- Logs -->
         <section id="LogsContainer">
           <h2 class="collapsible logs" role="button">
-            <span data-i18n="logs.title"></span>
+            <span data-i18n="common.logs"></span>
 
             <label class="log-select">
               <select id="errorFilter" data-i18n-attr="aria-label" data-i18n="logs.filter">
                 <option value="all" data-i18n="common.all">All</option>
-                <option value="error" data-i18n="logs.error">Error</option>
-                <option value="info" data-i18n="logs.info">Info</option>
+                <option value="error" data-i18n="common.errorLabel">Error</option>
+                <option value="info" data-i18n="common.info">Info</option>
               </select>
             </label>
 

@@ -48,7 +48,7 @@ async function buildPortButtons(container) {
   const btnApply = document.createElement("span");
   btnApply.appendChild(createSVG(svg_paths.penIconPaths));
   btnApply.className = "port-apply-btn btn";
-  btnApply.title = i18n.t("settings.apply");
+  btnApply.title = i18n.t("common.apply");
 
   const spinner = createSpinner("", "span");
 
@@ -119,7 +119,7 @@ async function buildPortButtons(container) {
   const btnWebBridgeApply = document.createElement("span");
   btnWebBridgeApply.appendChild(createSVG(svg_paths.penIconPaths));
   btnWebBridgeApply.className = "port-apply-btn btn";
-  btnWebBridgeApply.title = i18n.t("settings.apply");
+  btnWebBridgeApply.title = i18n.t("common.apply");
 
   btnWebBridgeApply.addEventListener("click", async () => {
     btnWebBridgeApply.appendChild(spinner);

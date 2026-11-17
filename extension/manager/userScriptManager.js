@@ -69,8 +69,7 @@ function localeText(key, fallback, args) {
  * children, so `myList` shows its options underneath. Keys that belong to no
  * setting are plain nodes. Nodes follow the order of the code; keys that the
  * code does not use come last, in table order. Only keys that exist in the
- * table are shown ("Scan Keys from Code" adds the missing ones), and each key
- * appears once, at its first place in the code.
+ * table are shown, and each key appears once, at its first place in the code.
  * @returns {Array<{key: string|null, setting: {key: string, type: string}|null, children: Array<{key: string, value: string}>}>}
  */
 function buildLocaleTree(code, tableKeys, settings) {
@@ -1642,7 +1641,7 @@ class UserScriptUI {
     if (!keys.length) {
       const empty = document.createElement("div");
       empty.className = "usm-loc-empty";
-      empty.textContent = localeText("userscript.translations.empty", "No translation keys yet. Use “Scan Keys from Code” or “+ Key”.");
+      empty.textContent = localeText("userscript.translations.empty", "No translation keys yet. Use “+ Key”.");
       container.append(empty);
       this.refreshLocaleUsage();
       return;
@@ -2025,7 +2024,7 @@ class UserScriptUI {
     const missing = this.getMissingTranslations();
     btn.classList.toggle("all-ok", missing.length === 0);
     btn.classList.toggle("active", this._showMissingTranslations);
-    btn.textContent = missing.length === 0 && this._showMissingTranslations ? i18n.t("header.back") : i18n.t("userscript.translations.showMissing");
+    btn.textContent = missing.length === 0 && this._showMissingTranslations ? i18n.t("common.back") : i18n.t("userscript.translations.showMissing");
   }
 
   /** Toggles the missing-translations view. When on, cards whose target
@@ -2056,7 +2055,7 @@ class UserScriptUI {
         "These keys are not used by any literal t() call and will be deleted from all languages: {0}. Keys built dynamically, such as t(variable), cannot be detected.",
         [preview],
       ),
-      labelOk: localeText("userscript.translations.pruneConfirm", "Remove"),
+      labelOk: localeText("common.remove", "Remove"),
     });
     if (!proceed) return;
     for (const key of unused) {
@@ -2963,7 +2962,7 @@ ${codeIndented}
           list: newScripts,
           prefix: "new",
           options: [
-            ["add", i18n.t("userscript.import.conflict.add")],
+            ["add", i18n.t("common.add")],
             ["skip", i18n.t("button.skip")],
           ],
         });
@@ -3717,7 +3716,7 @@ ${codeIndented}
     const token = await githubContributeService.getToken();
 
     btn.classList.toggle("github-connected", !!token);
-    btn.title = token ? i18n.t("userscript.contribute.oauth.connectedTitle") : i18n.t("userscript.contribute.oauth.connectTitle");
+    btn.title = token ? i18n.t("userscript.contribute.oauth.connectedTitle") : i18n.t("userscript.contribute.oauth.title");
 
     // Clear existing avatar if any
     btn.querySelector(".github-avatar")?.remove();

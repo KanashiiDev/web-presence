@@ -10,8 +10,8 @@ export function renderChartContainer(containerId, mode = "listen") {
 
   const heading = document.createElement("h2");
   heading.id = `${p}chartHeader`;
-  heading.dataset.i18n = isWatch ? "chart.title.watch" : "chart.title";
-  heading.textContent = isWatch ? i18n.t("chart.title.watch") : i18n.t("chart.title");
+  heading.dataset.i18n = isWatch ? "chart.title.watch" : "common.musicStats";
+  heading.textContent = isWatch ? i18n.t("chart.title.watch") : i18n.t("common.musicStats");
 
   const controls = document.createElement("div");
   controls.className = "chart-controls";

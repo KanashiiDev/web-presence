@@ -277,9 +277,9 @@ const _panelConfigs = {
     elements: { list: "debugLogList", container: "debugLogContainer", empty: "debugEmpty", stats: "debugStats" },
     totalLabel: (entries, filtered) => `${i18n.t("filter.header.entries", { count: entries.length })} `,
     levelLabels: {
-      info: () => i18n.t("debug.filter.info"),
+      info: () => i18n.t("common.info"),
       warn: () => i18n.t("debug.filter.warn"),
-      error: () => i18n.t("debug.filter.error"),
+      error: () => i18n.t("common.errorLabel"),
     },
     afterRender: _buildSummaryAndMinimap,
   },

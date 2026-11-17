@@ -918,6 +918,7 @@ small > code {
   min-height: 0;
   margin: 0;
   padding: 0 6px 8px;
+  height: 100%;
   overflow-y: auto;
 }
 

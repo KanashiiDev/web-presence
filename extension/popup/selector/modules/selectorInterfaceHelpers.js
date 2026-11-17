@@ -102,7 +102,7 @@ let FIELDS_CONFIG = {
     required: true,
   },
   artist: {
-    label: "selector.editor.artist.label",
+    label: "settings.statusDisplayType.details",
     placeholder: "selector.editor.type.selectorText",
     desc: "selector.editor.artist.desc",
     type: "text",
@@ -132,7 +132,7 @@ let FIELDS_CONFIG = {
     type: "text",
   },
   source: {
-    label: "selector.editor.source.label",
+    label: "common.source",
     placeholder: "selector.editor.type.selectorText",
     desc: "selector.editor.source.desc",
     type: "text",
@@ -154,9 +154,9 @@ let FIELDS_CONFIG = {
     type: "select",
     desc: "selector.editor.activityMode.desc",
     options: [
-      { value: "listen", label: "selector.editor.activityMode.listen" },
-      { value: "watch", label: "selector.editor.activityMode.watch" },
-      { value: "play", label: "selector.editor.activityMode.play" },
+      { value: "listen", label: "userscript.editor.activityMode.listen" },
+      { value: "watch", label: "userscript.editor.activityMode.watch" },
+      { value: "play", label: "userscript.editor.activityMode.play" },
     ],
     defaultValue: "listen",
   },

@@ -77,7 +77,7 @@ async function initBackupButtons() {
       const originalText = syncBtn.textContent;
 
       try {
-        syncBtn.textContent = i18n.t("backup.sync");
+        syncBtn.textContent = i18n.t("backup.syncBtn");
         syncBtn.disabled = true;
 
         const result = await sendAction("syncHistory");

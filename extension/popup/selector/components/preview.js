@@ -16,7 +16,7 @@ function createPreviewSection(root) {
 
   const header = document.createElement("div");
   header.className = "header";
-  header.textContent = t("selector.preview.listenTo");
+  header.textContent = t("settings.customstatus.verb.listen");
 
   const body = document.createElement("div");
   body.className = "body";
@@ -39,11 +39,11 @@ function createPreviewSection(root) {
 
   const artist = document.createElement("div");
   artist.className = "artist";
-  artist.textContent = t("selector.editor.artist.label");
+  artist.textContent = t("settings.statusDisplayType.details");
 
   const source = document.createElement("div");
   source.className = "source";
-  source.textContent = t("selector.editor.source.label");
+  source.textContent = t("common.source");
 
   const isPlaying = document.createElement("div");
   isPlaying.className = "isPlaying";
@@ -186,12 +186,17 @@ async function updatePreview(shadow, editMode) {
     name: selectors.name || getCleanHostname() || "name",
     title: getText(selectors.title) || getPlainText(selectors.title) || (selectors.title ? "" : t("selector.editor.title.label")),
     artist: getText(selectors.artist) || getPlainText(selectors.artist) || (selectors.artist ? "" : "-1"),
-    source: getText(selectors.source) || getPlainText(selectors.source) || getCleanHostname() || t("selector.editor.source.label") || "source",
+    source: getText(selectors.source) || getPlainText(selectors.source) || getCleanHostname() || t("common.source") || "source",
     timePassed: getText(selectors.timePassed) || undefined,
     duration: getText(selectors.duration) || undefined,
     buttonText: getText(selectors.buttonText) || getPlainText(selectors.buttonText) || customActionText(),
     buttonText2: getText(selectors.buttonText2) || getPlainText(selectors.buttonText2) || customActionText(),
-    mode: selectors.mode === "watch" ? t("selector.preview.watchTo") : selectors.mode === "play" ? t("selector.preview.playTo") : t("selector.preview.listenTo"),
+    mode:
+      selectors.mode === "watch"
+        ? t("settings.customstatus.verb.watch")
+        : selectors.mode === "play"
+          ? t("userscript.editor.activityMode.play")
+          : t("settings.customstatus.verb.listen"),
   };
 
   // Trim texts

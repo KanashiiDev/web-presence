@@ -18,7 +18,7 @@ const initLanguageSelect = async (container) => {
     const label = document.createElement("label");
     label.className = "setting-label";
     label.textContent = "Language";
-    label.dataset.i18n = "settings.language";
+    label.dataset.i18n = "common.language";
 
     const select = document.createElement("select");
     select.id = "languageSelect";

@@ -240,7 +240,7 @@ export const initLanguageSelect = async (container) => {
     const wrapper = createElement("div", "settings-option");
     const label = createElement("div", "setting-label", {
       textContent: "Language",
-      "data-i18n": "settings.language",
+      "data-i18n": "common.language",
     });
 
     // send the filtered data to the createSelect function

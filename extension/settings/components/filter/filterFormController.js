@@ -381,7 +381,7 @@ const FormController = {
         originalGroup.className = "inline-input-group";
         originalGroup.append(
           this._input(
-            isReplace ? i18n.t("filter.artist.original") : i18n.t("filter.artist"),
+            isReplace ? i18n.t("filter.artist.original") : i18n.t("common.artist"),
             entry.artist,
             (e) => {
               FilterState.form.entries[index].artist = e.target.value;

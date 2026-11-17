@@ -787,7 +787,7 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
     removeBtn.dataset.action = "removeRepo";
     removeBtn.dataset.repoId = repo.id;
     removeBtn.title = i18n.t("library.repo.removeTitle");
-    removeBtn.textContent = i18n.t("library.repo.remove");
+    removeBtn.textContent = i18n.t("common.remove");
     actions.appendChild(removeBtn);
     header.appendChild(actions);
   }
@@ -917,10 +917,10 @@ const renderRepoBlock = (block, repo, precomputedUpdateCount) => {
   chipRow.className = "filter-chip-row";
 
   const filters = [
-    { key: "all", label: i18n.t("library.filter.all") },
+    { key: "all", label: i18n.t("common.all") },
     { key: "installed", label: i18n.t("library.filter.installed") },
     { key: "updates", label: i18n.t("library.filter.updates") },
-    { key: "new", label: i18n.t("library.filter.new") },
+    { key: "new", label: i18n.t("common.new") },
   ];
 
   for (const f of filters) {
@@ -1648,11 +1648,11 @@ const buildScriptActionButtons = (actionsEl, row, meta, sid, repoId, local, hasU
     updateBadge.className = "script-category-badge badge badge-sm badge-warning-dark";
     updateBadge.textContent = i18n.t("library.action.update");
     row.querySelector(".script-status-badges").appendChild(updateBadge);
-    const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("library.action.remove"), "remove-btn");
+    const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("common.remove"), "remove-btn");
     btnRem.appendChild(iconSVG("trashIconPaths", 14));
     actionsEl.append(btnUpd, btnRem);
   } else {
-    const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("library.action.remove"), "remove-btn");
+    const btnRem = makeActionBtn("removeScript", localId, repoId, meta, i18n.t("common.remove"), "remove-btn");
     btnRem.appendChild(iconSVG("trashIconPaths", 14));
     const btnOk = document.createElement("button");
     btnOk.className = "script-action-btn";

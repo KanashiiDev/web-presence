@@ -9,7 +9,7 @@ export function createHistoryItem(entry) {
     imageLink.href = entry.link;
     imageLink.target = "_blank";
     imageLink.rel = "noopener noreferrer";
-    imageLink.title = i18n.t("history.goToLink");
+    imageLink.title = i18n.t("common.goToLink");
   }
 
   const imgContainer = document.createElement("div");

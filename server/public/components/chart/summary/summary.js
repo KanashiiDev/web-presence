@@ -78,7 +78,7 @@ export function createSummaryController(p = "", historyMode = "listen", chartSta
     const rHeader = document.createElement("div");
     rHeader.className = "summary-column-header";
     rHeader.textContent = "Top Artists";
-    rHeader.dataset.i18n = "chart.summary.topArtists";
+    rHeader.dataset.i18n = "common.topArtists";
     rightCol.append(rHeader, buildRankedList(data.topArtists, "artists"));
 
     layout.append(leftCol, rightCol);

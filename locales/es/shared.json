@@ -20,5 +20,17 @@
   "time.month_ago.one": "hace {0} mes",
   "time.month_ago.other": "hace {0} meses",
   "time.year_ago.one": "hace {0} año",
-  "time.year_ago.other": "hace {0} años"
+  "time.year_ago.other": "hace {0} años",
+  "common.settings": "Configuración",
+  "common.back": "Volver",
+  "common.language": "Idioma",
+  "common.goToLink": "Ir al link",
+  "common.errorLabel": "Error",
+  "common.info": "Info",
+  "common.logs": "Logs",
+  "common.musicStats": "Estadísticas de Música",
+  "common.topArtists": "Artistas Principales",
+  "common.allTime": "Desde Siempre",
+  "common.artist": "Artista",
+  "common.source": "Fuente"
 }

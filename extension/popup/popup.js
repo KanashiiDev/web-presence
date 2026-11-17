@@ -85,7 +85,7 @@ const sectionManager = {
     const titles = {
       main: "Web Presence",
       history: i18n.t("header.history"),
-      stats: i18n.t("header.stats"),
+      stats: i18n.t("common.musicStats"),
       settings: i18n.t("common.settings"),
     };
 
@@ -100,7 +100,7 @@ const sectionManager = {
       historyToggleBtn.dataset.i18n = "header.history";
     } else {
       historyToggleBtn.appendChild(createSVG(svg_paths.backIconPaths));
-      historyToggleBtn.dataset.i18n = "header.back";
+      historyToggleBtn.dataset.i18n = "common.back";
     }
   },
 

@@ -20,5 +20,17 @@
   "time.month_ago.one": "{0} месяц назад",
   "time.month_ago.other": "{0} месяцев назад",
   "time.year_ago.one": "{0} год назад",
-  "time.year_ago.other": "{0} лет назад"
+  "time.year_ago.other": "{0} лет назад",
+  "common.settings": "Настройки",
+  "common.back": "Назад",
+  "common.language": "Язык",
+  "common.goToLink": "Перейти по ссылке",
+  "common.errorLabel": "Ошибка",
+  "common.info": "Информация",
+  "common.logs": "Журналы",
+  "common.musicStats": "Статистика музыки",
+  "common.topArtists": "Самые прослушиваемые исполнители",
+  "common.allTime": "За всё время",
+  "common.artist": "Исполнитель",
+  "common.source": "Источник"
 }

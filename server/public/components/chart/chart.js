@@ -107,7 +107,7 @@ export const HC_RANGES = {
     },
 
     getLabel() {
-      return i18n.t("chart.range.alltime");
+      return i18n.t("common.allTime");
     },
   },
 };

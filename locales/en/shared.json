@@ -20,5 +20,17 @@
   "time.month_ago.one": "{0} month ago",
   "time.month_ago.other": "{0} months ago",
   "time.year_ago.one": "{0} year ago",
-  "time.year_ago.other": "{0} years ago"
+  "time.year_ago.other": "{0} years ago",
+  "common.settings": "Settings",
+  "common.back": "Back",
+  "common.language": "Language",
+  "common.goToLink": "Go to the link",
+  "common.errorLabel": "Error",
+  "common.info": "Info",
+  "common.logs": "Logs",
+  "common.musicStats": "Music Stats",
+  "common.topArtists": "Top Artists",
+  "common.allTime": "All Time",
+  "common.artist": "Artist",
+  "common.source": "Source"
 }

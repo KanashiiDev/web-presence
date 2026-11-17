@@ -51,7 +51,7 @@ async function renderTopStats(history, range = "day", topN = 5, customStart = nu
   // Top Artists
   const artistHeader = document.createElement("h3");
   artistHeader.textContent = "Top Artists";
-  artistHeader.dataset.i18n = "stats.topArtists.title";
+  artistHeader.dataset.i18n = "common.topArtists";
 
   container.appendChild(artistHeader);
 
@@ -131,7 +131,7 @@ async function renderTopStats(history, range = "day", topN = 5, customStart = nu
   } else {
     const iTag = document.createElement("i");
     iTag.textContent = "Empty.";
-    iTag.dataset.i18n = "stats.topTracks.empty";
+    iTag.dataset.i18n = "stats.topArtists.empty";
     container.appendChild(iTag);
   }
   applyTranslations();

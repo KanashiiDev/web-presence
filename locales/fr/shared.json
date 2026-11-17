@@ -20,5 +20,17 @@
   "time.month_ago.one": "il y a {0} mois",
   "time.month_ago.other": "il y a {0} mois",
   "time.year_ago.one": "il y a {0} an",
-  "time.year_ago.other": "il y a {0} ans"
+  "time.year_ago.other": "il y a {0} ans",
+  "common.settings": "Paramètres",
+  "common.back": "Retour",
+  "common.language": "Langue",
+  "common.goToLink": "Aller au lien",
+  "common.errorLabel": "Erreur",
+  "common.info": "Info",
+  "common.logs": "Journaux",
+  "common.musicStats": "Statistiques Musicales",
+  "common.topArtists": "Artistes les plus écoutés",
+  "common.allTime": "Depuis le début",
+  "common.artist": "Artiste",
+  "common.source": "Source"
 }
