@@ -4,7 +4,7 @@ const panelPromises = new WeakMap();
 const allPanels = new Set();
 
 // Activate simplebar
-async function activateSimpleBar(targets, timeout = 500, interval = 30) {
+async function activateSimpleBar(targets, timeout = 500, interval = 30, onReady = null) {
   if (!Array.isArray(targets)) targets = [targets];
 
   const results = [];
@@ -62,6 +62,12 @@ async function activateSimpleBar(targets, timeout = 500, interval = 30) {
         panel.dataset.sbInit = "1";
         results.push({ id, success: true, action: "initialized" });
         startZoomWatcher();
+      }
+
+      try {
+        onReady?.(panel);
+      } catch (e) {
+        console.error(e);
       }
 
       // Update the padding
@@ -132,11 +138,12 @@ async function destroyOtherSimpleBars(keepId) {
       if (panel !== keepPanel) {
         const instance = simpleBarInstances.get(panel);
 
-        const scrollbar = instance.el.querySelectorAll(":scope > .simplebar-track");
-        scrollbar.forEach((el) => el.remove());
+        if (instance) {
+          instance.el?.querySelectorAll(":scope > .simplebar-track").forEach((el) => el.remove());
 
-        instance?.unMount?.();
-        unmountPromises.push(waitForUnmountSimplebars());
+          instance.unMount?.();
+          unmountPromises.push(waitForUnmountSimplebars());
+        }
 
         simpleBarInstances.delete(panel);
         panelPromises.delete(panel);
