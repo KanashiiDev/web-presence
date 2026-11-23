@@ -1,0 +1,30 @@
+name: Sync English source to locales
+
+# The English files in this repository are authoritative. Notify the locales
+# repository whenever they change so its derived mirror and runtime manifest
+# are refreshed without waiting for the scheduled fallback.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "locales/en/**"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Notify locales repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch source sync
+        env:
+          SYNC_TOKEN: ${{ secrets.LOCALES_SYNC_TOKEN }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          curl --fail-with-body -X POST \
+            -H "Authorization: Bearer $SYNC_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/KanashiiDev/web-presence-locales/dispatches \
+            -d "{\"event_type\":\"sync-english-source\",\"client_payload\":{\"commit\":\"$SOURCE_COMMIT\",\"cleanup_orphans\":true}}"

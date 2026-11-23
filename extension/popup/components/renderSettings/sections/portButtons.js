@@ -245,6 +245,7 @@ async function buildPortButtons(container) {
   let debugState = storedDebug ?? CONFIG.debugMode;
 
   const btnParserManager = createBtn(i18n.t("settings.selectorParserManager"), "selectorParserManager");
+  const btnTranslationEditor = createBtn(i18n.t("button.open_translation_editor"), "translationEditor");
   const btnWiki = createBtn("Wiki", "wiki");
   const btnRestart = createBtn(i18n.t("settings.restart"), "restart");
   const btnDebug = createBtn(i18n.t(debugState ? "settings.debug.disable" : "settings.debug.enable"), "debugMode");
@@ -273,6 +274,8 @@ async function buildPortButtons(container) {
   btnParserManager.onclick = async () => {
     openselectorParserManager();
   };
+
+  btnTranslationEditor.onclick = () => openTranslationEditorPage();
 
   btnWiki.onclick = async () => {
     await browser.tabs.create({ url: "https://github.com/KanashiiDev/web-presence/wiki" });
@@ -326,6 +329,6 @@ async function buildPortButtons(container) {
     }
   };
 
-  buttonsWrapper.append(btnPriority, btnLastFm, btnParserManager, btnBackup, wikiWrap, debugWrap, btnFactory);
+  buttonsWrapper.append(btnPriority, btnLastFm, btnParserManager, btnTranslationEditor, btnBackup, wikiWrap, debugWrap, btnFactory);
   container.append(buttonsWrapper);
 }

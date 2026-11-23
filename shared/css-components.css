@@ -138,6 +138,7 @@
 /* Input - shared text input styles */
 textarea,
 .ts-control,
+select,
 input[type="text"]:not(.ts-control),
 .input:not(.ts-control) {
   width: 100%;

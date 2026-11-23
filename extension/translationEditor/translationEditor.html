@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title data-i18n="translationEditor.title">Translation Editor</title>
+    <link rel="stylesheet" href="../shared/page-common.css" />
+    <link rel="stylesheet" href="translationEditor.css" />
+    <link rel="stylesheet" href="../libs/simplebar.css" />
+    <link rel="stylesheet" href="../libs/tom-select.css" />
+  </head>
+  <body data-theme="dark">
+    <div id="bg-layer"></div>
+    <div class="header">
+      <div>
+        <h3 data-i18n="translationEditor.title">Translation Editor</h3>
+        <p class="header-desc" data-i18n="translationEditor.desc">Translations are loaded from GitHub main and submitted as one pull request.</p>
+      </div>
+      <div class="header-actions">
+        <div class="te-view-tabs" id="viewTabs" role="tablist">
+          <button type="button" class="te-view-tab active" data-view="editor" role="tab" aria-selected="true" data-i18n="translationEditor.tab.editor">Editor</button>
+          <button type="button" class="te-view-tab" data-view="discussions" role="tab" aria-selected="false" data-i18n="translationEditor.discussions.tab">
+            Discussions
+          </button>
+        </div>
+        <button id="btnGithubSettings" class="btn btn-secondary" title="GitHub"></button>
+      </div>
+    </div>
+
+    <div class="te-shell">
+      <div class="te-split" id="editorView">
+        <aside class="te-sidebar" id="sidebar">
+          <div class="te-side-section">
+            <div class="te-side-title" data-i18n="translationEditor.sidebar.workspace">Workspace</div>
+            <label class="te-field">
+              <span data-i18n="translationEditor.language">Language</span>
+              <select id="languageSelect"></select>
+            </label>
+            <label class="te-field">
+              <span data-i18n="translationEditor.file">File</span>
+              <select id="fileSelect"></select>
+            </label>
+            <button id="reloadBtn" class="btn btn-secondary btn-sm te-reload" data-i18n="translationEditor.reload">Reload</button>
+          </div>
+
+          <div class="te-side-section">
+            <div class="te-side-title" data-i18n="translationEditor.sidebar.filters">Filters</div>
+            <div class="te-filter-nav" id="filterTabs">
+              <button class="te-filter-btn active" data-filter="all">
+                <span data-i18n="common.all">All</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+              <button class="te-filter-btn" data-filter="untranslated">
+                <span data-i18n="translationEditor.filter.untranslated">Untranslated</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+              <button class="te-filter-btn" data-filter="translated">
+                <span data-i18n="translationEditor.filter.translated">Translated</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+              <button class="te-filter-btn" data-filter="outdated">
+                <span data-i18n="translationEditor.filter.outdated">Outdated</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+              <button class="te-filter-btn" data-filter="pr-pending">
+                <span data-i18n="translationEditor.filter.prPending">PR Pending</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+              <button class="te-filter-btn" data-filter="qa-issues">
+                <span data-i18n="translationEditor.filter.qaIssues">QA Issues</span>
+                <span class="badge badge-sm te-count">0</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="te-side-section te-side-actions">
+            <div class="te-side-title" data-i18n="translationEditor.sidebar.actions">Actions</div>
+            <button id="nextUntranslatedBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.nextUntranslated">Next untranslated</button>
+            <button id="exportDraftsBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.exportDrafts">Export drafts</button>
+            <button id="importDraftsBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.importDrafts">Import drafts</button>
+            <button id="exportLocaleBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.exportLocale">Export locale file</button>
+            <button id="importLocaleBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.importLocale">Import locale file</button>
+            <input id="importDraftsInput" type="file" accept=".json,application/json" hidden />
+            <input id="importLocaleInput" type="file" accept=".json,application/json" hidden />
+            <button id="submitBtn" class="btn btn-primary te-submit" data-i18n="translationEditor.submit">Submit translations</button>
+          </div>
+        </aside>
+
+        <section class="te-workspace">
+          <div class="te-workspace-header">
+            <div class="te-doc">
+              <span class="te-doc-label" data-i18n="translationEditor.document">Document</span>
+              <span id="documentTitle" class="te-doc-title"></span>
+            </div>
+            <div class="te-toolbar">
+              <div class="te-search" id="searchControls">
+                <input id="searchInput" type="text" data-i18n="translationEditor.searchPlaceholder" placeholder="Search key, source or translation" />
+                <button type="button" id="searchInputResetBtn" aria-label="Reset" data-i18n="common.reset" data-i18n-attr="title" title="Reset"></button>
+              </div>
+              <select id="sortSelect" title="Sort" data-i18n="translationEditor.sort.title" data-i18n-attr="title">
+                <option value="asc" data-i18n="translationEditor.sort.asc">A - Z</option>
+                <option value="desc" data-i18n="translationEditor.sort.desc">Z - A</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="te-workspace-body">
+            <div class="conflict-banner" id="conflictBanner" style="display: none"></div>
+            <div class="te-table-card">
+              <div class="table-head">
+                <div data-i18n="common.source">Source</div>
+                <div class="qa-column"></div>
+                <div data-i18n="translationEditor.target">Translation</div>
+                <div data-i18n="translationEditor.status">Status</div>
+              </div>
+              <div class="table-viewport" id="tableViewport">
+                <div class="table-spacer" id="tableSpacer"></div>
+              </div>
+              <div class="empty-state" id="emptyState" data-i18n="translationEditor.empty" style="display: none">No rows match the current filters.</div>
+            </div>
+          </div>
+
+          <div class="te-status-bar">
+            <div class="te-progress">
+              <span id="progressText">0 / 0</span>
+              <div class="progress-track">
+                <div class="progress-segment segment-translated" id="progressFill"></div>
+                <div class="progress-segment segment-outdated" id="progressOutdated"></div>
+                <div class="progress-segment segment-pending" id="progressPending"></div>
+              </div>
+            </div>
+            <div class="te-legend">
+              <span class="te-legend-item">
+                <i class="te-dot dot-untranslated"></i>
+                <span data-i18n="translationEditor.status.untranslated">Untranslated</span>
+              </span>
+              <span class="te-legend-item">
+                <i class="te-dot dot-outdated"></i>
+                <span data-i18n="translationEditor.status.outdated">Outdated</span>
+              </span>
+              <span class="te-legend-item">
+                <i class="te-dot dot-pending"></i>
+                <span data-i18n="translationEditor.status.prPending">PR Pending</span>
+              </span>
+            </div>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </section>
+      </div>
+
+      <section class="te-discussions-view" id="discussionsView" hidden>
+        <div class="te-disc-toolbar">
+          <select id="discCategoryFilter" title="Category" data-i18n="translationEditor.discussions.categoryTitle" data-i18n-attr="title"></select>
+          <button type="button" id="discNewBtn" class="btn btn-primary btn-sm" data-i18n="translationEditor.discussions.new">New discussion</button>
+          <button type="button" id="discRefreshBtn" class="btn btn-secondary btn-sm" data-i18n="translationEditor.discussions.refresh">Refresh</button>
+        </div>
+        <div class="te-disc-layout">
+          <div class="te-disc-list" id="discList">
+            <div class="te-disc-list-content" id="discListContent"></div>
+          </div>
+          <div class="te-disc-detail" id="discDetail">
+            <div class="te-disc-detail-content" id="discDetailContent"></div>
+          </div>
+        </div>
+        <div class="te-disc-pagination" id="discPagination"></div>
+      </section>
+    </div>
+
+    <script src="../libs/browser-polyfill.js"></script>
+    <script src="../libs/simplebar.js"></script>
+    <script src="../libs/tom-select.js"></script>
+    <script src="../libs/markdown-it.js"></script>
+    <script src="../common/utils.js"></script>
+    <script src="../manager/githubContributeService.js"></script>
+    <script src="translationEditor.js"></script>
+  </body>
+</html>

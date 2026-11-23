@@ -482,7 +482,7 @@ li.CodeMirror-hint-active {
 }
 
 .CodeMirror-lint-tooltip {
-  background-color: var(--foreground-color-400);
+  background: var(--foreground-color-400);
   border: 1px solid var(--border-color-bright);
   border-radius: 4px 4px 4px 4px;
   color: var(--text-color-secondary);

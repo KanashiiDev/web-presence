@@ -6,6 +6,10 @@ async function openStorePage() {
   await openExtensionPage("activityLibrary/library.html");
 }
 
+async function openTranslationEditorPage() {
+  await openExtensionPage("translationEditor/translationEditor.html");
+}
+
 async function openDashboardPage() {
   const { port } = await browser.runtime.sendMessage({
     type: "GET_RPC_PORT",

@@ -1261,13 +1261,24 @@ const handleIsHostnameMatch = async (sender) => {
 const setupListeners = () => {
   const alarmsApi = (typeof chrome !== "undefined" && chrome.alarms) || browser?.alarms;
   if (alarmsApi?.onAlarm) {
-    alarmsApi.onAlarm.addListener((alarm) => storeService.onAlarm(alarm));
+    alarmsApi.onAlarm.addListener((alarm) => {
+      storeService.onAlarm(alarm);
+      return teOnTranslationLocalesAlarm(alarm);
+    });
   }
 
   browser.runtime.onMessage.addListener(async (req, sender) => {
     try {
       if (req.type === "MEMO_SET") return memoSet(sender, req);
       if (req.type === "MEMO_GET") return memoGet(sender, req);
+      if (req.type === "REFRESH_LOCALES") {
+        try {
+          await teRefreshTranslationLocales();
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      }
       if (req.type === "REQUEST_FRESH_PARSER_LIST") {
         await loadParserListOnce(req.force);
         return { ok: true, data: state.parserList || [] };

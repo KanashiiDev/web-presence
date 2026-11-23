@@ -33,6 +33,9 @@ function startSettings() {
   initMotionPreference();
   initApplyAttrs();
   initStorageListener();
+  document
+    .getElementById("openTranslationEditorBtn")
+    ?.addEventListener("click", () => openExtensionPage("translationEditor/translationEditor.html", { closePopup: false }));
 
   // Apply the active section and run the modules
   const currentSection = applySectionFromUrl();

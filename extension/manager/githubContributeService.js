@@ -31,6 +31,20 @@ const GITHUB_CONTRIBUTE = {
 };
 
 class GitHubContributeService {
+  // Public API for extension pages. The underscore variants stay for internal
+  // use and backwards compatibility with other callers.
+  request(path, options = {}, token) {
+    return this._req(path, options, token);
+  }
+
+  graphql(query, variables = {}, token) {
+    return this._graphql(query, variables, token);
+  }
+
+  waitForFork(owner, repo, token, maxRetries = 8, delayMs = 1500) {
+    return this._waitForFork(owner, repo, token, maxRetries, delayMs);
+  }
+
   // Token storage
   async getToken() {
     const result = await browser.storage.local.get(GITHUB_CONTRIBUTE.TOKEN_STORAGE_KEY);
@@ -203,6 +217,70 @@ class GitHubContributeService {
     }
 
     return res.status === 204 ? null : res.json();
+  }
+
+  /**
+   * GitHub GraphQL API helper. Mirrors _req authentication, rate-limit and
+   * error handling, but sends a JSON { query, variables } POST and also
+   * surfaces GraphQL-level errors (returned with HTTP 200).
+   */
+  async _graphql(query, variables = {}, token) {
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const res = await fetchWithTimeout(
+      `${GITHUB_CONTRIBUTE.API_BASE}/graphql`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ query, variables }),
+      },
+      30000,
+    );
+
+    if (res.status === 403 || res.status === 429) {
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const resetHeader = res.headers.get("X-RateLimit-Reset");
+      const rateLimitRemaining = res.headers.get("X-RateLimit-Remaining");
+      if (rateLimitRemaining === "0" || res.status === 429) {
+        let retryAfter = null;
+        if (retryAfterHeader && Number.isFinite(Number(retryAfterHeader))) {
+          retryAfter = Number(retryAfterHeader);
+        } else if (resetHeader && Number.isFinite(Number(resetHeader))) {
+          retryAfter = Math.max(0, Math.round(Number(resetHeader) - Date.now() / 1000));
+        }
+        const rateLimitError = new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
+        rateLimitError.status = res.status;
+        rateLimitError.retryAfter = retryAfter;
+        throw rateLimitError;
+      }
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const apiError = new Error(err.message || `GitHub GraphQL error ${res.status}`);
+      apiError.status = res.status;
+      throw apiError;
+    }
+
+    const payload = await res.json();
+    if (payload.errors?.length) {
+      const messages = payload.errors.map((error) => (typeof error === "string" ? error : error.message || JSON.stringify(error))).filter(Boolean);
+      const apiError = new Error(messages.join("; ") || "GitHub GraphQL error");
+      apiError.status = res.status;
+      apiError.gqlErrors = payload.errors;
+      if (payload.errors.some((error) => /rate limit|secondary rate|abuse/i.test(error.message || ""))) apiError.status = 429;
+      else if (payload.errors.some((error) => error.type === "UNAUTHORIZED" || /bad credentials|requires authentication/i.test(error.message || "")))
+        apiError.status = 401;
+      else if (payload.errors.some((error) => error.type === "FORBIDDEN" || /resource not accessible|permission/i.test(error.message || ""))) apiError.status = 403;
+      throw apiError;
+    }
+
+    return payload.data;
   }
 
   // Device Flow

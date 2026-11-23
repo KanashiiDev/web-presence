@@ -16,6 +16,7 @@ const wnpClient = require("./services/wnpClient.js");
 const { createRpcRouter } = require("./routes/rpc.js");
 const { createHistoryRouter } = require("./routes/history.js");
 const { createSettingsRouter, readSettings } = require("./routes/settings.js");
+const localeSnapshot = require("./services/localeSnapshot.js");
 const crypto = require("crypto");
 
 // Singleton Guard
@@ -77,6 +78,37 @@ const localesPath = path.join(__dirname, "..", "locales");
 
 app.use(express.static(publicPath));
 app.use("/shared", express.static(sharedPath));
+
+// Snapshot-pinned translations win over the packaged files. English and any
+// namespace not present in the current snapshot keep using the static files.
+app.get("/locales/languages.json", (_req, res) => {
+  const metadata = localeSnapshot.getMetadata();
+  if (metadata) return res.json(metadata);
+  return res.sendFile(path.join(localesPath, "languages.json"));
+});
+// The dashboard waits for the first snapshot before loading translations.
+app.get("/locales/status", (_req, res) => {
+  const status = localeSnapshot.getStatus();
+  res.json({ ready: !!status.snapshot, snapshot: status.snapshot, fetchedAt: status.fetchedAt });
+});
+// Published codes come from the runtime manifest
+app.get("/locales/published.json", (_req, res) => {
+  res.json(localeSnapshot.getStatus().languages || []);
+});
+app.get("/locales/:lang/:namespace.json", (req, res) => {
+  const { lang, namespace } = req.params;
+  if (!/^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/i.test(lang) || !["extension", "server", "shared"].includes(namespace)) {
+    return res.status(404).end();
+  }
+  const content = localeSnapshot.getLocale(lang, namespace);
+  if (content) return res.json(content);
+  // Handle the error here so Express does not dump the raw ENOENT object to stderr line by line.
+  return res.sendFile(path.join(localesPath, lang, `${namespace}.json`), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).end();
+    }
+  });
+});
 app.use("/locales", express.static(localesPath));
 app.use((_req, res, next) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -287,6 +319,7 @@ async function shutdown() {
 
       cancelReconnect();
       stopHealthCheckTimer();
+      localeSnapshot.stop();
       if (wnpSupport) wnpClient.stop();
       resetActivityState(historyFilePath);
 
@@ -402,6 +435,7 @@ const HOST = "127.0.0.1";
 state.serverInstance = app.listen(PORT, HOST, () => {
   console.log(`[SERVER] Running on http://${HOST}:${PORT}`);
   sendReady();
+  localeSnapshot.start();
 
   // Bridge WebSocket - For Discord Web
   if (settings.DISCORD_WEB_SUPPORT?.value) {

@@ -2,12 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const { ZipArchive } = require("archiver");
 const { version } = require("../package.json");
-const { checkMissingTranslations, generateLanguages } = require("./checkMissingTranslations");
 const { computeFingerprint } = require("./writeBinaryFingerprint");
 const inputVersion = process.argv[2];
 const releaseVersion = inputVersion || version;
 const projectRoot = path.join(__dirname, "..");
-const LOCALES_DIR = path.join(projectRoot, "locales");
 const distDir = path.join(projectRoot, "dist");
 const extensionBuildsDir = path.join(projectRoot, "extensionBuilds");
 const releaseDir = path.join(projectRoot, "release");
@@ -121,10 +119,6 @@ function zipDir(src, zipName) {
     arc.finalize();
   });
 }
-
-// Main
-checkMissingTranslations(LOCALES_DIR);
-generateLanguages(LOCALES_DIR);
 
 // --- Runtime update bundle (custom updater) ---
 // Generates web-presence-<version>-runtime.asar + latest.json (version+sha256+Ed25519 signature). Repackages a completed electron-builder output; needs @electron/asar and a platform build in dist/.

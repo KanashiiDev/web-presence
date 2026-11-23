@@ -1357,6 +1357,7 @@ const init = async () => {
   logInfo("[background:init]: Scripts registered, setting up store");
   await storeService.setupUpdateAlarm();
   await storeService.checkRepoUpdates();
+  await teSetupTranslationLocalesAlarm();
   await handlePendingTabReload();
 
   logInfo("[background:init]: Init complete, starting main loop");

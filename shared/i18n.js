@@ -70,6 +70,116 @@
   }
 
   const LOG_PREFIX = "[WEB PRESENCE - i18n]:";
+  const LOCALE_CACHE_KEY = "translationLocaleCache";
+  let localeCacheWaitDone = false;
+
+  // First run: the snapshot cache is populated asynchronously. Gate the first
+  // load so pages never render with English before the real locales arrive.
+  const LOCALE_GATE_TIMEOUT_MS = 10000;
+  const LOCALE_GATE_POLL_MS = 250;
+  const LOCALE_GATE_TEXT = "Loading languages. Please wait...";
+  let localeGateOverlay = null;
+
+  function showLocaleGate() {
+    if (typeof document === "undefined") return;
+    if (localeGateOverlay?.isConnected) return;
+    const overlay = document.createElement("div");
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "polite");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.55);color:#fff;font:14px/1.4 sans-serif;text-align:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "max-width:280px;padding:16px 20px;border-radius:10px;background:#1e1e22;box-shadow:0 8px 30px rgba(0,0,0,.4);";
+    box.textContent = LOCALE_GATE_TEXT;
+    overlay.appendChild(box);
+    (document.body || document.documentElement).appendChild(overlay);
+    localeGateOverlay = overlay;
+  }
+
+  function hideLocaleGate() {
+    localeGateOverlay?.remove();
+    localeGateOverlay = null;
+  }
+
+  async function localeSourceState(namespace) {
+    if (namespace === "extension") {
+      if (typeof browser === "undefined" || !browser?.storage?.local) return { ready: true, fresh: true };
+      try {
+        const stored = await browser.storage.local.get(LOCALE_CACHE_KEY);
+        const cache = stored?.[LOCALE_CACHE_KEY];
+        const ready = !!cache && cache.schemaVersion === 2 && Object.keys(cache.langs || {}).length > 0;
+        const fresh = ready && Date.now() - (cache.fetchedAt || 0) < 60 * 60 * 1000;
+        return { ready, fresh };
+      } catch {
+        return { ready: true, fresh: true };
+      }
+    }
+    if (namespace === "server") {
+      try {
+        const response = await fetch("/locales/status", { cache: "no-store" });
+        if (!response.ok) return { ready: true, fresh: true };
+        const status = await response.json();
+        return { ready: !!status.ready, fresh: !!status.ready };
+      } catch {
+        return { ready: true, fresh: true };
+      }
+    }
+    return { ready: true, fresh: true };
+  }
+
+  let localeRefreshSent = false;
+  function requestLocaleRefresh() {
+    if (localeRefreshSent || typeof browser === "undefined" || !browser?.runtime?.sendMessage) return;
+    localeRefreshSent = true;
+    browser.runtime.sendMessage({ type: "REFRESH_LOCALES" }).catch(() => {});
+  }
+
+  async function ensureLocaleSourceReady(namespace) {
+    if (namespace !== "extension" && namespace !== "server") return;
+    const initial = await localeSourceState(namespace);
+    if (initial.ready) {
+      // A stale cache is usable, but ask the background to refresh it for next time.
+      if (!initial.fresh) requestLocaleRefresh();
+      return;
+    }
+    requestLocaleRefresh();
+    showLocaleGate();
+    const deadline = Date.now() + LOCALE_GATE_TIMEOUT_MS;
+    try {
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, LOCALE_GATE_POLL_MS));
+        if ((await localeSourceState(namespace)).ready) return;
+      }
+      console.warn(`${LOG_PREFIX} Locale source not ready after ${LOCALE_GATE_TIMEOUT_MS} ms; continuing with packaged translations.`);
+    } finally {
+      hideLocaleGate();
+    }
+  }
+
+  /**
+   * Read the hourly-refreshed locale cache. Extension contexts only.
+   * On a fresh install the background is still populating the cache, so wait
+   * briefly once instead of rendering the first page with English only.
+   */
+  async function readLocaleCache() {
+    if (typeof browser === "undefined" || browser == null || !browser.storage?.local) return null;
+    try {
+      let stored = await browser.storage.local.get(LOCALE_CACHE_KEY);
+      let cache = stored?.[LOCALE_CACHE_KEY] || null;
+      if (!cache && !localeCacheWaitDone) {
+        localeCacheWaitDone = true;
+        const deadline = Date.now() + 4000;
+        while (!cache && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          stored = await browser.storage.local.get(LOCALE_CACHE_KEY);
+          cache = stored?.[LOCALE_CACHE_KEY] || null;
+        }
+      }
+      return cache?.schemaVersion === 2 ? cache : null;
+    } catch {
+      return null;
+    }
+  }
 
   // Class
 
@@ -190,7 +300,10 @@
         return this._pending.get(nsKey);
       }
 
-      const promise = this._doLoad(namespace, langHint).finally(() => {
+      const promise = (async () => {
+        await ensureLocaleSourceReady(namespace);
+        await this._doLoad(namespace, langHint);
+      })().finally(() => {
         this._pending.delete(nsKey);
       });
 
@@ -206,20 +319,43 @@
       const shortLang = lang.split("-")[0];
       const sharedBase = this._isExtension() ? browser.runtime.getURL("locales") : "/locales";
 
+      // Extension pages can use translations refreshed by the background alarm.
+      // Dashboard/other contexts keep the original package-file behavior.
+      const useCache = this._isExtension() && namespace === "extension";
+      const cache = useCache ? await readLocaleCache() : null;
+      const cached = (candidate, cacheNs) => cache?.langs?.[candidate]?.[cacheNs]?.content ?? null;
+
       const langCandidates = getLangCandidates(lang);
 
-      const fetchWithFallback = async (base, file) => {
-        for (const candidate of langCandidates) {
-          const data = await this._fetch(`${base}/${candidate}/${file}`);
+      // Repo cache wins per key, but keys that only exist in the build are kept.
+      // This covers translations added locally before they reach GitHub main.
+      const mergeWithBuild = (packageData, cachedData) => (cachedData ? { ...(packageData || {}), ...cachedData } : packageData);
+
+      const fetchWithFallback = async (base, file, cacheNs) => {
+        for (const [index, candidate] of langCandidates.entries()) {
+          const cachedData = cached(candidate, cacheNs);
+          // A cached translation is authoritative: never request the packaged
+          // copy of that language (it is usually absent and logs a 404).
+          if (cachedData && candidate !== this.fallbackLang) return { data: cachedData, lang: candidate };
+          // Same when a shorter candidate (tr-TR -> tr) is already cached.
+          if (langCandidates.slice(index + 1).some((next) => cached(next, cacheNs))) continue;
+          const packageData = await this._fetch(`${base}/${candidate}/${file}`);
+          const data = mergeWithBuild(packageData, cachedData);
           if (data != null) return { data, lang: candidate };
         }
         return { data: null, lang: null };
       };
 
+      const fetchFallback = async (base, file, cacheNs) => {
+        const cachedData = cached(this.fallbackLang, cacheNs);
+        const packageData = await this._fetch(`${base}/${this.fallbackLang}/${file}`);
+        return mergeWithBuild(packageData, cachedData);
+      };
+
       const [sharedMain, sharedFallback, fetchedMain] = await Promise.all([
-        fetchWithFallback(sharedBase, "shared.json"),
-        this._fetch(`${sharedBase}/${this.fallbackLang}/shared.json`),
-        fetchWithFallback(base, `${ns}.json`),
+        fetchWithFallback(sharedBase, "shared.json", "shared"),
+        fetchFallback(sharedBase, "shared.json", "shared"),
+        fetchWithFallback(base, `${ns}.json`, ns),
       ]);
 
       // Track the folder that actually served the namespace file; only when
@@ -230,7 +366,7 @@
       if (main == null) {
         if (this.lang !== this.fallbackLang) {
           console.log(`${LOG_PREFIX} "${this.lang}" not found, falling back to "${this.fallbackLang}".`);
-          main = (await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? {};
+          main = (await fetchFallback(base, `${ns}.json`, ns)) ?? {};
           this.lang = this.fallbackLang;
         } else {
           console.warn(`${LOG_PREFIX} Fallback language "${this.fallbackLang}" also missing for base "${base}".`);
@@ -238,7 +374,7 @@
         }
       }
 
-      const fallback = this.lang !== this.fallbackLang ? ((await this._fetch(`${base}/${this.fallbackLang}/${ns}.json`)) ?? {}) : main;
+      const fallback = this.lang !== this.fallbackLang ? ((await fetchFallback(base, `${ns}.json`, ns)) ?? {}) : main;
 
       this._translations[ns] = { ...(sharedMain?.data ?? {}), ...main };
       this._fallback[ns] = { ...(sharedFallback ?? {}), ...fallback };
@@ -293,10 +429,10 @@
 
       let str = resolve(tr, key);
 
-      if (str == null) {
+      if (str == null || str === "") {
         const fallbackStr = resolve(fb, key);
 
-        if (fallbackStr != null) {
+        if (fallbackStr != null && fallbackStr !== "") {
           console.log(`${LOG_PREFIX} Key "${key}" missing in "${this.lang}" (ns: "${ns}"). Using fallback value.`);
           str = fallbackStr;
         } else {

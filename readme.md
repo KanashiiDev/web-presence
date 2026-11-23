@@ -202,7 +202,7 @@ Additional sites can be added using the built-in selector system or the UserScri
 There are several ways to contribute:
 
 - **Create new Activities** - [Activity Library](https://github.com/KanashiiDev/web-presence-activities)
-- **Help translate** the project on [Crowdin](https://crowdin.com/project/web-presence)
+- **Help translate** - [Translation Editor](https://github.com/KanashiiDev/web-presence-locales)
 - **Report bugs or request features** via [GitHub Issues](https://github.com/kanashiiDev/web-presence/issues)
 - **Support the project** by sharing it and helping others discover it
 

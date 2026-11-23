@@ -156,6 +156,10 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions("background.js", ["manager/userScriptWorker.js"], []);
   inlineUtilsFunctions("iframeParser.js", ["common/utils.js"], ["isPartialClassSelector", "querySelectorDeep", "queryWithPartialClass"], "start");
 
+  // Translation Editor
+  inlineUtilsFunctions("background.js", ["translationEditor/modules/config.js"], []);
+  inlineUtilsFunctions("translationEditor/translationEditor.js", [], [], "start", true, { dir: "translationEditor/modules" });
+
   // Background Listeners
   inlineUtilsFunctions("background.js", [], [], "start", true, { dir: "background" });
 

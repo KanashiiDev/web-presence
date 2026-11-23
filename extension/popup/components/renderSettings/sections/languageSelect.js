@@ -2,11 +2,38 @@ const initLanguageSelect = async (container) => {
   if (!container) return;
 
   try {
-    const url = browser.runtime.getURL("locales/languages.json");
-    const response = await fetch(url);
-    const data = await response.json();
+    // The locales repository owns the language catalog. Its snapshot-pinned
+    // copy is cached by the background; fall back to the packaged list only
+    // while the first refresh is still running.
+    let catalog = null;
+    let publishedCodes = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const stored = await browser.storage.local.get("translationLocaleCache");
+      const cache = stored?.translationLocaleCache;
+      if (cache?.schemaVersion === 2 && cache.metadata?.content) {
+        catalog = cache.metadata.content;
+        publishedCodes = cache.manifest?.content?.languages || null;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!catalog) {
+      const response = await fetch(browser.runtime.getURL("locales/languages.json"));
+      catalog = await response.json();
+    }
+    const data = catalog;
 
-    const extensionLanguages = Object.fromEntries(Object.entries(data).filter(([key, lang]) => key && lang.extension === true));
+    // The manifest is the authority for publication: it contains the languages
+    // that crossed the coverage threshold (and keeps them after a drop). When
+    // no manifest is cached yet, show the full catalog as before.
+    const extensionLanguages = Object.fromEntries(
+      Object.entries(data).filter(([key, lang]) => {
+        if (!key || lang.extension !== true) return false;
+        if (lang.published === false) return false;
+        if (publishedCodes && !Object.prototype.hasOwnProperty.call(publishedCodes, key)) return false;
+        return true;
+      }),
+    );
 
     const { lang } = (await browser.storage.local.get("lang")) || {};
     const locales = [lang, navigator.languages?.[0] || navigator.language, "en"].filter(Boolean);

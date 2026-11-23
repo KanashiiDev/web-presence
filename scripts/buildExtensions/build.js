@@ -7,7 +7,6 @@ const { createInlineUtils } = require("./steps/inlineUtils");
 const { buildPageCommonCss } = require("./steps/buildPageCommonCss");
 const registerInlines = require("./inlineConfig");
 const { copyLocales } = require("./steps/copyLocales");
-const { checkMissingTranslations, generateLanguages } = require("../checkMissingTranslations");
 const { auditAll } = require("../audit");
 const { renderText } = require("../audit/report");
 
@@ -49,9 +48,6 @@ const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, "package.json"
   buildPageCommonCss(SHARED_DIR, DIST_DIR);
 
   // 7. Copy locales
-  checkMissingTranslations(LOCALES_DIR, ["extension"]);
-  generateLanguages(LOCALES_DIR);
-
   fs.mkdirSync(DIST_LOCALES_DIR, { recursive: true });
   copyLocales(LOCALES_DIR, DIST_LOCALES_DIR);
 

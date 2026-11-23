@@ -223,17 +223,26 @@ export const initLanguageSelect = async (container) => {
   }
 
   try {
-    const response = await fetch("locales/languages.json");
+    const [response, publishedResponse] = await Promise.all([
+      fetch("locales/languages.json"),
+      fetch("locales/published.json")
+        .then((res) => res.json())
+        .catch(() => []),
+    ]);
     const data = await response.json();
+    const published = new Set(publishedResponse);
 
-    // Filter only those with "server": true
+    // A language must be enabled for the server AND published in the runtime
+    // manifest. If the snapshot has not loaded yet, keep the previous behavior
+    // so settings still works offline.
+    const hasPublicationData = published.size > 0;
     const savedLang = localStorage.getItem("lang") || "en";
     const locales = [savedLang, navigator.languages?.[0] || navigator.language, "en"].filter(Boolean);
     const displayNames = new Intl.DisplayNames(locales, { type: "language" });
 
     const serverLanguages = Object.fromEntries(
       Object.entries(data)
-        .filter(([key, lang]) => key && lang.server === true)
+        .filter(([key, lang]) => key && lang.server === true && lang.published !== false && (!hasPublicationData || published.has(key)))
         .map(([key, lang]) => [key, { ...lang, label: displayNames.of(key) ?? lang.label }]),
     );
 

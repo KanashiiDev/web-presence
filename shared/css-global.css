@@ -279,6 +279,8 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  width: 100%;
 }
 
 .ts-wrapper.single {
@@ -375,9 +377,10 @@ svg:not(.flatpickr-calendar svg):not(.IroHandle) {
 
 .ts-wrapper.multi .ts-control [data-value] {
   text-shadow: none !important;
-  background-color: var(--foreground-color-400) !important;
+  background: var(--foreground-color-400) !important;
   background-image: none !important;
   border: 1px solid var(--border-color) !important;
+  width: auto;
 }
 
 .ts-dropdown .optgroup-header {
@@ -581,7 +584,7 @@ html.setup-dialog-open #mainFooterButtons {
 }
 
 .setup-dropdown-item:hover {
-  background-color: var(--foreground-color-400);
+  background: var(--foreground-color-400);
 }
 
 #tutorialTooltip {
@@ -702,7 +705,7 @@ html.setup-dialog-open #mainFooterButtons {
   position: absolute;
   left: -25px;
   top: 6px;
-  background-color: var(--foreground-color-300);
+  background: var(--foreground-color-300);
   border: 1px solid var(--border-color);
   z-index: -1;
   display: inline-block;

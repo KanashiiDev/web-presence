@@ -248,6 +248,7 @@ const svg_paths = {
   forwardIconPaths: ["M5 4l8 8-8 8"],
   checkIconPaths: ["M20 6L9 17 4 12"],
   crossIconPaths: ["M6 6L18 18 M18 6L6 18"],
+  exclamationIconPaths: ["M12 7V13 M12 17V17.5"],
   minusIconPaths: ["M6 12L18 12"],
   plusIconPaths: ["M12 6L12 18 M6 12L18 12"],
   filterIconPaths: ["M3 4h18", "M6 12h12", "M10 20h4"],
