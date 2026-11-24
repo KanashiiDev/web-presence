@@ -1331,7 +1331,7 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
   void teActivateStatusScroll(body);
 }
 
-async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pendingKeys, lang, namespace, warnings, skipMissing = false }) {
+async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pendingKeys, lang, namespace, warnings, skipMissing = false, isNewTarget = false }) {
   const filtered = Object.entries(draftEntries || {}).filter(([key, entry]) => {
     if (typeof entry.target !== "string" || !Object.prototype.hasOwnProperty.call(sourceFlat, key)) return false;
     if (skipMissing || entry.target !== targetFlat[key]) return true;
@@ -1350,7 +1350,11 @@ async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pen
   const changes = await Promise.all(
     filtered.map(async ([key, entry]) => {
       const currentSourceHash = await teHashSource(sourceFlat[key], key);
-      const baseTargetHash = await teHashTarget(targetFlat[key] ?? "", key);
+      // A new language has no target file yet, and the submission processor
+      // seeds its target from the English source. Hash that same value so the
+      // three-way patch sees the real base instead of an empty string.
+      const baseTargetValue = isNewTarget ? sourceFlat[key] : (targetFlat[key] ?? "");
+      const baseTargetHash = await teHashTarget(baseTargetValue, key);
       const reconfirm = entry.reconfirmed === true;
       return {
         key,
@@ -1459,6 +1463,7 @@ async function teOpenSubmitPreview() {
           lang,
           namespace,
           warnings,
+          isNewTarget: !target.text,
         });
         blocked.forEach((entry) => blockedKeys.push({ ...entry, namespace }));
         if (!changes.length) continue;
