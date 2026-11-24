@@ -15,6 +15,9 @@ function teFlattenTranslations(translations, prefix = "") {
 
 function teComputeStatus(row) {
   if (row.prPending) return "PR Pending";
+  // The contributor explicitly confirmed that the old translation is still
+  // correct for the new English source.
+  if (row.reconfirmed && (row.keyStatus === "outdated" || row.keyStatus === "unverified")) return "Translated";
   const mainChanged = row.edited && (row.draftSourceHash !== row.currentSourceHash || (row.draftBaseTargetHash && row.draftBaseTargetHash !== row.currentTargetHash));
   if (mainChanged) return "Outdated";
   if (row.keyStatus === "outdated" || row.keyStatus === "unverified") return "Outdated";
@@ -36,8 +39,13 @@ function teRestoreRowTarget(row) {
 function teBuildDraftEntriesFromRows(rows) {
   const entries = {};
   rows.forEach((row) => {
-    if (!row.prPending && row.target !== row.originalTarget) {
-      entries[row.key] = { target: row.target, sourceHash: row.draftSourceHash, baseTargetHash: row.draftBaseTargetHash };
+    if (!row.prPending && (row.target !== row.originalTarget || row.reconfirmed)) {
+      entries[row.key] = {
+        target: row.target,
+        sourceHash: row.draftSourceHash,
+        baseTargetHash: row.draftBaseTargetHash,
+        ...(row.reconfirmed ? { reconfirmed: true } : {}),
+      };
     }
   });
   return entries;

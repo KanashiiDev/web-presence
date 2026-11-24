@@ -136,25 +136,54 @@ function teLanguageNamespaces(lang, metadata) {
   return metadata[lang] ? TE_NAMESPACES.filter((ns) => ns === "shared" || metadata[lang][ns]) : [...TE_NAMESPACES];
 }
 
+// Progress must use the authoritative English source, not the derived mirror
+// stored in the runtime cache. Otherwise newly added keys are invisible to the
+// dropdown while the editor already counts them.
+async function teLanguageProgressValues(langs, metadata, sourceFlat, manifest) {
+  const entries = await Promise.all(
+    langs.map(async (lang) => {
+      if (metadata[lang]?.published === false) return [lang, 0];
+      let meta = null;
+      try {
+        meta = await teFetchMetaAtSnapshot(manifest, lang);
+      } catch (_err) {
+        // Missing/unreadable metadata means 0%; other languages still load.
+      }
+      return [lang, teProgressFromMeta(sourceFlat, meta?.namespaces?.extension?.keys)];
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
 async function teLoadGithubLanguages() {
   const cache = await teReadLocaleCache();
   if (cache?.metadata?.content && cache.langs && Object.keys(cache.langs).length) {
     const metadata = cache.metadata.content;
-    return teRegisteredLanguages(metadata).map((lang) => {
-      const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
-      // Only an explicit `published:false` in languages.json is a blocker.
-      // "Not registered yet" must NOT block: it is the only way a new language
-      // can ever reach the 90% publication threshold.
-      const override = metadata[lang]?.published === false;
-      return {
-        lang,
-        label: metadata[lang]?.label || teLangLabel(lang),
-        namespaces: teLanguageNamespaces(lang, metadata),
-        pending: !registered,
-        published: !override,
-        progress: override ? 0 : (cache.langs[lang]?.progress ?? 0),
-      };
-    });
+    const langs = teRegisteredLanguages(metadata);
+    let sourceFlat = null;
+    try {
+      sourceFlat = teFlattenTranslations((await teFetchMainSource("extension")).json);
+    } catch (_err) {
+      // Offline: keep the cached values until the source is reachable again.
+    }
+    if (sourceFlat && cache.manifest?.content) {
+      const progressByLang = await teLanguageProgressValues(langs, metadata, sourceFlat, cache.manifest.content);
+      return langs.map((lang) => {
+        const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
+        // Only an explicit `published:false` in languages.json is a blocker.
+        // "Not registered yet" must NOT block: it is the only way a new language
+        // can ever reach the 90% publication threshold.
+        const override = metadata[lang]?.published === false;
+        return {
+          lang,
+          label: metadata[lang]?.label || teLangLabel(lang),
+          namespaces: teLanguageNamespaces(lang, metadata),
+          pending: !registered,
+          published: !override,
+          progress: progressByLang[lang] ?? 0,
+        };
+      });
+    }
   }
   return teLoadGithubLanguagesLive();
 }
@@ -163,28 +192,20 @@ async function teLoadGithubLanguagesLive() {
   const [metadata, sourceRaw, manifest] = await Promise.all([teFetchGithubJson("locales/languages.json"), teFetchMainSource("extension"), teFetchManifest()]);
   const sourceFlat = teFlattenTranslations(sourceRaw.json);
   const langs = teRegisteredLanguages(metadata);
+  const progressByLang = await teLanguageProgressValues(langs, metadata, sourceFlat, manifest);
 
-  return Promise.all(
-    langs.map(async (lang) => {
-      const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
-      const override = metadata[lang]?.published === false;
-      let meta = null;
-      try {
-        meta = await teFetchMetaAtSnapshot(manifest, lang);
-      } catch (_err) {
-        // Missing/unreadable metadata means 0%; other languages still load.
-      }
-      const progress = override ? 0 : teProgressFromMeta(sourceFlat, meta?.namespaces?.extension?.keys);
-      return {
-        lang,
-        label: metadata[lang]?.label || teLangLabel(lang),
-        namespaces: teLanguageNamespaces(lang, metadata),
-        pending: !registered,
-        published: !override,
-        progress,
-      };
-    }),
-  );
+  return langs.map((lang) => {
+    const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
+    const override = metadata[lang]?.published === false;
+    return {
+      lang,
+      label: metadata[lang]?.label || teLangLabel(lang),
+      namespaces: teLanguageNamespaces(lang, metadata),
+      pending: !registered,
+      published: !override,
+      progress: progressByLang[lang] ?? 0,
+    };
+  });
 }
 
 // The locales repo records only value-identical (safe) renames, scoped by

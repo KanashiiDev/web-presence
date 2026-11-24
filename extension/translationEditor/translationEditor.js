@@ -308,6 +308,7 @@ function teCreateRow(row) {
       row.draftBaseTargetHash = row.currentTargetHash;
     }
     row.edited = row.target !== row.originalTarget;
+    if (row.edited) row.reconfirmed = false;
     row.status = teComputeStatus(row);
     target.title = row.target;
     teRefreshRowStatus();
@@ -348,8 +349,72 @@ function teCreateRow(row) {
   });
   targetCell.appendChild(restoreBtn);
 
+  // Explicit "still correct" acknowledgement for a changed English source.
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.className = "te-restore-btn";
+  confirmBtn.textContent = i18n.t("common.apply");
+  async function teApplyLocalConfirm() {
+    row.reconfirmed = true;
+    row.status = teComputeStatus(row);
+    teRefreshRowStatus();
+    teUpdateQaBadge(row, qaColumn);
+    teRefreshRestore();
+    teUpdateProgress();
+    teUpdateFilterCounts();
+    teUpdateConflictBanner();
+    teRender();
+    try {
+      const current = (await teLoadDraft(teState.currentLang, teState.currentFile))?.entries || {};
+      await teSaveDraft(teState.currentLang, teState.currentFile, {
+        ...current,
+        [row.key]: {
+          target: row.target,
+          sourceHash: row.currentSourceHash,
+          baseTargetHash: row.currentTargetHash,
+          reconfirmed: true,
+        },
+      });
+      await teCommitPendingSave();
+    } catch (_err) {
+      // The in-memory state is already updated; persistence is best effort.
+    }
+  }
+
+  confirmBtn.addEventListener("click", () => {
+    if (row.prPending) return;
+    const body = document.createElement("div");
+    const question = document.createElement("div");
+    question.textContent = i18n.t("translationEditor.confirmModal.question", { key: row.key });
+    body.appendChild(question);
+
+    const localBtn = document.createElement("button");
+    localBtn.type = "button";
+    localBtn.className = "btn";
+    localBtn.textContent = i18n.t("translationEditor.confirmModal.localOnly");
+    localBtn.addEventListener("click", async () => {
+      modal.remove();
+      await teApplyLocalConfirm();
+    });
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "btn btn-primary";
+    submitBtn.textContent = i18n.t("translationEditor.confirmModal.submit");
+    submitBtn.addEventListener("click", async () => {
+      modal.remove();
+      await teApplyLocalConfirm();
+      await teOpenSubmitPreview();
+    });
+
+    const modal = createContentModal(i18n.t("translationEditor.confirmModal.title"), body, "", [localBtn, submitBtn]);
+  });
+  targetCell.appendChild(confirmBtn);
+
   function teRefreshRestore() {
+    const needsConfirm = !row.prPending && !row.edited && !row.reconfirmed && (row.keyStatus === "outdated" || row.keyStatus === "unverified");
     restoreBtn.hidden = !!row.prPending || !teShouldShowRestore(row);
+    confirmBtn.hidden = !needsConfirm;
   }
   teRefreshRestore();
   element.appendChild(targetCell);
@@ -490,33 +555,81 @@ async function teCommitPendingSave() {
   await teFlushDraft();
 }
 
+function tePendingFreshnessKeys() {
+  const freshness = teState.freshness;
+  const confirmed = (key) => teState.rows.some((row) => row.key === key && row.reconfirmed);
+  return {
+    missing: (freshness?.missingKeys || []).filter((key) => !confirmed(key)),
+    outdated: (freshness?.outdatedKeys || []).filter((key) => !confirmed(key)),
+    unverified: (freshness?.unverifiedKeys || []).filter((key) => !confirmed(key)),
+  };
+}
+
+function teConflictGroups() {
+  const pending = tePendingFreshnessKeys();
+  const groups = [];
+  if (pending.missing.length)
+    groups.push({
+      title: i18n.t("translationEditor.validation.missingKey", { key: "" }).replace(/:\s*$/, ""),
+      keys: pending.missing,
+    });
+  if (pending.outdated.length)
+    groups.push({
+      title: i18n.t("translationEditor.qa.name.freshness"),
+      keys: pending.outdated,
+    });
+  if (pending.unverified.length)
+    groups.push({
+      title: i18n.t("translationEditor.qa.unverified", { key: "" }).replace(/^:\s*/, ""),
+      keys: pending.unverified,
+    });
+  if (teState.draftWarning) groups.push({ title: teState.draftWarning, keys: [] });
+  return groups;
+}
+
 function teUpdateConflictBanner() {
   const banner = teElements.conflictBanner;
-  const freshness = teState.freshness;
-  const freshnessIssues = [];
-  if (freshness) {
-    if (freshness.missingKeys?.length) freshnessIssues.push(i18n.t("translationEditor.validation.missingKey", { key: freshness.missingKeys.slice(0, 3).join(", ") }));
-    if (freshness.outdatedKeys?.length) freshnessIssues.push(i18n.t("translationEditor.qa.sourceFreshness", { key: freshness.outdatedKeys.slice(0, 3).join(", ") }));
-    if (freshness.unverifiedKeys?.length) freshnessIssues.push(i18n.t("translationEditor.qa.unverified", { key: freshness.unverifiedKeys.slice(0, 3).join(", ") }));
-  }
-  if (teState.draftWarning) freshnessIssues.push(teState.draftWarning);
-
+  const groups = teConflictGroups();
   const hasPrConflicts = teState.rows.some((row) => row.prConflicts.length);
-  if (!teState.prError && !freshnessIssues.length && !hasPrConflicts) {
+  if (!teState.prError && !groups.length && !hasPrConflicts) {
     banner.style.display = "none";
     return;
   }
 
   banner.replaceChildren();
 
-  if (teState.prError || (!hasPrConflicts && freshnessIssues.length)) {
+  if (teState.prError) {
     const header = document.createElement("div");
     header.className = "te-conflict-header";
-    const title = document.createElement("span");
+    const title = document.createElement("div");
     title.className = "te-conflict-title";
-    title.textContent = teState.prError ? i18n.t("translationEditor.prError", { error: teState.prError }) : freshnessIssues.join(" | ");
+    title.textContent = i18n.t("translationEditor.prError", { error: teState.prError });
     header.appendChild(title);
     banner.appendChild(header);
+    banner.classList.remove("collapsed");
+    banner.style.display = "";
+    return;
+  }
+
+  if (!hasPrConflicts && groups.length) {
+    const details = document.createElement("div");
+    details.className = "te-conflict-details";
+    groups.forEach(({ title, keys }) => {
+      const group = document.createElement("div");
+      group.className = "te-conflict-group";
+      const heading = document.createElement("div");
+      heading.className = "te-conflict-group-title";
+      heading.textContent = title;
+      group.appendChild(heading);
+      if (keys.length) {
+        const keyLine = document.createElement("div");
+        keyLine.className = "te-conflict-group-keys";
+        keyLine.textContent = keys.slice(0, 8).join(", ") + (keys.length > 8 ? ` +${keys.length - 8}` : "");
+        group.appendChild(keyLine);
+      }
+      details.appendChild(group);
+    });
+    banner.appendChild(details);
     banner.classList.remove("collapsed");
     banner.style.display = "";
     return;
@@ -530,11 +643,14 @@ function teUpdateConflictBanner() {
 
   const header = document.createElement("div");
   header.className = "te-conflict-header";
+  const heading = document.createElement("div");
+  heading.className = "te-conflict-heading";
   const title = document.createElement("span");
   title.className = "te-conflict-title";
   title.textContent = i18n.t("translationEditor.conflicts.title");
   const summary = document.createElement("span");
   summary.textContent = i18n.t("translationEditor.conflictTitle", { count: conflicts.length });
+  heading.append(title, summary);
   const toggle = document.createElement("button");
   toggle.className = "btn btn-sm te-conflict-toggle";
   toggle.textContent = i18n.t(teState.conflictsExpanded ? "translationEditor.conflicts.hide" : "translationEditor.conflicts.show");
@@ -543,7 +659,7 @@ function teUpdateConflictBanner() {
     banner.classList.toggle("collapsed", !teState.conflictsExpanded);
     toggle.textContent = i18n.t(teState.conflictsExpanded ? "translationEditor.conflicts.hide" : "translationEditor.conflicts.show");
   });
-  header.append(title, summary, toggle);
+  header.append(heading, toggle);
 
   const details = document.createElement("div");
   details.className = "te-conflict-details";
@@ -712,6 +828,7 @@ function teApplyDraftToRows(rows, draftEntries) {
     row.edited = true;
     row.draftSourceHash = typeof entry.sourceHash === "string" ? entry.sourceHash : row.currentSourceHash;
     row.draftBaseTargetHash = typeof entry.baseTargetHash === "string" ? entry.baseTargetHash : row.currentTargetHash;
+    row.reconfirmed = entry.reconfirmed === true;
     row.status = teComputeStatus(row);
   });
 }
@@ -719,6 +836,7 @@ function teApplyDraftToRows(rows, draftEntries) {
 function teResetRowsToOriginal(rows) {
   rows.forEach((row) => {
     row.edited = false;
+    row.reconfirmed = false;
     row.target = row.originalTarget;
     row.draftSourceHash = row.currentSourceHash;
     row.draftBaseTargetHash = row.currentTargetHash;
@@ -794,10 +912,11 @@ async function teLoadCurrentFile(forcePrRefresh = false) {
       const comparison = await teCompareDraft({ draft, source, target });
       if (isStale()) return;
       const changedKeys = Object.entries(comparison.keys)
-        .filter(([, info]) => info.status !== "ok")
+        .filter(([key, info]) => info.status !== "ok" && !draft.entries?.[key]?.reconfirmed)
         .map(([key]) => key);
       if (changedKeys.length) {
-        teState.draftWarning = i18n.t("translationEditor.qa.sourceFreshness", { key: changedKeys.slice(0, 3).join(", ") });
+        // The conflict banner renders these as grouped keys; no separate
+        // draftWarning string is needed here.
         changedKeys.forEach((key) => {
           const row = rows.find((entry) => entry.key === key);
           if (row) row.status = "Outdated";
@@ -854,8 +973,30 @@ async function teLoadCurrentFile(forcePrRefresh = false) {
           teResetRowsToOriginal(rows);
         } else {
           teState.draftWarning = failed.map((entry) => i18n.t("translationEditor.qa.sourceFreshness", { key: entry.result.status })).join(" | ");
-          await teUpdateDraft(lang, file, { status: "draft", prUrl: "", prNumber: null, submissionIds: [] });
+          // A failed submission did not refresh the metadata hash, so the
+          // per-key confirmation is no longer valid for this source state.
+          const entries = (await teLoadDraft(lang, file))?.entries || {};
+          for (const entry of Object.values(entries)) delete entry.reconfirmed;
+          rows.forEach((row) => {
+            row.reconfirmed = false;
+          });
+          await teUpdateDraft(lang, file, { status: "draft", prUrl: "", prNumber: null, submissionIds: [], entries });
           if (isStale()) return;
+        }
+      } else if (draft.prNumber) {
+        // A submission merged before result comments existed (or while the
+        // comment was not delivered) has no feedback to read. A merged PR is
+        // proof the submission was consumed, so clear the stale draft.
+        try {
+          const token = await githubContributeService.getToken();
+          const pr = await githubContributeService.request(`/repos/${TE_REPO.owner}/${TE_REPO.name}/pulls/${draft.prNumber}`, {}, token);
+          if (pr?.merged) {
+            await teClearDraft(lang, file);
+            if (isStale()) return;
+            teResetRowsToOriginal(rows);
+          }
+        } catch (_err) {
+          // Keep the draft when PR state cannot be verified.
         }
       }
     }
@@ -1129,9 +1270,12 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
 }
 
 async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pendingKeys, warnings, skipMissing = false }) {
-  const filtered = Object.entries(draftEntries || {}).filter(
-    ([key, entry]) => typeof entry.target === "string" && Object.prototype.hasOwnProperty.call(sourceFlat, key) && (skipMissing || entry.target !== targetFlat[key]),
-  );
+  const filtered = Object.entries(draftEntries || {}).filter(([key, entry]) => {
+    if (typeof entry.target !== "string" || !Object.prototype.hasOwnProperty.call(sourceFlat, key)) return false;
+    if (skipMissing || entry.target !== targetFlat[key]) return true;
+    // Only an explicit per-key acknowledgement re-sends an unchanged value.
+    return entry.reconfirmed === true;
+  });
   // Rebase hashes against the files actually loaded for this preview. A draft
   // captured against an older English source must not block submission: the
   // editor recomputes them on every submit, and per-key QA still rejects real
@@ -1145,6 +1289,7 @@ async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pen
     filtered.map(async ([key, entry]) => {
       const currentSourceHash = await teHashSource(sourceFlat[key], key);
       const baseTargetHash = await teHashTarget(targetFlat[key] ?? "", key);
+      const reconfirm = entry.reconfirmed === true;
       return {
         key,
         source: sourceFlat[key],
@@ -1152,12 +1297,14 @@ async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pen
         sourceHash: currentSourceHash,
         baseTargetHash,
         currentSourceHash,
+        reconfirm,
       };
     }),
   );
 
-  changes.forEach(({ key }) => {
+  changes.forEach(({ key, reconfirm }) => {
     if (pendingKeys.has(key)) warnings.push(i18n.t("translationEditor.submitModal.pendingConflict", { key }));
+    if (reconfirm) warnings.push(i18n.t("translationEditor.qa.sourceFreshness", { key }));
   });
   const validation = teValidateChanges(sourceFlat, effectiveTarget, changes, {
     skipMissing,

@@ -70,9 +70,15 @@ async function teBuildSubmission({ lang, ns, changes, baseCommit, sourceCommit }
     // baseTargetHash is the hash of the target we are patching, not of the new
     // value. A match means the draft was already applied, so skip it.
     const submittedHash = await teHashTarget(change.target, change.key);
-    if (submittedHash === change.baseTargetHash) continue;
-    if (change.sourceHash !== change.currentSourceHash) continue;
-    accepted[change.key] = { value: change.target, baseTargetHash: change.baseTargetHash, sourceHash: change.sourceHash };
+    // An unchanged value is normally a no-op, except when the contributor is
+    // re-acknowledging it against a changed English source. That refreshes the
+    // metadata hash without touching the translation file.
+    if (!change.reconfirm && submittedHash === change.baseTargetHash) continue;
+    // Use the hash of the source we actually loaded for this preview. A stale
+    // hash from an old draft must never silently drop a correct translation;
+    // the processor re-checks freshness authoritatively at apply time.
+    const sourceHash = change.currentSourceHash || change.sourceHash;
+    accepted[change.key] = { value: change.target, baseTargetHash: change.baseTargetHash, sourceHash };
   }
   if (!Object.keys(accepted).length) return null;
 
@@ -174,7 +180,7 @@ async function teSubmitSubmissions({ submissions, title, body, token, onStatus =
   const lang = submissions[0].lang;
   const commit = await githubContributeService.request(
     `/repos/${forkOwner}/${TE_SUBMIT_REPO}/git/commits`,
-    { method: "POST", body: { message: `locale(submission): ${lang} [skip ci]`, tree: tree.sha, parents: [branchBase.parentSha] } },
+    { method: "POST", body: { message: `locale(submission): ${lang}`, tree: tree.sha, parents: [branchBase.parentSha] } },
     token,
   );
 
