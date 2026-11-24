@@ -1,8 +1,6 @@
 // Lowercase codes only: the locales processor normalizes `lang` to lowercase
 // and rejects a payload whose lang/id disagree with the intake folder.
-const TE_SUPPORTED_LANGS = [
-  ...new Set(["de", "es", "fr", "ja", "ko", "pl", "ru", "tr", "uk", "vi", "zh-CN", "zh-TW", "pt-BR", "it", "pt", "nl", "id", "ar", "hi"].map(teNormalizeLang)),
-];
+const TE_SUPPORTED_LANGS = [...new Set(["de", "es", "fr", "ja", "ko", "pl", "ru", "tr", "uk", "vi", "zh-CN", "zh-TW", "pt-BR", "it", "id"].map(teNormalizeLang))];
 
 const TE_LANG_LABEL_FALLBACKS = {
   "pt-br": "Brazilian Portuguese",

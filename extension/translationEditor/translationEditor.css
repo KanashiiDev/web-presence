@@ -24,6 +24,8 @@ body {
   }
 }
 
+.contribute-status,
+.te-submit-keys,
 .te-sidebar,
 .table-viewport,
 .te-disc-list,
@@ -32,6 +34,8 @@ body {
   -ms-overflow-style: none;
 }
 
+.contribute-status::-webkit-scrollbar,
+.te-submit-keys::-webkit-scrollbar,
 .te-sidebar::-webkit-scrollbar,
 .table-viewport::-webkit-scrollbar,
 #discList::-webkit-scrollbar,
@@ -899,11 +903,27 @@ body {
   gap: 4px;
   max-height: 120px;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   margin-top: 6px;
 }
 
 .te-submit-keys[hidden] {
   display: none;
+}
+
+.te-submit-keys .simplebar-content-wrapper {
+  outline: none;
+}
+
+.te-submit-keys .simplebar-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.te-submit-keys .simplebar-track.simplebar-vertical {
+  margin-right: 2px;
 }
 
 .te-submit-key {
@@ -1526,6 +1546,12 @@ body {
   flex-wrap: wrap;
 }
 
+.modal[data-locked="1"] .close-btn {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 .te-translation-disc-body,
 .te-new-discussion {
   display: flex;
@@ -1654,6 +1680,18 @@ body {
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
   margin: 8px 0;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.contribute-status .simplebar-content-wrapper {
+  outline: none;
+}
+
+.contribute-status .simplebar-track.simplebar-vertical {
+  margin-right: 2px;
 }
 
 .contribute-status.loading {

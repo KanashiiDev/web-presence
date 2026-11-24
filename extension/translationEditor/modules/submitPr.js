@@ -101,9 +101,11 @@ async function teBuildSubmission({ lang, ns, changes, baseCommit, sourceCommit }
   return submission;
 }
 
-// Returns the tree and parent to build the next commit on. Reusing the existing
-// branch tree keeps previously submitted languages in the same PR.
-async function teGetBranchBase(forkOwner, branchName, baseSha, baseTreeSha, token) {
+// Returns the tree and parent to build the next commit on, plus the ref whose
+// paths must stay free. The branch tree is only kept when it backs an OPEN PR:
+// a merged/closed PR's submissions have already been consumed on main, so
+// carrying its tree forward re-adds them as stale files in the next PR.
+async function teGetBranchBase(forkOwner, branchName, baseSha, baseTreeSha, token, keepBranchTree) {
   const refPath = `/repos/${forkOwner}/${TE_SUBMIT_REPO}/git/refs/heads/${branchName}`;
   let existing = null;
   try {
@@ -111,20 +113,24 @@ async function teGetBranchBase(forkOwner, branchName, baseSha, baseTreeSha, toke
   } catch (err) {
     if (err.status !== 404) throw err;
   }
-  if (!existing?.object?.sha) return { refExists: false, parentSha: baseSha, baseTreeSha };
+  // No ref, or no open PR to preserve: start from the current upstream main.
+  // The ref is force-moved to the new commit later, which drops the old tree.
+  if (!existing?.object?.sha || !keepBranchTree) {
+    return { refExists: !!existing?.object?.sha, parentSha: baseSha, baseTreeSha, ref: baseSha };
+  }
   const parentSha = existing.object.sha;
   try {
     const parentCommit = await githubContributeService.request(`/repos/${forkOwner}/${TE_SUBMIT_REPO}/git/commits/${parentSha}`, {}, token);
-    return { refExists: true, parentSha, baseTreeSha: parentCommit?.tree?.sha || baseTreeSha };
+    return { refExists: true, parentSha, baseTreeSha: parentCommit?.tree?.sha || baseTreeSha, ref: parentSha };
   } catch (_err) {
-    return { refExists: true, parentSha, baseTreeSha };
+    return { refExists: true, parentSha, baseTreeSha, ref: parentSha };
   }
 }
 
-async function teAssertSubmissionPathsFree(forkOwner, branchName, submissions, token) {
+async function teAssertSubmissionPathsFree(forkOwner, ref, submissions, token) {
   for (const submission of submissions) {
     try {
-      await githubContributeService.request(`/repos/${forkOwner}/${TE_SUBMIT_REPO}/contents/${submission.path}?ref=${branchName}`, {}, token);
+      await githubContributeService.request(`/repos/${forkOwner}/${TE_SUBMIT_REPO}/contents/${submission.path}?ref=${encodeURIComponent(ref)}`, {}, token);
       throw new Error(`Submission already exists: ${submission.id}`);
     } catch (err) {
       if (err.status !== 404) throw err;
@@ -159,8 +165,8 @@ async function teSubmitSubmissions({ submissions, title, body, token, onStatus =
   const baseCommit = await githubContributeService.request(`/repos/${TE_SUBMIT_OWNER}/${TE_SUBMIT_REPO}/git/commits/${baseSha}`, {}, token);
 
   onStatus("branching");
-  const branchBase = await teGetBranchBase(forkOwner, branchName, baseSha, baseCommit.tree.sha, token);
-  if (branchBase.refExists) await teAssertSubmissionPathsFree(forkOwner, branchName, submissions, token);
+  const branchBase = await teGetBranchBase(forkOwner, branchName, baseSha, baseCommit.tree.sha, token, openPrs.length > 0);
+  await teAssertSubmissionPathsFree(forkOwner, branchBase.ref, submissions, token);
 
   // Build every Git object first. The branch ref moves only after the commit exists.
   const treeEntries = [];

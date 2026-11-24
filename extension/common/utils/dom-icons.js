@@ -154,8 +154,12 @@ function createModal(contentClassName = "") {
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn close-btn";
   closeBtn.textContent = i18n.t("common.close");
-  closeBtn.addEventListener("click", () => modal.remove());
+  closeBtn.addEventListener("click", () => {
+    if (modal.dataset.locked === "1") return;
+    modal.remove();
+  });
   modal.addEventListener("click", (e) => {
+    if (modal.dataset.locked === "1") return;
     if (e.target === modal) modal.remove();
   });
 
