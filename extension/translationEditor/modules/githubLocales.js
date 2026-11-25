@@ -68,15 +68,23 @@ async function teFetchManifest() {
 }
 
 async function teFetchMetaAtSnapshot(manifest, lang) {
-  const url = `${TE_LOCALES_RAW_ROOT}/${manifest.snapshot}/locales/${teNormalizeLang(lang)}/.meta.json`;
-  const response = await fetchWithTimeout(url, {}, 12000);
+  const normalized = teNormalizeLang(lang);
+  const url = `${TE_LOCALES_RAW_ROOT}/${manifest.snapshot}/locales/${normalized}/.meta.json`;
+  let response = await fetchWithTimeout(url, {}, 12000);
+  let fromFallback = false;
+  // A newly processed language can exist on main before the manifest snapshot
+  // advances. Fall back to the mutable branch instead of showing a failed load.
+  if (response.status === 404) {
+    response = await fetchWithTimeout(`${TE_GITHUB_RAW_BASE}/locales/${normalized}/.meta.json?t=${Date.now()}`, {}, 12000);
+    fromFallback = true;
+  }
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Metadata for ${lang}: HTTP ${response.status}`);
   const meta = await response.json();
   if (meta && !teIsSupportedHashVersion(meta.hashVersion)) {
     throw new Error(i18n.t("translationEditor.error.unsupportedHashVersion", { version: String(meta.hashVersion) }));
   }
-  return meta;
+  return { ...meta, fromFallback };
 }
 
 // Key renames are recorded in the English mirror metadata by sync-source.js.
@@ -98,8 +106,16 @@ async function teFetchSnapshotTarget(manifest, lang, namespace, allowMissing) {
     if (declared.url !== expectedUrl) throw new Error(i18n.t("translationEditor.error.invalidManifest"));
   }
   const url = declared?.url || `${prefix}${normalizedLang}/${namespace}.json`;
-  const response = await fetchWithTimeout(url, {}, 12000);
-  if (response.status === 404 && allowMissing) return { text: null, json: {} };
+  let response = await fetchWithTimeout(url, {}, 12000);
+  let fromFallback = false;
+  if (response.status === 404) {
+    if (allowMissing) return { text: null, json: {}, fromFallback: false };
+    // The locale file may already be on main while the manifest snapshot still
+    // points at an older commit. Use current main for display, but mark the
+    // result so submission can wait until the snapshot catches up.
+    response = await fetchWithTimeout(`${TE_GITHUB_RAW_BASE}/locales/${normalizedLang}/${namespace}.json?t=${Date.now()}`, {}, 12000);
+    fromFallback = true;
+  }
   if (!response.ok) throw new Error(`Translation ${lang}/${namespace}: HTTP ${response.status}`);
   const text = await response.text();
   let json;
@@ -109,10 +125,10 @@ async function teFetchSnapshotTarget(manifest, lang, namespace, allowMissing) {
     throw new Error(i18n.t("translationEditor.error.invalidJson", { path: `locales/${lang}/${namespace}.json`, error: err.message }));
   }
   const blobSha = await teGitBlobShaForText(text);
-  if (declared?.sha && blobSha.toLowerCase() !== String(declared.sha).toLowerCase()) {
+  if (!fromFallback && declared?.sha && blobSha.toLowerCase() !== String(declared.sha).toLowerCase()) {
     throw new Error(i18n.t("translationEditor.error.shaMismatch", { path: `${lang}/${namespace}`, expected: declared.sha, actual: blobSha }));
   }
-  return { text, json, blobSha };
+  return { text, json, blobSha, fromFallback };
 }
 
 const TE_LOCALE_CACHE_KEY = "translationLocaleCache";
@@ -128,7 +144,10 @@ async function teReadLocaleCache() {
 }
 
 function teRegisteredLanguages(metadata) {
-  const langs = [...Object.keys(metadata).filter((lang) => lang !== "en"), ...TE_SUPPORTED_LANGS.filter((lang) => !Object.prototype.hasOwnProperty.call(metadata, lang))];
+  const langs = [
+    ...Object.keys(metadata).filter((lang) => lang !== "en"),
+    ...PARSER_LOCALE_LANGS.filter((lang) => !Object.prototype.hasOwnProperty.call(metadata, lang)),
+  ];
   return [...new Set(langs.map(teNormalizeLang))];
 }
 
@@ -136,23 +155,126 @@ function teLanguageNamespaces(lang, metadata) {
   return metadata[lang] ? TE_NAMESPACES.filter((ns) => ns === "shared" || metadata[lang][ns]) : [...TE_NAMESPACES];
 }
 
+// Count the words in English source strings that still need a translation.
+// Uses the same accepted-key metadata as progress, so both figures agree.
+function teWordsToTranslate(sourceFlat, metaKeys) {
+  const keys = metaKeys || {};
+  return Object.entries(sourceFlat || {}).reduce((total, [key, value]) => {
+    if (typeof value !== "string" || Object.prototype.hasOwnProperty.call(keys, key)) return total;
+    return total + value.trim().split(/\s+/).filter(Boolean).length;
+  }, 0);
+}
+
 // Progress must use the authoritative English source, not the derived mirror
 // stored in the runtime cache. Otherwise newly added keys are invisible to the
 // dropdown while the editor already counts them.
-async function teLanguageProgressValues(langs, metadata, sourceFlat, manifest) {
+async function teFetchAllSources() {
   const entries = await Promise.all(
-    langs.map(async (lang) => {
-      if (metadata[lang]?.published === false) return [lang, 0];
-      let meta = null;
+    TE_NAMESPACES.map(async (namespace) => {
       try {
-        meta = await teFetchMetaAtSnapshot(manifest, lang);
+        return [namespace, teFlattenTranslations((await teFetchMainSource(namespace)).json)];
       } catch (_err) {
-        // Missing/unreadable metadata means 0%; other languages still load.
+        // A namespace that cannot be fetched keeps zero stats; others still load.
+        return [namespace, null];
       }
-      return [lang, teProgressFromMeta(sourceFlat, meta?.namespaces?.extension?.keys)];
     }),
   );
   return Object.fromEntries(entries);
+}
+
+function teProgressStats(source, keys) {
+  return { progress: teProgressFromMeta(source, keys), wordsRemaining: teWordsToTranslate(source, keys) };
+}
+
+// Only a non-empty draft whose source hash still matches counts as translated.
+// A stale draft would be rejected on submission, so it must not claim progress.
+async function teDraftAcceptedKeys(source, entries) {
+  const accepted = new Set();
+  if (!source || !entries) return accepted;
+  await Promise.all(
+    Object.entries(entries).map(async ([key, entry]) => {
+      if (!(key in source) || typeof entry?.target !== "string" || !entry.target.trim()) return;
+      try {
+        if (entry.sourceHash === (await teHashSource(source[key], key))) accepted.add(key);
+      } catch (_err) {
+        // An unreadable hash cannot be trusted; leave the key untranslated.
+      }
+    }),
+  );
+  return accepted;
+}
+
+async function teLanguageStats(entry, sources, publishedKeys, drafts) {
+  const files = {};
+  for (const namespace of TE_NAMESPACES) {
+    const source = sources?.[namespace];
+    const published = publishedKeys?.[namespace] || {};
+    const draftKeys = await teDraftAcceptedKeys(source, drafts?.[`${entry.lang}/${namespace}.json`]?.entries);
+    const localKeys = { ...published };
+    draftKeys.forEach((key) => {
+      localKeys[key] = true;
+    });
+    const local = teProgressStats(source, localKeys);
+    const publishedStats = teProgressStats(source, published);
+    files[namespace] = {
+      ...local,
+      publishedProgress: publishedStats.progress,
+      publishedWordsRemaining: publishedStats.wordsRemaining,
+    };
+  }
+  const extension = files.extension || { progress: 0, wordsRemaining: 0, publishedProgress: 0, publishedWordsRemaining: 0 };
+  return {
+    progress: extension.progress,
+    wordsRemaining: extension.wordsRemaining,
+    publishedProgress: extension.publishedProgress,
+    publishedWordsRemaining: extension.publishedWordsRemaining,
+    files,
+    sources,
+    publishedKeys,
+  };
+}
+
+async function teLanguageProgressValues(langs, metadata, sources, manifest, drafts) {
+  const entries = await Promise.all(
+    langs.map(async (lang) => {
+      const publishedKeys = {};
+      let meta = null;
+      if (metadata[lang]?.published !== false) {
+        try {
+          meta = await teFetchMetaAtSnapshot(manifest, lang);
+        } catch (_err) {
+          // Missing/unreadable metadata means 0%; other languages still load.
+        }
+      }
+      TE_NAMESPACES.forEach((namespace) => {
+        publishedKeys[namespace] = metadata[lang]?.published === false ? {} : meta?.namespaces?.[namespace]?.keys || {};
+      });
+      return [lang, await teLanguageStats({ lang }, sources, publishedKeys, drafts)];
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+// Re-read local drafts without another network round trip when Home is shown.
+async function teRefreshLanguageDraftStats(languages) {
+  const drafts = await teLoadAllDrafts();
+  await Promise.all(
+    languages.map(async (entry) => {
+      Object.assign(entry, await teLanguageStats(entry, entry.sources, entry.publishedKeys, drafts));
+    }),
+  );
+}
+
+function teLanguageStatsFields(stats) {
+  return {
+    progress: stats?.progress ?? 0,
+    wordsRemaining: stats?.wordsRemaining ?? 0,
+    publishedProgress: stats?.publishedProgress ?? 0,
+    publishedWordsRemaining: stats?.publishedWordsRemaining ?? 0,
+    files: stats?.files || {},
+    sources: stats?.sources || {},
+    publishedKeys: stats?.publishedKeys || {},
+  };
 }
 
 async function teLoadGithubLanguages() {
@@ -160,14 +282,10 @@ async function teLoadGithubLanguages() {
   if (cache?.metadata?.content && cache.langs && Object.keys(cache.langs).length) {
     const metadata = cache.metadata.content;
     const langs = teRegisteredLanguages(metadata);
-    let sourceFlat = null;
-    try {
-      sourceFlat = teFlattenTranslations((await teFetchMainSource("extension")).json);
-    } catch (_err) {
-      // Offline: keep the cached values until the source is reachable again.
-    }
-    if (sourceFlat && cache.manifest?.content) {
-      const progressByLang = await teLanguageProgressValues(langs, metadata, sourceFlat, cache.manifest.content);
+    const sources = await teFetchAllSources();
+    if (sources.extension && cache.manifest?.content) {
+      const drafts = await teLoadAllDrafts();
+      const statsByLang = await teLanguageProgressValues(langs, metadata, sources, cache.manifest.content, drafts);
       return langs.map((lang) => {
         const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
         // Only an explicit `published:false` in languages.json is a blocker.
@@ -176,11 +294,11 @@ async function teLoadGithubLanguages() {
         const override = metadata[lang]?.published === false;
         return {
           lang,
-          label: metadata[lang]?.label || teLangLabel(lang),
+          label: parserLangLabel(lang, parserDisplayLocales()),
           namespaces: teLanguageNamespaces(lang, metadata),
           pending: !registered,
           published: !override,
-          progress: progressByLang[lang] ?? 0,
+          ...teLanguageStatsFields(statsByLang[lang]),
         };
       });
     }
@@ -189,21 +307,25 @@ async function teLoadGithubLanguages() {
 }
 
 async function teLoadGithubLanguagesLive() {
-  const [metadata, sourceRaw, manifest] = await Promise.all([teFetchGithubJson("locales/languages.json"), teFetchMainSource("extension"), teFetchManifest()]);
-  const sourceFlat = teFlattenTranslations(sourceRaw.json);
+  const [metadata, manifest, sources, drafts] = await Promise.all([
+    teFetchGithubJson("locales/languages.json"),
+    teFetchManifest(),
+    teFetchAllSources(),
+    teLoadAllDrafts(),
+  ]);
   const langs = teRegisteredLanguages(metadata);
-  const progressByLang = await teLanguageProgressValues(langs, metadata, sourceFlat, manifest);
+  const statsByLang = await teLanguageProgressValues(langs, metadata, sources, manifest, drafts);
 
   return langs.map((lang) => {
     const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
     const override = metadata[lang]?.published === false;
     return {
       lang,
-      label: metadata[lang]?.label || teLangLabel(lang),
+      label: parserLangLabel(lang, parserDisplayLocales()),
       namespaces: teLanguageNamespaces(lang, metadata),
       pending: !registered,
       published: !override,
-      progress: progressByLang[lang] ?? 0,
+      ...teLanguageStatsFields(statsByLang[lang]),
     };
   });
 }
@@ -244,5 +366,6 @@ async function teLoadGithubRows(lang, namespace, allowMissingTarget = false) {
     manifest,
     enBlobSha: source.blobSha || null,
     targetBlobSha: target.blobSha || null,
+    targetFromFallback: target.fromFallback === true || meta?.fromFallback === true,
   };
 }

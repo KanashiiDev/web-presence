@@ -24,6 +24,7 @@ body {
   }
 }
 
+.te-home-list,
 .contribute-status,
 .te-submit-keys,
 .te-sidebar,
@@ -34,6 +35,7 @@ body {
   -ms-overflow-style: none;
 }
 
+.te-home-list::-webkit-scrollbar,
 .contribute-status::-webkit-scrollbar,
 .te-submit-keys::-webkit-scrollbar,
 .te-sidebar::-webkit-scrollbar,
@@ -227,6 +229,27 @@ body {
   background: var(--foreground-color-100);
 }
 
+.te-editor-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.te-editor-content[hidden],
+.te-home[hidden] {
+  display: none;
+}
+
+body[data-te-view="home"] .te-split {
+  grid-template-columns: 1fr;
+}
+
+body[data-te-view="home"] .te-sidebar,
+body[data-te-view="home"] .te-view-tabs {
+  display: none;
+}
+
 .te-workspace-header {
   height: 48px;
   flex-shrink: 0;
@@ -241,8 +264,44 @@ body {
 
 .te-doc {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.te-doc-text {
+  display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.te-back-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--foreground-color-300);
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition-reduced-fast) ease,
+    color var(--transition-reduced-fast) ease;
+}
+
+.te-back-btn:hover {
+  background: var(--foreground-color-400);
+  color: var(--text-color-primary);
+}
+
+.te-back-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .te-doc-label {
@@ -333,6 +392,150 @@ body {
   gap: 10px;
   padding: 12px;
   overflow: hidden;
+}
+
+.te-home {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--foreground-color-100);
+}
+
+.te-home-header {
+  flex-shrink: 0;
+}
+
+.te-home-title {
+  font-size: var(--font-h3);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.te-home-desc {
+  font-size: var(--font-sm);
+  color: var(--text-color-muted);
+}
+
+.te-home-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+}
+
+.te-home-list-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.te-home-lang {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--foreground-color-200);
+  color: var(--text-color-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-reduced-fast) ease,
+    background var(--transition-reduced-fast) ease;
+}
+
+.te-home-lang:hover {
+  border-color: var(--accent-color-border-bright);
+  background: var(--foreground-color-300);
+}
+
+.te-home-lang-head,
+.te-home-lang-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.te-home-lang-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.te-home-lang-code {
+  font-size: var(--font-xs);
+  font-family: monospace;
+  color: var(--text-color-muted);
+}
+
+.te-home-lang-percent {
+  flex-shrink: 0;
+  font-size: var(--font-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.te-home-progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--foreground-color-400);
+}
+
+.te-home-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--green-color);
+  transition: width var(--transition-normal) ease;
+}
+
+.te-home-lang-meta {
+  font-size: var(--font-sm);
+  color: var(--text-color-secondary);
+}
+
+.te-home-lang-badge,
+.te-home-lang-published {
+  flex-shrink: 0;
+  font-size: var(--font-xs);
+  color: var(--text-color-muted);
+}
+
+.te-home-lang-published {
+  font-variant-numeric: tabular-nums;
+}
+
+.te-home-empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--foreground-color-200);
+  color: var(--text-color-muted);
+  text-align: center;
+}
+
+.modal-content.te-home-modal {
+  max-width: 760px;
+}
+
+.te-home-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+  align-content: start;
 }
 
 .conflict-banner {

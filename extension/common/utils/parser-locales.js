@@ -546,3 +546,53 @@ function parseLocalesObjectText(text) {
   }
   return Object.keys(out).length ? sanitizeLocales(out) : null;
 }
+
+// Canonical language list for parser locale tables and the translation editor.
+// "en" is the mandatory base column and is never offered.
+const PARSER_LOCALE_LANGS = ["de", "es", "fr", "ja", "ko", "pl", "nl", "ru", "tr", "uk", "vi", "zh-cn", "zh-tw", "pt-br", "it", "id"];
+
+// Pin labels that may vary across ICU versions.
+const PARSER_LANG_LABEL_FALLBACKS = {
+  "pt-br": { en: "Brazilian Portuguese", "pt-br": "Português (Brasil)" },
+  "zh-cn": { en: "Chinese (China)", "zh-cn": "简体中文" },
+  "zh-tw": { en: "Chinese (Taiwan)", "zh-tw": "繁體中文" },
+};
+
+function normalizeLangCode(lang) {
+  return typeof lang === "string" ? lang.toLowerCase() : "";
+}
+
+// Load once so language labels can be rendered synchronously.
+let parserDisplayLocalesCache = null;
+
+async function loadParserDisplayLocales() {
+  let lang = null;
+  try {
+    if (typeof browser !== "undefined" && browser.storage?.local) {
+      lang = (await browser.storage.local.get("lang"))?.lang ?? null;
+    }
+  } catch (_err) {}
+  const browserLang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language : null;
+  parserDisplayLocalesCache = [lang, browserLang, "en"].filter(Boolean);
+  return parserDisplayLocalesCache;
+}
+
+function parserDisplayLocales() {
+  if (parserDisplayLocalesCache) return parserDisplayLocalesCache;
+  const browserLang = typeof navigator !== "undefined" ? navigator.languages?.[0] || navigator.language : null;
+  return [browserLang, "en"].filter(Boolean);
+}
+
+// Uses the same locale priority as the settings language picker.
+function parserLangLabel(lang, displayLocales) {
+  const code = normalizeLangCode(lang);
+  const locales = Array.isArray(displayLocales) ? displayLocales : [normalizeLangCode(displayLocales) || "en"];
+  const fallback = PARSER_LANG_LABEL_FALLBACKS[code];
+  const primary = normalizeLangCode(locales[0]);
+  if (fallback && fallback[primary]) return fallback[primary];
+  try {
+    return new Intl.DisplayNames(locales, { type: "language" }).of(code) || code;
+  } catch (_err) {
+    return code;
+  }
+}

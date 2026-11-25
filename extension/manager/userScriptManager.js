@@ -29,28 +29,6 @@ const REGION_OPEN_ALL_RE = /\/\/#region\b(?!-)/g;
 const REGION_CLOSE_ALL_RE = /\/\/#endregion\b/g;
 
 /**
- * Fixed language list offered in the Translations tab; arbitrary languages
- * cannot be added. Codes are lowercase so they match the sanitized locales
- * data and selectLocaleLang, which compares case-insensitively. "en" is the
- * mandatory base column and is never offered.
- */
-const PARSER_LOCALE_LANGS = [
-  { code: "de", name: "Deutsch" },
-  { code: "es", name: "Español" },
-  { code: "fr", name: "Français" },
-  { code: "ja", name: "日本語" },
-  { code: "ko", name: "한국어" },
-  { code: "pl", name: "Polski" },
-  { code: "pt-br", name: "Português (Brasil)" },
-  { code: "ru", name: "Русский" },
-  { code: "tr", name: "Türkçe" },
-  { code: "uk", name: "Українська" },
-  { code: "vi", name: "Tiếng Việt" },
-  { code: "zh-cn", name: "简体中文" },
-  { code: "zh-tw", name: "繁體中文" },
-];
-
-/**
  * i18n lookup with an English fallback while a locale key is still missing
  * (i18n.t returns the key itself for unknown keys). Placeholders in the
  * fallback are filled too: `{0}`-style for array args, `{name}`-style for
@@ -313,6 +291,7 @@ class UserScriptUI {
 
   async init() {
     await i18n.load("extension");
+    await loadParserDisplayLocales();
     applyTranslations();
 
     const perm = await checkUserScriptsPermission();
@@ -2114,9 +2093,9 @@ class UserScriptUI {
   refreshLocaleLangOptions() {
     const select = document.getElementById("inLocaleLang");
     if (!select) return;
-    const fixed = PARSER_LOCALE_LANGS.map((l) => l.code);
+    const fixed = PARSER_LOCALE_LANGS;
     const legacy = Object.keys(this.localesData || {}).filter((lang) => lang !== "en" && !fixed.includes(lang));
-    const labels = new Map(PARSER_LOCALE_LANGS.map((l) => [l.code, `${l.name} (${l.code})`]));
+    const labels = new Map(PARSER_LOCALE_LANGS.map((code) => [code, `${parserLangLabel(code, parserDisplayLocales())} (${code})`]));
     const options = [...fixed, ...legacy.sort()];
     select.replaceChildren(
       ...options.map((code) => {
@@ -2155,7 +2134,7 @@ class UserScriptUI {
 
   /** The target language of the single-language view, resolved when unset. */
   getLocaleViewLang() {
-    const fixed = PARSER_LOCALE_LANGS.map((l) => l.code);
+    const fixed = PARSER_LOCALE_LANGS;
     const view = this.localeViewLang;
     if (view && (fixed.includes(view) || this.localesData?.[view])) return view;
     const existing = Object.keys(this.localesData || {}).find((lang) => lang !== "en");

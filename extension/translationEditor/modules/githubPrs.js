@@ -1,5 +1,5 @@
 const TE_PR_CACHE_KEY = "translationPrCache";
-const TE_PR_CACHE_TTL_MS = 5 * 60 * 1000;
+const TE_PR_CACHE_TTL_MS = 60 * 1000;
 const TE_UPSTREAM_OWNER = TE_REPO.owner;
 const TE_UPSTREAM_REPO = TE_REPO.name;
 
@@ -27,6 +27,26 @@ async function teFetchPrSubmission(head, lang, id) {
 }
 
 let teFetchOpenPrsInflight = null;
+let tePrFetchPartial = false;
+
+/** True when the last PR fetch had at least one failed request. */
+function teOpenPrsHadPartialFailure() {
+  return tePrFetchPartial;
+}
+
+// GitHub list endpoints return at most 100 items per page. Truncating the list
+// hides pending submissions and their result comments on busy repositories.
+async function teRequestAllPages(request, path, cap = 20) {
+  const all = [];
+  for (let page = 1; page <= cap; page += 1) {
+    const separator = path.includes("?") ? "&" : "?";
+    const batch = await request(`${path}${separator}page=${page}&per_page=100`);
+    if (!Array.isArray(batch)) return all;
+    all.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return all;
+}
 
 // Bounded parallelism: one list request plus a few concurrent PR/file fetches,
 // not 10+ serial round trips. Concurrent callers share the same in-flight work.
@@ -43,6 +63,12 @@ async function teMapWithLimit(items, limit, mapper) {
   return result;
 }
 
+// A merged PR disappears from the "open" list immediately, while the processor
+// still needs a few seconds to apply it and publish the result. Treat recently
+// merged PRs as pending until their result comments appear, so other users do
+// not see those keys as available during that window.
+const TE_MERGED_PR_LOCK_MS = 5 * 60 * 1000;
+
 async function teFetchOpenPrsLive() {
   const token = await githubContributeService.getToken();
   // A rejected token stays rejected for this fetch: one 401, then anonymous.
@@ -52,6 +78,7 @@ async function teFetchOpenPrsLive() {
       return await githubContributeService.request(path, {}, usableToken);
     } catch (err) {
       if (usableToken && err.status === 401) {
+        teInvalidateGithubToken();
         usableToken = null;
         return githubContributeService.request(path, {}, null);
       }
@@ -59,52 +86,86 @@ async function teFetchOpenPrsLive() {
     }
   };
   const base = `/repos/${TE_UPSTREAM_OWNER}/${TE_UPSTREAM_REPO}`;
-  const pulls = await request(`${base}/pulls?state=open&per_page=100`);
+  const requestAll = (path) => teRequestAllPages(request, path);
+  tePrFetchPartial = false;
+  const [openPulls, closedPulls] = await Promise.all([requestAll(`${base}/pulls?state=open`), requestAll(`${base}/pulls?state=closed&sort=updated&direction=desc`)]);
+  const now = Date.now();
+  const pulls = [...openPulls, ...closedPulls.filter((pull) => pull.merged_at && now - Date.parse(pull.merged_at) < TE_MERGED_PR_LOCK_MS)];
   const prResults = await teMapWithLimit(pulls, 4, async (pull) => {
-    const files = await request(`${base}/pulls/${pull.number}/files?per_page=100`);
-    const entries = {};
-    const localeFiles = files
-      .map((file) => file.filename.match(/^locales\/([^/]+)\/([^/]+)\.json$/))
-      .filter(Boolean)
-      .map((match) => ({ lang: match[1], namespace: match[2] }));
+    try {
+      const merged = !!pull.merged_at;
+      // After a squash merge the PR head ref can be deleted. The merge commit
+      // always contains the submission file exactly as the PR added it.
+      const fileHead = merged && pull.merge_commit_sha ? { ...pull.head, sha: pull.merge_commit_sha } : pull.head;
+      const files = await requestAll(`${base}/pulls/${pull.number}/files`);
+      const entries = {};
+      const localeFiles = files
+        .map((file) => file.filename.match(/^locales\/([^/]+)\/([^/]+)\.json$/))
+        .filter(Boolean)
+        .map((match) => ({ lang: match[1], namespace: match[2] }));
 
-    await teMapWithLimit(localeFiles, 4, async ({ lang, namespace }) => {
-      try {
-        entries[`${lang}/${namespace}`] = teFlattenTranslations(await teFetchPrFile(pull.head, lang, namespace));
-      } catch (_err) {
-        // Skip files whose PR head is unavailable; other files in the PR are still usable.
-      }
-    });
-
-    const submissionFiles = files
-      .map((file) => file.filename.match(/^submissions\/([a-z]{2,3}(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9_-]{7,63})\.json$/i))
-      .filter(Boolean)
-      .map((match) => ({ lang: match[1].toLowerCase(), id: match[2] }));
-
-    await teMapWithLimit(submissionFiles, 4, async ({ lang, id }) => {
-      try {
-        const payload = await teFetchPrSubmission(pull.head, lang, id);
-        const ns = payload?.ns;
-        if (!ns || !["extension", "server", "shared"].includes(ns) || !payload.changes) return;
-        const values = {};
-        for (const [key, change] of Object.entries(payload.changes)) {
-          if (typeof change?.value === "string") values[key] = change.value;
+      await teMapWithLimit(localeFiles, 4, async ({ lang, namespace }) => {
+        try {
+          entries[`${lang}/${namespace}`] = teFlattenTranslations(await teFetchPrFile(fileHead, lang, namespace));
+        } catch (_err) {
+          // Skip files whose PR head is unavailable; other files in the PR are still usable.
         }
-        if (!Object.keys(values).length) return;
-        const fileKey = `${lang}/${ns}`;
-        entries[fileKey] = { ...(entries[fileKey] || {}), ...values };
-      } catch (_err) {
-        // An unavailable PR head must not hide the rest of the PR.
-      }
-    });
+      });
 
-    if (!Object.keys(entries).length) return null;
-    return { number: pull.number, title: pull.title, html_url: pull.html_url, created_at: pull.created_at, user: pull.user?.login || "", entries };
+      const submissionFiles = files
+        .map((file) => file.filename.match(/^submissions\/([a-z]{2,3}(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9_-]{7,63})\.json$/i))
+        .filter(Boolean)
+        .map((match) => ({ lang: match[1].toLowerCase(), id: match[2] }));
+
+      if (merged) {
+        const ids = submissionFiles.map((entry) => entry.id);
+        if (!ids.length) return null;
+        const comments = await requestAll(`${base}/issues/${pull.number}/comments`);
+        // Only the processor's own comments can release the pending lock. A
+        // forged marker from another author must not make keys look available.
+        const processorBodies = (comments || []).filter((comment) => comment?.user?.login === TE_RESULT_BOT_LOGIN).map((comment) => String(comment.body || ""));
+        const processed = ids.every((id) => processorBodies.some((body) => body.includes(`<!-- submission-result:${id} -->`)));
+        // Result posted: processing finished, the PR is no longer a lock.
+        if (processed) return null;
+      }
+
+      await teMapWithLimit(submissionFiles, 4, async ({ lang, id }) => {
+        try {
+          const payload = await teFetchPrSubmission(fileHead, lang, id);
+          const ns = payload?.ns;
+          if (!ns || !["extension", "server", "shared"].includes(ns) || !payload.changes) return;
+          const values = {};
+          for (const [key, change] of Object.entries(payload.changes)) {
+            if (typeof change?.value === "string") values[key] = change.value;
+          }
+          if (!Object.keys(values).length) return;
+          const fileKey = `${lang}/${ns}`;
+          entries[fileKey] = { ...(entries[fileKey] || {}), ...values };
+        } catch (_err) {
+          // An unavailable PR head must not hide the rest of the PR.
+        }
+      });
+
+      if (!Object.keys(entries).length) return null;
+      return { number: pull.number, title: pull.title, html_url: pull.html_url, created_at: pull.created_at, user: pull.user?.login || "", entries };
+    } catch (_err) {
+      // One unavailable PR must not erase pending state for every other PR.
+      tePrFetchPartial = true;
+      return null;
+    }
   });
 
   const result = prResults.filter(Boolean);
   result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   return result;
+}
+
+async function teInvalidateOpenPrsCache() {
+  try {
+    await browser.storage.local.remove(TE_PR_CACHE_KEY);
+  } catch (_err) {
+    // Storage failures only make the next read fall back to the live API.
+  }
 }
 
 function teFetchOpenPrs() {
@@ -133,15 +194,23 @@ async function teFetchSubmissionResultComment(id, prNumber, token) {
   const path = `/repos/${TE_REPO.owner}/${TE_REPO.name}/issues/${prNumber}/comments?per_page=100`;
   const comments = await githubContributeService.request(path, {}, token);
   const marker = `<!-- submission-result:${id} -->`;
-  const matched = (comments || []).find((comment) => String(comment?.body || "").includes(marker));
-  return matched?.body || null;
+  // Fail closed: a marker from any other author is not a processor result.
+  const matched = (comments || []).find((comment) => comment?.user?.login === TE_RESULT_BOT_LOGIN && String(comment?.body || "").includes(marker));
+  if (matched) return { body: String(matched.body || ""), forged: false };
+  const forged = (comments || []).find((comment) => comment?.user?.login !== TE_RESULT_BOT_LOGIN && String(comment?.body || "").includes(marker));
+  return forged ? { body: null, forged: true } : null;
 }
 
 function teParseSubmissionResult(body) {
-  const match = /Status:\s*\*\*([^*]+)\*\*/.exec(body || "");
+  // Read the status only after our marker; text elsewhere in the comment is
+  // untrusted and must not be interpreted as a processor verdict.
+  const text = String(body || "");
+  const markerAt = text.indexOf("<!-- submission-result:");
+  const scoped = markerAt >= 0 ? text.slice(markerAt) : "";
+  const match = /Status:\s*\*\*([^*]+)\*\*/.exec(scoped);
   return {
     status: match ? match[1].trim() : "unknown",
-    detail: String(body || ""),
+    detail: text,
   };
 }
 
@@ -158,8 +227,12 @@ async function teLoadSubmissionResults(submissions) {
   const results = await Promise.all(
     unique.map(async ({ id, prNumber }) => {
       try {
-        const body = await teFetchSubmissionResultComment(id, prNumber, token);
-        return body ? { id, result: teParseSubmissionResult(body) } : null;
+        const found = await teFetchSubmissionResultComment(id, prNumber, token);
+        if (!found) return null;
+        if (found.forged) {
+          return { id, result: { status: "unverified", detail: "Result comment could not be verified" } };
+        }
+        return { id, result: teParseSubmissionResult(found.body) };
       } catch (_err) {
         return null;
       }

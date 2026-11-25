@@ -30,10 +30,19 @@ const initLanguageSelect = async (container) => {
       Object.entries(data).filter(([key, lang]) => {
         if (!key || lang.extension !== true) return false;
         if (lang.published === false) return false;
+        // English is the source language and is not published in the manifest.
+        if (key === "en") return true;
         if (publishedCodes && !Object.prototype.hasOwnProperty.call(publishedCodes, key)) return false;
         return true;
       }),
     );
+
+    // Ensure the source language exists, even in incomplete catalogs.
+    if (!extensionLanguages.en) extensionLanguages.en = { label: "English", extension: true };
+    const orderedLanguages = {
+      en: extensionLanguages.en,
+      ...Object.fromEntries(Object.entries(extensionLanguages).filter(([key]) => key !== "en")),
+    };
 
     const { lang } = (await browser.storage.local.get("lang")) || {};
     const locales = [lang, navigator.languages?.[0] || navigator.language, "en"].filter(Boolean);
@@ -50,14 +59,14 @@ const initLanguageSelect = async (container) => {
     const select = document.createElement("select");
     select.id = "languageSelect";
 
-    Object.entries(extensionLanguages).forEach(([key, value]) => {
+    Object.entries(orderedLanguages).forEach(([key, value]) => {
       const option = document.createElement("option");
       option.value = key;
       option.textContent = displayNames.of(key) ?? value.label;
       select.appendChild(option);
     });
 
-    if (lang && data[lang]) {
+    if (lang && orderedLanguages[lang]) {
       select.value = lang;
     }
 

@@ -51,7 +51,11 @@ function teCreateDiscussionButton(row) {
   button.className = "te-discussion-btn btn btn-sm";
   button.textContent = teDiscussionButtonLabel(row.key);
   button.title = i18n.t("translationEditor.discussion.buttonTitle", { key: row.key });
-  button.addEventListener("click", () => teRunWhenAuthenticated(() => teOpenTranslationDiscussion(row.key)));
+  button.addEventListener("click", () => {
+    teRunWhenAuthenticated(() => teOpenTranslationDiscussion(row.key)).catch((err) => {
+      if (typeof logError === "function") logError("[Translation Editor]: discussion panel failed", err);
+    });
+  });
   return button;
 }
 

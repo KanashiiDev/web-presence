@@ -242,9 +242,22 @@ export const initLanguageSelect = async (container) => {
 
     const serverLanguages = Object.fromEntries(
       Object.entries(data)
-        .filter(([key, lang]) => key && lang.server === true && lang.published !== false && (!hasPublicationData || published.has(key)))
+        .filter(([key, lang]) => {
+          if (!key || lang.server !== true || lang.published === false) return false;
+          // English is the source language: bundled with the app and never
+          // listed in the runtime publication set. Always offer it in the UI.
+          if (key === "en") return true;
+          return !hasPublicationData || published.has(key);
+        })
         .map(([key, lang]) => [key, { ...lang, label: displayNames.of(key) ?? lang.label }]),
     );
+    if (!serverLanguages.en) {
+      serverLanguages.en = { label: displayNames.of("en") || "English", server: true };
+    }
+    const orderedLanguages = {
+      en: serverLanguages.en,
+      ...Object.fromEntries(Object.entries(serverLanguages).filter(([key]) => key !== "en")),
+    };
 
     const wrapper = createElement("div", "settings-option");
     const label = createElement("div", "setting-label", {
@@ -253,7 +266,7 @@ export const initLanguageSelect = async (container) => {
     });
 
     // send the filtered data to the createSelect function
-    const select = createSelect("languageSelect", serverLanguages, savedLang);
+    const select = createSelect("languageSelect", orderedLanguages, savedLang);
     select.classList.add("lang-select");
 
     wrapper.append(label, select);

@@ -161,7 +161,10 @@ function teDiscNormalizeError(err) {
   const status = err?.status;
   const lower = message.toLowerCase();
 
-  if (status === 401 || /bad credentials|requires authentication/i.test(message)) return teDiscError("auth", message);
+  if (status === 401 || /bad credentials|requires authentication/i.test(message)) {
+    teInvalidateGithubToken();
+    return teDiscError("auth", message);
+  }
   if (status === 403 && /not accessible|forbidden|permission/i.test(message)) return teDiscError("permission", message);
   if (status === 429 || /rate limit|secondary rate|abuse/i.test(lower)) return teDiscError("rateLimit", message);
   if (status === 404 && /not found|could not resolve/i.test(message)) return teDiscError("repo", message);

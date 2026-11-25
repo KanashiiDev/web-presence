@@ -2,8 +2,20 @@ let teGithubTokenPromise = null;
 let teActiveDeviceFlowClose = null;
 
 function teGetGithubTokenCached() {
-  if (!teGithubTokenPromise) teGithubTokenPromise = githubContributeService.getToken();
+  if (!teGithubTokenPromise) {
+    teGithubTokenPromise = githubContributeService.getToken().catch((err) => {
+      // A transient storage failure must not poison the cache forever.
+      teGithubTokenPromise = null;
+      throw err;
+    });
+  }
   return teGithubTokenPromise;
+}
+
+// Call after a 401/bad-credentials response so the next action re-reads storage
+// and shows the disconnected state instead of retrying a revoked token.
+function teInvalidateGithubToken() {
+  teGithubTokenPromise = null;
 }
 
 // Runs action only when authenticated. Otherwise the existing device-flow
@@ -11,7 +23,12 @@ function teGetGithubTokenCached() {
 async function teRunWhenAuthenticated(action) {
   const token = await teGetGithubTokenCached();
   if (token) {
-    await action(token);
+    try {
+      await action(token);
+    } catch (err) {
+      if (typeof logError === "function") logError("[Translation Editor]: authenticated action failed", err);
+      throw err;
+    }
     return true;
   }
   await teShowDeviceFlowModal({

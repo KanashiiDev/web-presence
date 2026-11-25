@@ -7,7 +7,7 @@ async function openStorePage() {
 }
 
 async function openTranslationEditorPage() {
-  await openExtensionPage("translationEditor/translationEditor.html");
+  await openExtensionPage("translationEditor/translationEditor.html?section=home");
 }
 
 async function openDashboardPage() {

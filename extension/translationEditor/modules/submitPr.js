@@ -113,17 +113,21 @@ async function teGetBranchBase(forkOwner, branchName, baseSha, baseTreeSha, toke
   } catch (err) {
     if (err.status !== 404) throw err;
   }
+  // The actual branch SHA is the concurrency expectation, even when the old
+  // tree is intentionally dropped (no open PR). It must not be replaced by
+  // baseSha: that would make the branch look changed when nothing moved.
+  const expectedRefSha = existing?.object?.sha || null;
   // No ref, or no open PR to preserve: start from the current upstream main.
   // The ref is force-moved to the new commit later, which drops the old tree.
-  if (!existing?.object?.sha || !keepBranchTree) {
-    return { refExists: !!existing?.object?.sha, parentSha: baseSha, baseTreeSha, ref: baseSha };
+  if (!expectedRefSha || !keepBranchTree) {
+    return { refExists: !!expectedRefSha, parentSha: baseSha, baseTreeSha, ref: baseSha, expectedRefSha };
   }
-  const parentSha = existing.object.sha;
+  const parentSha = expectedRefSha;
   try {
     const parentCommit = await githubContributeService.request(`/repos/${forkOwner}/${TE_SUBMIT_REPO}/git/commits/${parentSha}`, {}, token);
-    return { refExists: true, parentSha, baseTreeSha: parentCommit?.tree?.sha || baseTreeSha, ref: parentSha };
+    return { refExists: true, parentSha, baseTreeSha: parentCommit?.tree?.sha || baseTreeSha, ref: parentSha, expectedRefSha };
   } catch (_err) {
-    return { refExists: true, parentSha, baseTreeSha, ref: parentSha };
+    return { refExists: true, parentSha, baseTreeSha, ref: parentSha, expectedRefSha };
   }
 }
 
@@ -191,6 +195,18 @@ async function teSubmitSubmissions({ submissions, title, body, token, onStatus =
   );
 
   const refPath = `/repos/${forkOwner}/${TE_SUBMIT_REPO}/git/refs/heads/${branchName}`;
+  // Re-read the ref immediately before moving it. If another tab or user moved
+  // it while we were building the commit, force-updating would silently drop
+  // their submission files from the branch. Fail visibly instead.
+  let currentRefSha = null;
+  try {
+    currentRefSha = (await githubContributeService.request(refPath, {}, token))?.object?.sha || null;
+  } catch (err) {
+    if (err.status !== 404) throw err;
+  }
+  if ((currentRefSha || null) !== (branchBase.expectedRefSha || null)) {
+    throw new Error("Translation branch changed while submitting; please retry the submission so no files are lost.");
+  }
   if (branchBase.refExists) {
     await githubContributeService.request(refPath, { method: "PATCH", body: { sha: commit.sha, force: true } }, token);
   } else {
