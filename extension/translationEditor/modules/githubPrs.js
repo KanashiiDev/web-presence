@@ -1,7 +1,52 @@
 const TE_PR_CACHE_KEY = "translationPrCache";
 const TE_PR_CACHE_TTL_MS = 60 * 1000;
+const TE_PR_POLL_CACHE_KEY = "translationPrPollState";
 const TE_UPSTREAM_OWNER = TE_REPO.owner;
 const TE_UPSTREAM_REPO = TE_REPO.name;
+
+// Rate-limit aware polling. Values come from x-ratelimit-remaining headers of
+// the list/poll requests; low remaining quota stretches the next poll.
+let teRateLimitRemaining = null;
+const TE_RATE_LIMIT_LOW = 60;
+
+function teObserveRateLimit(response) {
+  const remaining = Number(response.headers.get("x-ratelimit-remaining"));
+  if (Number.isFinite(remaining)) teRateLimitRemaining = remaining;
+}
+
+function teRateLimitIsLow() {
+  return teRateLimitRemaining !== null && teRateLimitRemaining < TE_RATE_LIMIT_LOW;
+}
+
+function teRateLimitPollDelay() {
+  if (teRateLimitRemaining !== null && teRateLimitRemaining < 10) return 120000;
+  if (teRateLimitIsLow()) return 60000;
+  return 0;
+}
+
+// Direct API read so 304/ETag and rate-limit headers are observable. A revoked
+// token is invalidated and the single request is retried anonymously.
+async function teApiRequest(path, { etag = null } = {}) {
+  let token = await githubContributeService.getToken();
+  const send = async (useToken) => {
+    const headers = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    if (useToken) headers.Authorization = `Bearer ${useToken}`;
+    if (etag) headers["If-None-Match"] = etag;
+    const response = await fetchWithTimeout(`https://api.github.com${path}`, { headers, cache: "no-store" }, 10000);
+    teObserveRateLimit(response);
+    return response;
+  };
+  let response = await send(token);
+  if (response.status === 401 && token) {
+    teInvalidateGithubToken();
+    token = null;
+    response = await send(null);
+  }
+  return response;
+}
 
 async function teFetchPrFile(head, lang, namespace) {
   const owner = head.repo?.owner?.login;
@@ -69,7 +114,41 @@ async function teMapWithLimit(items, limit, mapper) {
 // not see those keys as available during that window.
 const TE_MERGED_PR_LOCK_MS = 5 * 60 * 1000;
 
-async function teFetchOpenPrsLive() {
+// Conditional list fetch with per-page ETags. A 304 means that page is
+// unchanged, so callers can reuse its cached data and skip per-PR requests.
+async function teFetchListWithEtag(path, cacheState) {
+  cacheState.etags = cacheState.etags || {};
+  cacheState.pages = cacheState.pages || {};
+  const all = [];
+  let sawModified = false;
+  for (let page = 1; page <= 20; page += 1) {
+    const separator = path.includes("?") ? "&" : "?";
+    const pagePath = `${path}${separator}page=${page}&per_page=100`;
+    const etag = cacheState.etags[pagePath] || null;
+    const response = await teApiRequest(pagePath, { etag });
+    if (response.status === 304 && Array.isArray(cacheState.pages[pagePath])) {
+      const cachedPage = cacheState.pages[pagePath];
+      all.push(...cachedPage);
+      if (cachedPage.length < 100) break;
+      continue;
+    }
+    sawModified = true;
+    if (!response.ok) {
+      const err = new Error(`GitHub API ${response.status} for ${pagePath}`);
+      err.status = response.status;
+      throw err;
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) break;
+    all.push(...data);
+    cacheState.etags[pagePath] = response.headers.get("ETag") || etag;
+    cacheState.pages[pagePath] = data;
+    if (data.length < 100) break;
+  }
+  return { data: all, unchanged: !sawModified };
+}
+
+async function teFetchOpenPrsLive(cacheState = {}) {
   const token = await githubContributeService.getToken();
   // A rejected token stays rejected for this fetch: one 401, then anonymous.
   let usableToken = token;
@@ -88,7 +167,17 @@ async function teFetchOpenPrsLive() {
   const base = `/repos/${TE_UPSTREAM_OWNER}/${TE_UPSTREAM_REPO}`;
   const requestAll = (path) => teRequestAllPages(request, path);
   tePrFetchPartial = false;
-  const [openPulls, closedPulls] = await Promise.all([requestAll(`${base}/pulls?state=open`), requestAll(`${base}/pulls?state=closed&sort=updated&direction=desc`)]);
+  const [openResult, closedResult] = await Promise.all([
+    teFetchListWithEtag(`${base}/pulls?state=open`, cacheState),
+    teFetchListWithEtag(`${base}/pulls?state=closed&sort=updated&direction=desc`, cacheState),
+  ]);
+  // Both lists are unchanged: reuse the previously computed entries and skip
+  // every per-PR files/comments request.
+  if (openResult.unchanged && closedResult.unchanged) {
+    return { unchanged: true, data: null, cacheState };
+  }
+  const openPulls = openResult.data;
+  const closedPulls = closedResult.data;
   const now = Date.now();
   const pulls = [...openPulls, ...closedPulls.filter((pull) => pull.merged_at && now - Date.parse(pull.merged_at) < TE_MERGED_PR_LOCK_MS)];
   const prResults = await teMapWithLimit(pulls, 4, async (pull) => {
@@ -157,7 +246,7 @@ async function teFetchOpenPrsLive() {
 
   const result = prResults.filter(Boolean);
   result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  return result;
+  return { unchanged: false, data: result, cacheState };
 }
 
 async function teInvalidateOpenPrsCache() {
@@ -168,9 +257,9 @@ async function teInvalidateOpenPrsCache() {
   }
 }
 
-function teFetchOpenPrs() {
+function teFetchOpenPrs(cacheState) {
   if (!teFetchOpenPrsInflight) {
-    teFetchOpenPrsInflight = teFetchOpenPrsLive().finally(() => {
+    teFetchOpenPrsInflight = teFetchOpenPrsLive(cacheState).finally(() => {
       teFetchOpenPrsInflight = null;
     });
   }
@@ -182,17 +271,97 @@ async function teLoadOpenPrs(forceRefresh = false) {
   const cached = stored[TE_PR_CACHE_KEY];
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < TE_PR_CACHE_TTL_MS) return cached.data;
 
-  const data = await teFetchOpenPrs();
-  await browser.storage.local.set({ [TE_PR_CACHE_KEY]: { fetchedAt: Date.now(), data } });
+  const cacheState = {
+    etags: cached?.etags || {},
+    pages: cached?.pages || {},
+  };
+  const fetched = await teFetchOpenPrs(cacheState);
+  const data = fetched.unchanged && cached?.data ? cached.data : fetched.data;
+  await browser.storage.local.set({
+    [TE_PR_CACHE_KEY]: { fetchedAt: Date.now(), data, etags: fetched.cacheState.etags, pages: fetched.cacheState.pages },
+  });
   return data;
+}
+
+// Lightweight poll guard: one conditional /pulls/<n> request. A 304 means the
+// contributor's PR did not change, so the full list must not be refreshed.
+async function teCheckPolledPr(prNumber) {
+  if (!prNumber) return { changed: true };
+  const stored = await browser.storage.local.get(TE_PR_POLL_CACHE_KEY);
+  const state = stored[TE_PR_POLL_CACHE_KEY] || { etag: null, snapshot: null };
+  const path = `/repos/${TE_UPSTREAM_OWNER}/${TE_UPSTREAM_REPO}/pulls/${prNumber}`;
+  const response = await teApiRequest(path, { etag: state.etag });
+  if (response.status === 304 && state.snapshot) return { changed: false, fromCache: true };
+  if (response.status === 404) {
+    await browser.storage.local.remove(TE_PR_POLL_CACHE_KEY);
+    return { changed: true };
+  }
+  if (!response.ok) return { changed: false, error: true };
+  const pr = await response.json();
+  const snapshot = { state: pr.state, merged: !!pr.merged_at, head: pr.head?.sha || null };
+  const changed = !state.snapshot || JSON.stringify(snapshot) !== JSON.stringify(state.snapshot);
+  await browser.storage.local.set({
+    [TE_PR_POLL_CACHE_KEY]: { etag: response.headers.get("ETag") || state.etag, snapshot },
+  });
+  return { changed, pr };
 }
 
 // The processor posts the outcome as a PR comment carrying a stable marker.
 // There is no result file to poll and no archive to accumulate.
+const TE_RESULT_BACKOFF = new Map();
+
 async function teFetchSubmissionResultComment(id, prNumber, token) {
   if (!prNumber) return null;
+  const key = `${prNumber}:${id}`;
+  const now = Date.now();
+  if (now < (TE_RESULT_BACKOFF.get(key) || 0)) return null;
+
   const path = `/repos/${TE_REPO.owner}/${TE_REPO.name}/issues/${prNumber}/comments?per_page=100`;
-  const comments = await githubContributeService.request(path, {}, token);
+  const send = async (useToken) => {
+    const headers = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    if (useToken) headers.Authorization = `Bearer ${useToken}`;
+    const response = await fetchWithTimeout(`https://api.github.com${path}`, { headers, cache: "no-store" }, 10000);
+    teObserveRateLimit(response);
+    return response;
+  };
+
+  let response;
+  try {
+    response = await send(token);
+    // A revoked token must not keep failing silently forever.
+    if (response.status === 401 && token) {
+      teInvalidateGithubToken();
+      response = await send(null);
+    }
+  } catch (_err) {
+    TE_RESULT_BACKOFF.set(key, now + 60000);
+    return null;
+  }
+
+  if (response.status === 403 || response.status === 429) {
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    const reset = Number(response.headers.get("X-RateLimit-Reset"));
+    let delay = 60000;
+    if (Number.isFinite(retryAfter) && retryAfter > 0) delay = retryAfter * 1000;
+    else if (Number.isFinite(reset) && reset > 0) delay = Math.max(0, Math.round(reset - Date.now() / 1000)) * 1000;
+    TE_RESULT_BACKOFF.set(key, now + Math.min(Math.max(delay, 15000), 300000));
+    return null;
+  }
+  if (!response.ok) {
+    TE_RESULT_BACKOFF.set(key, now + 60000);
+    return null;
+  }
+
+  let comments;
+  try {
+    comments = await response.json();
+  } catch (_err) {
+    TE_RESULT_BACKOFF.set(key, now + 60000);
+    return null;
+  }
   const marker = `<!-- submission-result:${id} -->`;
   // Fail closed: a marker from any other author is not a processor result.
   const matched = (comments || []).find((comment) => comment?.user?.login === TE_RESULT_BOT_LOGIN && String(comment?.body || "").includes(marker));

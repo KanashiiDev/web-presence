@@ -91,12 +91,16 @@ async function teBuildDraftEntriesFromImport({ entries, source, target }) {
       continue;
     }
 
-    const confirmed = value === source[key] || value === (target[key] ?? "");
+    const unchanged = value === (target[key] ?? "");
+    if (unchanged && entry.reconfirmed !== true) {
+      rejected.push({ key, reason: "unchanged" });
+      continue;
+    }
     accepted[key] = {
       target: value,
       sourceHash: await teHashSource(source[key], key),
       baseTargetHash: await teHashTarget(target[key] ?? "", key),
-      ...(confirmed ? { reconfirmed: true } : {}),
+      ...(entry.reconfirmed === true ? { reconfirmed: true } : {}),
     };
   }
   return { accepted, rejected };

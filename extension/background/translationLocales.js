@@ -7,7 +7,7 @@ const TE_LOCALE_ALARM_NAME = "translationLocaleUpdateCheck";
 const TE_LOCALE_CHECK_MINS = 60;
 const TE_LOCALES_REPO = { owner: "KanashiiDev", name: "web-presence-locales", branch: "main" };
 const TE_LOCALES_RAW_BASE = `https://raw.githubusercontent.com/${TE_LOCALES_REPO.owner}/${TE_LOCALES_REPO.name}`;
-const TE_MANIFEST_URL = `${TE_LOCALES_RAW_BASE}/${TE_LOCALES_REPO.branch}/runtime/manifest.json`;
+const TE_MANIFEST_PATH = "runtime/manifest.json";
 const TE_LOCALE_NAMESPACES = ["extension", "server", "shared"];
 
 function teLocalePayloadIsValid(data) {
@@ -85,9 +85,32 @@ async function teRefreshTranslationLocales() {
   const hasCurrentCache = !!previous && previous.schemaVersion === TE_LOCALE_CACHE_VERSION && previous.repo === TE_LOCALES_RAW_BASE;
   const cache = hasCurrentCache ? previous : null;
 
+  // Resolve the mutable branch to an immutable commit SHA via the API. Raw
+  // branch URLs are cached by Fastly for ~5 min; SHA-pinned URLs are immutable.
+  let token = null;
+  try {
+    if (typeof githubContributeService !== "undefined" && githubContributeService?.getToken) {
+      token = await githubContributeService.getToken();
+    }
+  } catch (_err) {
+    /* unauthenticated mode is supported */
+  }
+  const head = await fetchGitHubHead({
+    owner: TE_LOCALES_REPO.owner,
+    repo: TE_LOCALES_REPO.name,
+    branch: TE_LOCALES_REPO.branch,
+    token,
+    minIntervalMs: token ? 30000 : 60000,
+  });
+  if (!head.ok || !head.sha) {
+    if (cache) await browser.storage.local.set({ [TE_LOCALE_CACHE_KEY]: { ...cache, fetchedAt: Date.now() } });
+    return;
+  }
+  const manifestUrl = `${TE_LOCALES_RAW_BASE}/${head.sha}/${TE_MANIFEST_PATH}`;
+
   let manifestResult;
   try {
-    manifestResult = await teLocaleFetchJson(TE_MANIFEST_URL, cache?.manifest?.etag, teLocaleManifestIsValid);
+    manifestResult = await teLocaleFetchJson(manifestUrl, cache?.manifest?.etag, teLocaleManifestIsValid);
   } catch (err) {
     logError("[TranslationLocales]: manifest fetch failed:", err.message);
     return;

@@ -22,6 +22,7 @@ const teState = {
   lastSaveError: null,
   prError: "",
   draftWarning: "",
+  draftWarningKeys: [],
   freshness: null,
   conflictsExpanded: false,
   dataVersion: 0,
@@ -322,6 +323,9 @@ function teCreateRow(row) {
     if (row.edited) {
       row.reconfirmed = false;
       row.localOnly = false;
+      // A fresh edit is an explicit acknowledgement of the current base.
+      row.lineChangeAcknowledged = true;
+      row.originalBaseTargetHash = row.draftBaseTargetHash;
     }
     row.status = teComputeStatus(row);
     target.title = row.target;
@@ -373,6 +377,8 @@ function teCreateRow(row) {
   async function teApplyLocalConfirm(localOnly = false) {
     row.reconfirmed = true;
     row.localOnly = localOnly;
+    row.lineChangeAcknowledged = true;
+    row.originalBaseTargetHash = row.draftBaseTargetHash;
     row.status = teComputeStatus(row);
     teRefreshRowStatus();
     teUpdateQaBadge(row, qaColumn);
@@ -629,6 +635,55 @@ function tePendingFreshnessKeys() {
   };
 }
 
+// Processor statuses are technical tokens. Map them to user-facing text;
+// unknown statuses keep their raw value so nothing is hidden.
+function teSubmitStatusText(status) {
+  const value = String(status || "unknown");
+  if (value === "conflict" || value.startsWith("partial-conflict")) {
+    return i18n.t("translationEditor.submitStatus.conflict");
+  }
+  if (value === "needs-review" || value.startsWith("partial-needs-review")) {
+    return i18n.t("translationEditor.submitStatus.needsReview");
+  }
+  const exact = {
+    rejected: "translationEditor.submitStatus.rejected",
+    unverified: "translationEditor.submitStatus.unverified",
+    error: "translationEditor.submitStatus.error",
+  }[value];
+  return exact ? i18n.t(exact) : i18n.t("translationEditor.submitStatus.other", { key: value });
+}
+
+// The processor writes a marker + markdown body. Clean it for plain-text UI;
+// never build HTML from a comment body.
+function teCleanResultDetail(detail) {
+  return String(detail || "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/^##\s*/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Defensive extraction of "Keys not applied" bullets. Returns null when the
+// expected section is absent so callers can fall back to the raw detail.
+function teParseResultKeys(detail) {
+  try {
+    const text = String(detail || "");
+    if (!/<!--\s*submission-result:/.test(text)) return null;
+    const section = /Keys not applied:\s*([\s\S]*?)(?:\n\s*\n|$)/.exec(text);
+    if (!section) return null;
+    const keys = section[1]
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^-\s+/.test(line))
+      .map((line) => line.replace(/^-\s+/, "").replace(/`/g, "").trim())
+      .filter(Boolean);
+    return keys.length ? keys : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 function teConflictGroups() {
   const pending = tePendingFreshnessKeys();
   const groups = [];
@@ -647,7 +702,12 @@ function teConflictGroups() {
       title: i18n.t("translationEditor.qa.unverified", { key: "" }).replace(/^:\s*/, ""),
       keys: pending.unverified,
     });
-  if (teState.draftWarning) groups.push({ title: teState.draftWarning, keys: [] });
+  if (teState.draftWarning) {
+    groups.push({
+      title: teState.draftWarning,
+      keys: teState.draftWarningKeys?.length ? teState.draftWarningKeys : [],
+    });
+  }
   return groups;
 }
 
@@ -1070,6 +1130,8 @@ function teApplyDraftToRows(rows, draftEntries) {
     row.edited = true;
     row.draftSourceHash = typeof entry.sourceHash === "string" ? entry.sourceHash : row.currentSourceHash;
     row.draftBaseTargetHash = typeof entry.baseTargetHash === "string" ? entry.baseTargetHash : row.currentTargetHash;
+    row.originalBaseTargetHash = typeof entry.originalBaseTargetHash === "string" ? entry.originalBaseTargetHash : null;
+    row.lineChangeAcknowledged = entry.lineChangeAcknowledged === true;
     row.reconfirmed = entry.reconfirmed === true;
     row.localOnly = entry.localOnly === true;
     row.status = teComputeStatus(row);
@@ -1084,11 +1146,13 @@ function teResetRowsToOriginal(rows) {
     row.target = row.originalTarget;
     row.draftSourceHash = row.currentSourceHash;
     row.draftBaseTargetHash = row.currentTargetHash;
+    row.originalBaseTargetHash = null;
+    row.lineChangeAcknowledged = false;
     row.status = teComputeStatus(row);
   });
 }
 
-async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
+async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrNumber = null) {
   const lang = teElements.languageSelect.value;
   const namespace = teElements.fileSelect.value;
   if (!lang || !namespace) return;
@@ -1134,6 +1198,7 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
     }
     if (isStale()) return;
     teState.draftWarning = "";
+    teState.draftWarningKeys = [];
     if (draft?.entries) {
       draft = { ...draft, entries: await teRemapDraftRenames(draft.entries, renames, source) };
       // Rebase stale hashes onto the source/target files we just loaded, so a
@@ -1143,10 +1208,18 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
       for (const row of rows) {
         const entry = rebased[row.key];
         if (!entry || typeof entry.target !== "string") continue;
-        if (entry.sourceHash !== row.currentSourceHash || entry.baseTargetHash !== row.currentTargetHash) {
-          rebased[row.key] = { ...entry, sourceHash: row.currentSourceHash, baseTargetHash: row.currentTargetHash };
+        // Preserve the hash the contributor actually edited against BEFORE
+        // rebasing; the submit preview uses it to detect a concurrent change.
+        let next = entry;
+        if (typeof entry.originalBaseTargetHash !== "string") {
+          next = { ...next, originalBaseTargetHash: entry.baseTargetHash };
           hashesUpdated = true;
         }
+        if (next.sourceHash !== row.currentSourceHash || next.baseTargetHash !== row.currentTargetHash) {
+          next = { ...next, sourceHash: row.currentSourceHash, baseTargetHash: row.currentTargetHash };
+          hashesUpdated = true;
+        }
+        if (next !== entry) rebased[row.key] = next;
       }
       if (hashesUpdated) {
         draft = { ...draft, entries: rebased };
@@ -1189,7 +1262,18 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
     let openPrs = [];
     let prLoadFailed = false;
     try {
-      openPrs = await teLoadOpenPrs(forcePrRefresh || draft?.status === "submitted");
+      if (pollPrNumber && !forcePrRefresh) {
+        // A poll only checks the contributor's own PR. The full list is
+        // refreshed only when that PR actually changed.
+        const check = await teCheckPolledPr(pollPrNumber);
+        if (check.changed) openPrs = await teLoadOpenPrs(true);
+        else {
+          const stored = await browser.storage.local.get("translationPrCache");
+          openPrs = stored.translationPrCache?.data || [];
+        }
+      } else {
+        openPrs = await teLoadOpenPrs(forcePrRefresh || draft?.status === "submitted");
+      }
       teApplyPrState(rows, lang, namespace, openPrs);
       teState.prError = teOpenPrsHadPartialFailure() ? "Some pull requests could not be checked; pending keys may be incomplete." : "";
     } catch (err) {
@@ -1218,10 +1302,14 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
           if (isStale()) return;
           await teClearDraft(lang, file);
           await teInvalidateOpenPrsCache();
+          // The result comment is only a hint; invalidate derived translation
+          // caches so the next read is verified against an immutable ref.
+          await teInvalidateLocaleSnapshot({ notifyBackground: true });
           if (isStale()) return;
           teResetRowsToOriginal(rows);
         } else {
-          teState.draftWarning = failed.map((entry) => i18n.t("translationEditor.qa.sourceFreshness", { key: entry.result.status })).join(" | ");
+          teState.draftWarning = failed.map((entry) => teSubmitStatusText(entry.result.status)).join(" | ");
+          teState.draftWarningKeys = failed.flatMap((entry) => teParseResultKeys(entry.result.detail) || []);
           // A failed submission did not refresh the metadata hash, so the
           // per-key confirmation is no longer valid for this source state.
           if (isStale()) return;
@@ -1280,6 +1368,7 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false) {
     teState.editingKey = "";
     teState.prError = "";
     teState.draftWarning = "";
+    teState.draftWarningKeys = [];
     teState.freshness = null;
     teState.dataVersion++;
     teSetSaveStatus("Save failed");
@@ -1435,15 +1524,19 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
 
   const errorIssues = issues.filter((issue) => issue.severity === "error");
   const warningIssues = issues.filter((issue) => issue.severity === "warning");
+  // Count what is actually rendered: `warnings` also holds informational
+  // entries never shown as issues, so its length can be far larger.
+  const warningCount = warningIssues.length || warnings.length;
+  const errorCount = errorIssues.length || errors.length;
   if (warningIssues.length) {
-    body.appendChild(teIssueSection(warningIssues, i18n.t("translationEditor.submitModal.warnings", { count: warnings.length }), "warning"));
+    body.appendChild(teIssueSection(warningIssues, i18n.t("translationEditor.submitModal.warnings", { count: warningCount }), "warning"));
   } else if (warnings.length) {
-    body.appendChild(teListSection(warnings, i18n.t("translationEditor.submitModal.warnings", { count: warnings.length }), "warning"));
+    body.appendChild(teListSection(warnings, i18n.t("translationEditor.submitModal.warnings", { count: warningCount }), "warning"));
   }
   if (errorIssues.length) {
-    body.appendChild(teIssueSection(errorIssues, i18n.t("translationEditor.submitModal.errors", { count: errors.length }), "error"));
+    body.appendChild(teIssueSection(errorIssues, i18n.t("translationEditor.submitModal.errors", { count: errorCount }), "error"));
   } else if (errors.length) {
-    body.appendChild(teListSection(errors, i18n.t("translationEditor.submitModal.errors", { count: errors.length }), "error"));
+    body.appendChild(teListSection(errors, i18n.t("translationEditor.submitModal.errors", { count: errorCount }), "error"));
   }
 
   const status = document.createElement("div");
@@ -1519,6 +1612,10 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
       teElements.submitBtn.disabled = false;
       if (!modal.isConnected) return;
       modal.remove();
+      if (finalResults.length && finalResults.every((entry) => ["applied", "already-applied"].includes(entry.result.status))) {
+        // The processor comment is a hint only; refresh from immutable refs.
+        await teInvalidateLocaleSnapshot({ notifyBackground: true });
+      }
       await teLoadCurrentFile(true);
 
       if (!finalResults.length) {
@@ -1529,8 +1626,14 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
       if (failed.length) {
         // The PR comment is the authoritative feedback channel; show it
         // directly so the contributor sees the skipped keys and their reasons.
-        const detail = failed.map((entry) => `${entry.id}: ${entry.result.detail || entry.result.status}`).join("\n\n");
-        await showAlert(i18n.t("translationEditor.submitModal.failed", { error: failed.map((entry) => entry.result.status).join(", ") }), detail, "warn");
+        const detail = failed.map((entry) => `${entry.id}: ${teCleanResultDetail(entry.result.detail) || teSubmitStatusText(entry.result.status)}`).join("\n\n");
+        await showAlert(
+          i18n.t("translationEditor.submitModal.failed", {
+            error: failed.map((entry) => teSubmitStatusText(entry.result.status)).join(", "),
+          }),
+          detail,
+          "warn",
+        );
         return;
       }
       const statusLabel = i18n.t(result.updated ? "translationEditor.submitModal.updated" : "translationEditor.submitModal.created");
@@ -1580,9 +1683,19 @@ async function teBuildPreviewChanges({ draftEntries, sourceFlat, targetFlat, pen
         baseTargetHash,
         currentSourceHash,
         reconfirm,
+        originalBaseTargetHash: typeof entry.originalBaseTargetHash === "string" ? entry.originalBaseTargetHash : null,
+        lineChangeAcknowledged: entry.lineChangeAcknowledged === true,
       };
     }),
   );
+
+  // Informational only: the contributor may still submit deliberately.
+  // The processor remains authoritative and will report a real conflict.
+  for (const change of changes) {
+    if (change.originalBaseTargetHash && change.originalBaseTargetHash !== change.baseTargetHash && !change.lineChangeAcknowledged) {
+      warnings.push(i18n.t("translationEditor.submitModal.lineChanged", { key: change.key }));
+    }
+  }
 
   const pendingConflictKeys = new Set();
   changes.forEach(({ key }) => {
@@ -2001,27 +2114,37 @@ function teShowImportModal({ acceptedByLang, rejected, errors, acceptedCount }) 
 }
 
 const TE_PENDING_POLL_MS = 15 * 1000;
+const TE_PENDING_POLL_MAX_MS = 60 * 1000;
 let tePendingPollTimer = null;
+let tePendingPollDelay = TE_PENDING_POLL_MS;
+let tePendingPollActive = false;
 let tePollBusy = false;
 
 async function tePollPendingSubmissions() {
-  if (teIsHomeActive() || tePollBusy) return;
+  // Hidden tabs do no network work; visibilitychange triggers an immediate
+  // catch-up round when the editor becomes visible again.
+  if (document.hidden || teIsHomeActive() || tePollBusy) return;
   tePollBusy = true;
   try {
     const drafts = await teLoadAllDrafts();
-    const hasSubmitted = Object.values(drafts || {}).some((draft) => draft?.status === "submitted" && draft?.submissionIds?.length);
+    const submitted = Object.values(drafts || {}).find((draft) => draft?.status === "submitted" && draft?.submissionIds?.length);
     // Keep polling after the draft is cleared until the manifest snapshot
     // actually contains the published language files.
-    const hasPending = hasSubmitted || teState.targetFromFallback;
+    const hasPending = !!submitted || teState.targetFromFallback;
     if (!hasPending) {
-      if (tePendingPollTimer) clearInterval(tePendingPollTimer);
+      tePendingPollActive = false;
+      if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
       tePendingPollTimer = null;
+      tePendingPollDelay = TE_PENDING_POLL_MS;
       return;
     }
+    tePendingPollActive = true;
+    // Back off while a submission stays pending: 15s -> 30s -> 60s.
+    tePendingPollDelay = Math.min(tePendingPollDelay * 2, TE_PENDING_POLL_MAX_MS);
     // Never refresh mid-edit
     if (teState.editingKey) return;
     await teCommitPendingSave();
-    await teLoadCurrentFile(true, true);
+    await teLoadCurrentFile(false, true, submitted?.prNumber || null);
   } catch (_err) {
     // Transient network errors: the next tick retries.
   } finally {
@@ -2029,10 +2152,19 @@ async function tePollPendingSubmissions() {
   }
 }
 
+function teSchedulePendingPoll(delay = tePendingPollDelay) {
+  if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
+  const wait = Math.max(delay, teRateLimitPollDelay());
+  tePendingPollTimer = setTimeout(async () => {
+    tePendingPollTimer = null;
+    await tePollPendingSubmissions();
+    if (!document.hidden) teSchedulePendingPoll();
+  }, wait);
+}
+
 function teStartPendingPolling() {
-  if (!tePendingPollTimer) {
-    tePendingPollTimer = setInterval(tePollPendingSubmissions, TE_PENDING_POLL_MS);
-  }
+  tePendingPollDelay = TE_PENDING_POLL_MS;
+  teSchedulePendingPoll(TE_PENDING_POLL_MS);
 }
 
 function teBindEvents() {
@@ -2153,7 +2285,19 @@ function teBindEvents() {
   // Flush the debounced draft when the page is hidden or closed, otherwise the
   // last 250 ms of typing is lost.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && teState.saveTimer) teCommitPendingSave();
+    if (document.visibilityState === "hidden") {
+      if (teState.saveTimer) teCommitPendingSave();
+      return;
+    }
+    // Visible again: run a catch-up round immediately instead of waiting for
+    // the backed-off timer to fire.
+    if (tePendingPollActive) {
+      if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
+      tePendingPollTimer = null;
+      tePollPendingSubmissions().finally(() => {
+        if (!document.hidden) teSchedulePendingPoll();
+      });
+    }
   });
   window.addEventListener("pagehide", () => {
     if (teState.saveTimer) teCommitPendingSave();
@@ -2224,6 +2368,8 @@ window.addEventListener("load", async () => {
   await teApplyRoute();
   teStartPendingPolling();
   window.addEventListener("pagehide", () => {
-    if (tePendingPollTimer) clearInterval(tePendingPollTimer);
+    tePendingPollActive = false;
+    if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
+    tePendingPollTimer = null;
   });
 });

@@ -3,25 +3,5 @@
     "label": "English",
     "extension": true,
     "server": true
-  },
-  "es": {
-    "label": "Spanish",
-    "extension": true,
-    "server": true
-  },
-  "fr": {
-    "label": "French",
-    "extension": true,
-    "server": true
-  },
-  "ru": {
-    "label": "Russian",
-    "extension": true,
-    "server": true
-  },
-  "tr": {
-    "label": "Turkish",
-    "extension": true,
-    "server": true
   }
 }

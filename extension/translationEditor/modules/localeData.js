@@ -44,6 +44,8 @@ function teBuildDraftEntriesFromRows(rows) {
         target: row.target,
         sourceHash: row.draftSourceHash,
         baseTargetHash: row.draftBaseTargetHash,
+        ...(typeof row.originalBaseTargetHash === "string" ? { originalBaseTargetHash: row.originalBaseTargetHash } : {}),
+        ...(row.lineChangeAcknowledged ? { lineChangeAcknowledged: true } : {}),
         ...(row.reconfirmed ? { reconfirmed: true, localOnly: row.localOnly === true } : {}),
       };
     }
