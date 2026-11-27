@@ -17,6 +17,7 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
 
   // Parser Locales
   inlineUtilsFunctions(["mainParser.js", "background.js"], "common/utils/parser-locales.js", [], "start", true);
+  inlineUtilsFunctions(["background.js"], "common/utils/url-utils.js", [], "start");
 
   // Shared
   inlineUtilsFunctions(["common/utils.js", "popup/selector/selector.js"], ["../shared/dialog.js", "../shared/i18n.js"], [], [], "start");
@@ -31,21 +32,15 @@ module.exports = function registerInlines(inlineUtilsFunctions) {
   inlineUtilsFunctions("background.js", "common/utils.js", [
     "delay",
     "DEFAULT_PARSER_OPTIONS",
-    "parseUrlPattern",
-    "regexFromString",
-    "normalizeHost",
     "normalize",
     "normalizeTitleAndArtist",
     "getCurrentTime",
     "openIndexedDB",
     "createMutex",
-    "findMatchingParsersForUrl",
     "generateParserKey",
-    "fetchWithTimeout",
     "getSenderTab",
     "isAllowedDomain",
     "isValidUrl",
-    "isDomainMatch",
     "sendAction",
     "handlePendingTabReload",
     "restartExtension",

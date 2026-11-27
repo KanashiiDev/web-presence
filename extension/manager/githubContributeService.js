@@ -721,6 +721,7 @@ class GitHubContributeService {
     onStatus("opening_pr");
     const domains = [contributeScript.domain].flat().filter(Boolean).join(", ");
     const prTitle = commitMessage;
+    const description = resolveScriptDescription(contributeScript);
     const prBody = [
       isUpdate ? `## Update Activity: ${contributeScript.title}` : `## New Activity: ${contributeScript.title}`,
       ``,
@@ -731,7 +732,7 @@ class GitHubContributeService {
       `| **Author(s)** | ${[contributeScript.authors].flat().filter(Boolean).join(", ")} |`,
       `| **Mode** | ${contributeScript.mode || "listen"} |`,
       `| **Path** | \`${filePath}\` |`,
-      contributeScript.description ? `| **Description** | ${contributeScript.description} |` : null,
+      description ? `| **Description** | ${description} |` : null,
       ``,
       `---`,
       `*Submitted via Web Presence UserScript Manager v${browser.runtime.getManifest().version}*`,

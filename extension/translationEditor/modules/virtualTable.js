@@ -11,35 +11,45 @@ class TranslationVirtualTable {
     this.renderPending = false;
     this.resizePending = false;
     this._scroller = null;
+    this.pinnedIndex = -1;
 
     // SimpleBar moves scrolling into .simplebar-content-wrapper. Capture phase
     // catches scroll events from that descendant as well as the native case.
     // Coalesce bursts into one render per animation frame.
-    this.viewport.addEventListener(
-      "scroll",
-      () => {
-        if (this.renderPending) return;
-        this.renderPending = true;
-        requestAnimationFrame(() => {
-          this.renderPending = false;
-          this.render();
-        });
-      },
-      true,
-    );
-    window.addEventListener("resize", () => {
+    this._onScroll = () => {
+      if (this.renderPending) return;
+      this.renderPending = true;
+      requestAnimationFrame(() => {
+        this.renderPending = false;
+        this.render();
+      });
+    };
+    this._onResize = () => {
       if (this.resizePending) return;
       this.resizePending = true;
       requestAnimationFrame(() => {
         this.resizePending = false;
         this.render();
       });
-    });
+    };
+    this.viewport.addEventListener("scroll", this._onScroll, true);
+    window.addEventListener("resize", this._onResize);
+  }
+
+  destroy() {
+    this.viewport.removeEventListener("scroll", this._onScroll, true);
+    window.removeEventListener("resize", this._onResize);
+    this.rendered.clear();
+    this.rows = [];
+    this.pinnedIndex = -1;
   }
 
   getScroller() {
-    if (!this._scroller || !this._scroller.isConnected) {
-      this._scroller = this.viewport.querySelector(".simplebar-content-wrapper") || this.viewport;
+    const wrapper = this.viewport.querySelector(".simplebar-content-wrapper");
+    if (wrapper) {
+      this._scroller = wrapper;
+    } else if (!this._scroller || !this._scroller.isConnected) {
+      this._scroller = this.viewport;
     }
     return this._scroller;
   }
@@ -51,7 +61,17 @@ class TranslationVirtualTable {
     // so drop the pooled nodes whenever the row set is replaced.
     this.rendered.clear();
     this.spacer.replaceChildren();
+    this._updatePinnedIndex();
     if (typeof SimpleBar !== "undefined") SimpleBar.instances?.get(this.viewport)?.recalculate?.();
+    this.render();
+  }
+
+  _updatePinnedIndex() {
+    this.pinnedIndex = this.isPinned ? this.rows.findIndex((row) => this.isPinned(row)) : -1;
+  }
+
+  updatePinned() {
+    this._updatePinnedIndex();
     this.render();
   }
 
@@ -64,11 +84,8 @@ class TranslationVirtualTable {
     for (let index = start; index < end; index++) visible.push({ index, row: this.rows[index] });
 
     // Never detach the row being edited: dropping it loses focus and IME state.
-    if (this.isPinned) {
-      const pinnedIndex = this.rows.findIndex((row) => this.isPinned(row));
-      if (pinnedIndex >= 0 && !visible.some((entry) => entry.index === pinnedIndex)) {
-        visible.push({ index: pinnedIndex, row: this.rows[pinnedIndex] });
-      }
+    if (this.pinnedIndex >= 0 && !visible.some((entry) => entry.index === this.pinnedIndex)) {
+      visible.push({ index: this.pinnedIndex, row: this.rows[this.pinnedIndex] });
     }
 
     const wanted = new Set(visible.map(({ row }) => row.key));
@@ -82,7 +99,7 @@ class TranslationVirtualTable {
     visible.forEach(({ index, row }) => {
       let element = this.rendered.get(row.key);
       if (!element) {
-        element = this.createRow(row, index);
+        element = this.createRow(row);
         element.dataset.rowKey = row.key;
         this.rendered.set(row.key, element);
         this.spacer.appendChild(element);

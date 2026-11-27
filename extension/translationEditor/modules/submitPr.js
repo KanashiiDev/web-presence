@@ -7,17 +7,11 @@ const TE_SUBMIT_REPO = TE_REPO.name;
 const TE_SUBMIT_BRANCH_PREFIX = "translations/";
 const TE_SUBMISSION_SCHEMA_VERSION = 1;
 const TE_SUBMISSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$/;
-const TE_SUBMISSION_SHA1_RE = /^[a-f0-9]{40}$/i;
 const TE_SUBMISSION_HASH_RE = /^[a-f0-9]{64}$/i;
-const TE_SUBMISSION_MAX_CHANGES = 5000;
-const TE_SUBMISSION_MAX_VALUE = 20000;
-const TE_SUBMISSION_MAX_BYTES = 512 * 1024;
 
 function teMakeSubmissionId(lang, ns) {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const suffix = teBytesToHex(crypto.getRandomValues(new Uint8Array(4)));
   return `${teNormalizeLang(lang)}-${ns}-${stamp}-${suffix}`;
 }
 
@@ -27,17 +21,17 @@ function teSubmissionPayloadIsValid(payload) {
   const lang = teNormalizeLang(payload.lang);
   if (!TE_LANG_RE.test(lang) || TE_RESERVED_SUBMISSION_DIRS.has(lang)) return false;
   if (typeof payload.ns !== "string" || !TE_NS_RE.test(payload.ns)) return false;
-  if (!TE_SUBMISSION_SHA1_RE.test(payload.baseCommit || "")) return false;
-  if (!payload.source || !TE_SUBMISSION_SHA1_RE.test(payload.source.commit || "")) return false;
+  if (!TE_SHA1_RE.test(payload.baseCommit || "")) return false;
+  if (!payload.source || !TE_SHA1_RE.test(payload.source.commit || "")) return false;
   if (!payload.changes || typeof payload.changes !== "object") return false;
   const keys = Object.keys(payload.changes);
-  if (!keys.length || keys.length > TE_SUBMISSION_MAX_CHANGES) return false;
+  if (!keys.length || keys.length > TE_MAX_ENTRIES) return false;
   return keys.every((key) => {
     const change = payload.changes[key];
     return (
       !!change &&
       typeof change.value === "string" &&
-      change.value.length <= TE_SUBMISSION_MAX_VALUE &&
+      change.value.length <= TE_MAX_VALUE &&
       !teValueIsUnsafe(change.value) &&
       TE_SUBMISSION_HASH_RE.test(change.baseTargetHash || "") &&
       TE_SUBMISSION_HASH_RE.test(change.sourceHash || "")
@@ -95,7 +89,7 @@ async function teBuildSubmission({ lang, ns, changes, baseCommit, sourceCommit }
   };
   if (!teSubmissionPayloadIsValid(payload)) throw new Error("Generated submission does not match the locales schema");
   const content = `${JSON.stringify(payload, null, 2)}\n`;
-  if (new TextEncoder().encode(content).length > TE_SUBMISSION_MAX_BYTES) throw new Error("Submission is too large");
+  if (new TextEncoder().encode(content).length > TE_MAX_BYTES) throw new Error("Submission is too large");
   const submission = { id, lang: normalizedLang, namespace: ns, path: `submissions/${normalizedLang}/${id}.json`, content, payload, keys: Object.keys(accepted) };
   teAssertSubmissionPathIsSafe(submission);
   return submission;

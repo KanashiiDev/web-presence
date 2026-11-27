@@ -2137,6 +2137,13 @@ class UserScriptUI {
     const fixed = PARSER_LOCALE_LANGS;
     const view = this.localeViewLang;
     if (view && (fixed.includes(view) || this.localesData?.[view])) return view;
+    const languages = [...fixed, ...Object.keys(this.localesData || {}).filter((lang) => lang !== "en")];
+    for (const locale of parserDisplayLocales()) {
+      const preferred = normalizeLangCode(locale);
+      if (!preferred) continue;
+      const match = languages.find((lang) => lang === preferred) || languages.find((lang) => lang.split("-")[0] === preferred.split("-")[0]);
+      if (match) return match;
+    }
     const existing = Object.keys(this.localesData || {}).find((lang) => lang !== "en");
     return existing || fixed[0];
   }

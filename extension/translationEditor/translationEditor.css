@@ -464,7 +464,15 @@ body[data-te-view="home"] .te-view-tabs {
   min-width: 0;
 }
 
+.te-home-lang-flag {
+  width: 24px;
+  height: auto;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
 .te-home-lang-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -581,8 +589,8 @@ body[data-te-view="home"] .te-view-tabs {
 
 .te-conflict-group {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  gap: 4px;
   margin-bottom: 8px;
 }
 
@@ -595,9 +603,18 @@ body[data-te-view="home"] .te-view-tabs {
   font-weight: 600;
 }
 
+.te-conflict-group-redirect {
+  cursor: pointer;
+  margin-top: 2px;
+}
+
 .te-conflict-group-keys {
   color: var(--text-color-secondary);
   overflow-wrap: anywhere;
+}
+
+.te-conflict-group .btn {
+  align-self: flex-start;
 }
 
 .te-conflict-details {

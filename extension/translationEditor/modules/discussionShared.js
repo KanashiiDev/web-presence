@@ -43,12 +43,11 @@ function teDiscFormatDate(value) {
 }
 
 function teDiscAuthorLogin(author) {
-  if (typeof author === "string") return author || "unknown";
   return author?.login || "unknown";
 }
 
 function teDiscAvatarNode(author, small = false) {
-  const url = typeof author === "string" ? "" : author?.avatarUrl;
+  const url = author?.avatarUrl;
   if (!url) return null;
   const image = document.createElement("img");
   image.className = small ? "te-disc-avatar te-disc-avatar-sm" : "te-disc-avatar";
@@ -58,6 +57,38 @@ function teDiscAvatarNode(author, small = false) {
   image.height = small ? 18 : 22;
   image.loading = "lazy";
   return image;
+}
+
+function teDiscExternalLink(discussion) {
+  const link = document.createElement("a");
+  link.className = "te-disc-external";
+  link.href = discussion.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = `#${discussion.number}`;
+  return link;
+}
+
+function teDiscMetaNode(discussion, className, inlineAuthor = false) {
+  const meta = document.createElement("div");
+  meta.className = className;
+  const avatar = teDiscAvatarNode(discussion.author);
+  if (avatar) meta.appendChild(avatar);
+
+  const metaText = document.createElement("span");
+  metaText.title = teDiscAbsoluteDate(discussion.createdAt);
+  if (inlineAuthor) {
+    metaText.textContent = `${teDiscAuthorLogin(discussion.author)} · ${teDiscFormatDate(discussion.createdAt)} · `;
+  } else {
+    const author = document.createElement("div");
+    author.className = "te-disc-disc-author";
+    author.textContent = teDiscAuthorLogin(discussion.author);
+    meta.appendChild(author);
+    metaText.textContent = `· ${teDiscFormatDate(discussion.createdAt)} · `;
+  }
+  metaText.appendChild(teDiscExternalLink(discussion));
+  meta.appendChild(metaText);
+  return meta;
 }
 
 function teDiscBodyNode(text) {

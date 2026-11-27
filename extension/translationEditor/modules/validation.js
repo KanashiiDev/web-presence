@@ -1,5 +1,14 @@
 // Adapter between pure QA validators (qaValidators.js) and editor i18n messages.
 
+const teOmitKeyPrefixes = new Map();
+
+function teQaTokenListLabels(issue, missingKey, extraKey, extraParam = "token") {
+  const key = issue.key;
+  return (issue.details.missing || [])
+    .map((token) => i18n.t(missingKey, { key, token }))
+    .concat((issue.details.extra || []).map((token) => i18n.t(extraKey, { key, [extraParam]: token })));
+}
+
 function teQaIssueLabel(issue, omitKey = false) {
   const key = issue.key;
   let labels;
@@ -8,14 +17,10 @@ function teQaIssueLabel(issue, omitKey = false) {
       labels = [i18n.t("translationEditor.validation.missingKey", { key })];
       break;
     case "placeholder-integrity":
-      labels = (issue.details.missing || [])
-        .map((token) => i18n.t("translationEditor.qa.placeholderMissing", { key, token }))
-        .concat((issue.details.extra || []).map((token) => i18n.t("translationEditor.validation.placeholderNotInSource", { key, name: token })));
+      labels = teQaTokenListLabels(issue, "translationEditor.qa.placeholderMissing", "translationEditor.validation.placeholderNotInSource", "name");
       break;
     case "special-token-integrity":
-      labels = (issue.details.missing || [])
-        .map((token) => i18n.t("translationEditor.qa.tokenMissing", { key, token }))
-        .concat((issue.details.extra || []).map((token) => i18n.t("translationEditor.qa.tokenExtra", { key, token })));
+      labels = teQaTokenListLabels(issue, "translationEditor.qa.tokenMissing", "translationEditor.qa.tokenExtra");
       break;
     case "whitespace-integrity":
       labels = [i18n.t("translationEditor.qa.whitespace", { key })];
@@ -30,6 +35,7 @@ function teQaIssueLabel(issue, omitKey = false) {
       labels = [i18n.t("translationEditor.qa.endingPunctuation", { key })];
       break;
     case "length":
+    case "value-too-long":
       labels = [i18n.t("translationEditor.qa.length", { key })];
       break;
     case "plural-structure":
@@ -59,9 +65,6 @@ function teQaIssueLabel(issue, omitKey = false) {
     case "unsafe-key":
       labels = [i18n.t("translationEditor.validation.unsafeKey", { key })];
       break;
-    case "value-too-long":
-      labels = [i18n.t("translationEditor.qa.length", { key })];
-      break;
     case "missing-placeholder":
       labels = [i18n.t("translationEditor.qa.placeholderMissing", { key, token: issue.details.token || "" })];
       break;
@@ -76,35 +79,56 @@ function teQaIssueLabel(issue, omitKey = false) {
   }
 
   if (!omitKey || !key) return labels;
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const prefix = new RegExp(`^${escaped}\\s*:\\s*`);
+  let prefix = teOmitKeyPrefixes.get(key);
+  if (!prefix) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    prefix = new RegExp(`^${escaped}\\s*:\\s*`);
+    teOmitKeyPrefixes.set(key, prefix);
+  }
   return labels.map((label) => label.replace(prefix, ""));
+}
+
+// Severity and the subject keep distinct findings for the same key from collapsing into one issue.
+function teQaIssueIdentity(key, rule, severity, details) {
+  const token = typeof details?.token === "string" ? details.token : "";
+  const kind = typeof details?.kind === "string" ? details.kind : "";
+  const missing = Array.isArray(details?.missing) ? details.missing.join(",") : "";
+  const extra = Array.isArray(details?.extra) ? details.extra.join(",") : "";
+  return `${key}|${rule}|${severity}|${token}|${kind}|${missing}|${extra}`;
 }
 
 function teValidateChanges(sourceFlat, targetFlat, changes, options = {}) {
   const errors = [];
   const warnings = [];
   const issues = [];
-  // Only keys actually touched by a submission are hard errors. Completion
-  // gaps caused by an English source change are progress, not a broken patch.
+  // Completion gaps are progress, not a broken patch: missing keys are
+  // warnings. Only keys actually touched by a submission are checked here.
   const scope = options.keyScope ? new Set(options.keyScope) : null;
   const sourceKeys = Object.keys(sourceFlat).filter((key) => !scope || scope.has(key));
   const targetKeys = new Set(Object.keys(targetFlat).filter((key) => !scope || scope.has(key)));
-  const gapSeverity = scope ? "warning" : "error";
 
   const seen = new Set();
+  const seenLabels = new Set();
   const add = (rule, severity, key, message, details = {}) => {
-    if (seen.has(`${key}|${rule}`)) return;
-    seen.add(`${key}|${rule}`);
+    const identity = teQaIssueIdentity(key, rule, severity, details);
+    if (seen.has(identity)) return;
+    seen.add(identity);
     const issue = { rule, severity, key, message, details };
     issues.push(issue);
-    const labels = teQaIssueLabel(issue);
+    // Distinct issues can share one user-facing label (two unsafe-value
+    // causes). Keep every issue, but do not repeat the same label in the UI.
+    const labels = teQaIssueLabel(issue).filter((label) => {
+      const labelIdentity = `${severity}|${label}`;
+      if (seenLabels.has(labelIdentity)) return false;
+      seenLabels.add(labelIdentity);
+      return true;
+    });
     (severity === "error" ? errors : warnings).push(...labels);
   };
 
   if (!options.skipMissing) {
     sourceKeys.forEach((key) => {
-      if (!targetKeys.has(key)) add("required-keys", gapSeverity, key, "Missing required key", { missing: [key] });
+      if (!targetKeys.has(key)) add("required-keys", "warning", key, "Missing required key", { missing: [key] });
     });
     teValidatePluralStructure(sourceKeys, [...targetKeys]).forEach((issue) => {
       add(issue.rule, issue.severity, issue.key, issue.message, issue.details);
@@ -116,10 +140,13 @@ function teValidateChanges(sourceFlat, targetFlat, changes, options = {}) {
     // exactly the same severity rules. Editor-only linguistic checks follow.
     const verdict = teValidateKey({ key: change.key, source: change.source, value: change.target });
     for (const entry of [...verdict.errors, ...verdict.warnings]) {
-      const token = entry.message.match(/\{([^}]+)\}/)?.[1] || "";
-      add(entry.code, entry.severity, change.key, entry.message, { token });
+      add(entry.code, entry.severity, change.key, entry.message, entry.details || {});
     }
+    // Canonical rules already cover these codes. Editor-only variants still
+    // run for badges, but must not be reported twice in submit validation.
+    const canonicalCodes = new Set([...verdict.errors, ...verdict.warnings].map((entry) => entry.code));
     teCollectQaIssues(change.source, change.target, change.key, { change }).forEach((issue) => {
+      if (canonicalCodes.has(issue.rule)) return;
       add(issue.rule, issue.severity, issue.key, issue.message, issue.details);
     });
   });

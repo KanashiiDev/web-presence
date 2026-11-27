@@ -18,9 +18,15 @@ function teInvalidateGithubToken() {
   teGithubTokenPromise = null;
 }
 
+async function teDisconnectGithub() {
+  await githubContributeService.clearToken();
+  teInvalidateGithubToken();
+  teResetDiscussionsState();
+}
+
 // Runs action only when authenticated. Otherwise the existing device-flow
 // modal is opened and the action is resumed after a successful login.
-async function teRunWhenAuthenticated(action) {
+async function teRunWhenAuthenticated(action, onError = null) {
   const token = await teGetGithubTokenCached();
   if (token) {
     try {
@@ -35,10 +41,21 @@ async function teRunWhenAuthenticated(action) {
     onSuccess: (newToken) => {
       Promise.resolve(action(newToken)).catch((err) => {
         if (typeof logError === "function") logError("[Translation Editor]: resumed action failed", err);
+        if (typeof onError === "function") onError(err);
       });
     },
   });
   return false;
+}
+
+function teCreateGithubAvatar(user, size) {
+  const avatar = document.createElement("img");
+  avatar.className = "github-avatar";
+  avatar.src = user.avatar_url;
+  avatar.alt = user.login || "";
+  avatar.width = size;
+  avatar.height = size;
+  return avatar;
 }
 
 async function teRefreshGithubAuthBadge() {
@@ -55,13 +72,7 @@ async function teRefreshGithubAuthBadge() {
   if (token) {
     const user = await githubContributeService.getCachedUser();
     if (user?.avatar_url) {
-      const avatar = document.createElement("img");
-      avatar.className = "github-avatar";
-      avatar.src = user.avatar_url;
-      avatar.alt = user.login || "";
-      avatar.width = 20;
-      avatar.height = 20;
-      button.appendChild(avatar);
+      button.appendChild(teCreateGithubAvatar(user, 20));
     } else {
       button.appendChild(createSVG(svg_paths.githubIconPaths));
     }
@@ -95,12 +106,7 @@ function teShowGithubConnectedModal() {
   const renderUser = (user) => {
     userEl.replaceChildren();
     if (!user) return;
-    const avatar = document.createElement("img");
-    avatar.className = "github-avatar";
-    avatar.src = user.avatar_url;
-    avatar.alt = user.login || "";
-    avatar.width = 36;
-    avatar.height = 36;
+    const avatar = teCreateGithubAvatar(user, 36);
     const name = document.createElement("span");
     name.className = "github-username";
     name.textContent = user.login;
@@ -141,9 +147,7 @@ function teShowGithubConnectedModal() {
   });
 
   disconnectBtn.addEventListener("click", async () => {
-    await githubContributeService.clearToken();
-    teGithubTokenPromise = null;
-    teResetDiscussionsState();
+    await teDisconnectGithub();
     teRefreshGithubAuthBadge();
     modal.remove();
   });
@@ -205,9 +209,7 @@ async function teShowDeviceFlowModal({ onSuccess = null } = {}) {
 
   disconnectBtn.addEventListener("click", async () => {
     close();
-    await githubContributeService.clearToken();
-    teGithubTokenPromise = null;
-    teResetDiscussionsState();
+    await teDisconnectGithub();
   });
   cancelBtn.addEventListener("click", close);
   modal.addEventListener("click", (event) => {
@@ -236,11 +238,14 @@ async function teShowDeviceFlowModal({ onSuccess = null } = {}) {
     const copyBtn = document.createElement("button");
     copyBtn.className = "device-flow-copy";
     copyBtn.appendChild(createSVG(svg_paths.copyIconPaths));
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(user_code).then(() => {
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(user_code);
         copyBtn.replaceChildren(createSVG(svg_paths.checkIconPaths));
         setTimeout(() => copyBtn.replaceChildren(createSVG(svg_paths.copyIconPaths)), 2000);
-      });
+      } catch (err) {
+        if (typeof logWarn === "function") logWarn("[Translation Editor]: clipboard copy failed", err);
+      }
     });
     codeWrap.append(codeEl, copyBtn);
     stateEl.appendChild(codeWrap);
@@ -290,12 +295,11 @@ async function teShowDeviceFlowModal({ onSuccess = null } = {}) {
       stateEl.replaceChildren();
       const errorEl = document.createElement("p");
       errorEl.className = "contribute-status error";
-      errorEl.textContent =
-        pollErr.message === "expired"
-          ? i18n.t("userscript.contribute.oauth.expired")
-          : pollErr.message === "denied"
-            ? i18n.t("userscript.contribute.oauth.denied")
-            : pollErr.message;
+      const authErrorText = {
+        expired: i18n.t("userscript.contribute.oauth.expired"),
+        denied: i18n.t("userscript.contribute.oauth.denied"),
+      };
+      errorEl.textContent = authErrorText[pollErr.message] || pollErr.message;
       stateEl.appendChild(errorEl);
 
       const retryBtn = document.createElement("button");

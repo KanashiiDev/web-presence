@@ -24,10 +24,29 @@ function teRateLimitPollDelay() {
   return 0;
 }
 
+// A rejected token is used at most once: invalidate it, then retry anonymous.
+// `send` either returns a Response or throws an error carrying `status`, so the
+// raw-fetch and service-request call sites share one policy.
+async function teRequestWithTokenRetry(send, token, onInvalidate = null) {
+  if (!token) return send(null);
+  let unauthorized = false;
+  let response = null;
+  try {
+    response = await send(token);
+  } catch (err) {
+    if (err?.status !== 401) throw err;
+    unauthorized = true;
+  }
+  if (!unauthorized && response?.status !== 401) return response;
+  teInvalidateGithubToken();
+  if (onInvalidate) onInvalidate();
+  return send(null);
+}
+
 // Direct API read so 304/ETag and rate-limit headers are observable. A revoked
 // token is invalidated and the single request is retried anonymously.
-async function teApiRequest(path, { etag = null } = {}) {
-  let token = await githubContributeService.getToken();
+async function teApiRequest(path, { etag = null, token = null } = {}) {
+  const authToken = token || (await githubContributeService.getToken());
   const send = async (useToken) => {
     const headers = {
       Accept: "application/vnd.github+json",
@@ -39,36 +58,28 @@ async function teApiRequest(path, { etag = null } = {}) {
     teObserveRateLimit(response);
     return response;
   };
-  let response = await send(token);
-  if (response.status === 401 && token) {
-    teInvalidateGithubToken();
-    token = null;
-    response = await send(null);
-  }
-  return response;
+  return teRequestWithTokenRetry(send, authToken);
 }
 
-async function teFetchPrFile(head, lang, namespace) {
+async function teFetchPrJson(head, relativePath) {
   const owner = head.repo?.owner?.login;
   const repo = head.repo?.name;
   if (!owner || !repo || !head.sha) throw new Error("PR head is no longer available");
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${head.sha}/locales/${lang}/${namespace}.json`;
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${head.sha}/${relativePath}`;
   const response = await fetchWithTimeout(url, {}, 10000);
   if (!response.ok) throw new Error(`PR file ${url}: HTTP ${response.status}`);
   return response.json();
+}
+
+async function teFetchPrFile(head, lang, namespace) {
+  return teFetchPrJson(head, `locales/${lang}/${namespace}.json`);
 }
 
 // Editor-generated PRs contain immutable submission files, not locale files.
 // Reading their `changes` lets pending-key detection see other contributors'
 // in-flight translations instead of treating every submission PR as empty.
 async function teFetchPrSubmission(head, lang, id) {
-  const owner = head.repo?.owner?.login;
-  const repo = head.repo?.name;
-  if (!owner || !repo || !head.sha) throw new Error("PR head is no longer available");
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${head.sha}/submissions/${lang}/${id}.json`;
-  const response = await fetchWithTimeout(url, {}, 10000);
-  if (!response.ok) throw new Error(`PR file ${url}: HTTP ${response.status}`);
-  return response.json();
+  return teFetchPrJson(head, `submissions/${lang}/${id}.json`);
 }
 
 let teFetchOpenPrsInflight = null;
@@ -81,15 +92,24 @@ function teOpenPrsHadPartialFailure() {
 
 // GitHub list endpoints return at most 100 items per page. Truncating the list
 // hides pending submissions and their result comments on busy repositories.
-async function teRequestAllPages(request, path, cap = 20) {
-  const all = [];
-  for (let page = 1; page <= cap; page += 1) {
-    const separator = path.includes("?") ? "&" : "?";
-    const batch = await request(`${path}${separator}page=${page}&per_page=100`);
-    if (!Array.isArray(batch)) return all;
-    all.push(...batch);
-    if (batch.length < 100) break;
+async function teForEachPage(path, fetchPage, onPage) {
+  const separator = path.includes("?") ? "&" : "?";
+  for (let page = 1; page <= 20; page += 1) {
+    const pagePath = `${path}${separator}page=${page}&per_page=100`;
+    const items = await fetchPage(pagePath);
+    if (!Array.isArray(items)) return;
+    onPage(items, pagePath);
+    if (items.length < 100) return;
   }
+}
+
+async function teRequestAllPages(request, path) {
+  const all = [];
+  await teForEachPage(
+    path,
+    (pagePath) => request(pagePath),
+    (items) => all.push(...items),
+  );
   return all;
 }
 
@@ -121,30 +141,26 @@ async function teFetchListWithEtag(path, cacheState) {
   cacheState.pages = cacheState.pages || {};
   const all = [];
   let sawModified = false;
-  for (let page = 1; page <= 20; page += 1) {
-    const separator = path.includes("?") ? "&" : "?";
-    const pagePath = `${path}${separator}page=${page}&per_page=100`;
-    const etag = cacheState.etags[pagePath] || null;
-    const response = await teApiRequest(pagePath, { etag });
-    if (response.status === 304 && Array.isArray(cacheState.pages[pagePath])) {
-      const cachedPage = cacheState.pages[pagePath];
-      all.push(...cachedPage);
-      if (cachedPage.length < 100) break;
-      continue;
-    }
-    sawModified = true;
-    if (!response.ok) {
-      const err = new Error(`GitHub API ${response.status} for ${pagePath}`);
-      err.status = response.status;
-      throw err;
-    }
-    const data = await response.json();
-    if (!Array.isArray(data)) break;
-    all.push(...data);
-    cacheState.etags[pagePath] = response.headers.get("ETag") || etag;
-    cacheState.pages[pagePath] = data;
-    if (data.length < 100) break;
-  }
+  await teForEachPage(
+    path,
+    async (pagePath) => {
+      const etag = cacheState.etags[pagePath] || null;
+      const response = await teApiRequest(pagePath, { etag });
+      if (response.status === 304 && Array.isArray(cacheState.pages[pagePath])) return cacheState.pages[pagePath];
+      sawModified = true;
+      if (!response.ok) {
+        const err = new Error(`GitHub API ${response.status} for ${pagePath}`);
+        err.status = response.status;
+        throw err;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data)) return null;
+      cacheState.etags[pagePath] = response.headers.get("ETag") || etag;
+      cacheState.pages[pagePath] = data;
+      return data;
+    },
+    (items) => all.push(...items),
+  );
   return { data: all, unchanged: !sawModified };
 }
 
@@ -152,18 +168,14 @@ async function teFetchOpenPrsLive(cacheState = {}) {
   const token = await githubContributeService.getToken();
   // A rejected token stays rejected for this fetch: one 401, then anonymous.
   let usableToken = token;
-  const request = async (path) => {
-    try {
-      return await githubContributeService.request(path, {}, usableToken);
-    } catch (err) {
-      if (usableToken && err.status === 401) {
-        teInvalidateGithubToken();
+  const request = (path) =>
+    teRequestWithTokenRetry(
+      (useToken) => githubContributeService.request(path, {}, useToken),
+      usableToken,
+      () => {
         usableToken = null;
-        return githubContributeService.request(path, {}, null);
-      }
-      throw err;
-    }
-  };
+      },
+    );
   const base = `/repos/${TE_UPSTREAM_OWNER}/${TE_UPSTREAM_REPO}`;
   const requestAll = (path) => teRequestAllPages(request, path);
   tePrFetchPartial = false;
@@ -291,7 +303,7 @@ async function teCheckPolledPr(prNumber) {
   const state = stored[TE_PR_POLL_CACHE_KEY] || { etag: null, snapshot: null };
   const path = `/repos/${TE_UPSTREAM_OWNER}/${TE_UPSTREAM_REPO}/pulls/${prNumber}`;
   const response = await teApiRequest(path, { etag: state.etag });
-  if (response.status === 304 && state.snapshot) return { changed: false, fromCache: true };
+  if (response.status === 304 && state.snapshot) return { changed: false, fromCache: true, pr: state.snapshot };
   if (response.status === 404) {
     await browser.storage.local.remove(TE_PR_POLL_CACHE_KEY);
     return { changed: true };
@@ -317,25 +329,12 @@ async function teFetchSubmissionResultComment(id, prNumber, token) {
   if (now < (TE_RESULT_BACKOFF.get(key) || 0)) return null;
 
   const path = `/repos/${TE_REPO.owner}/${TE_REPO.name}/issues/${prNumber}/comments?per_page=100`;
-  const send = async (useToken) => {
-    const headers = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    };
-    if (useToken) headers.Authorization = `Bearer ${useToken}`;
-    const response = await fetchWithTimeout(`https://api.github.com${path}`, { headers, cache: "no-store" }, 10000);
-    teObserveRateLimit(response);
-    return response;
-  };
 
   let response;
   try {
-    response = await send(token);
-    // A revoked token must not keep failing silently forever.
-    if (response.status === 401 && token) {
-      teInvalidateGithubToken();
-      response = await send(null);
-    }
+    // A revoked token must not keep failing silently forever. Passing the
+    // token explicitly keeps the batch's one-token snapshot semantics.
+    response = await teApiRequest(path, { token });
   } catch (_err) {
     TE_RESULT_BACKOFF.set(key, now + 60000);
     return null;

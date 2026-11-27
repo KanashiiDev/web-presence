@@ -6,21 +6,21 @@
 async function teSha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return teBytesToHex(new Uint8Array(digest));
+}
+
+async function teHashValueForVersion(kind, label, value, key, version = TE_HASH_VERSION) {
+  if (typeof value !== "string" || typeof key !== "string") throw new TypeError(`${label} needs a string value and key`);
+  const domain = teDomainForVersion(version);
+  return teSha256Hex(`${domain}\n${kind}\n${key}\n${value}`);
 }
 
 async function teHashSourceForVersion(value, key, version = TE_HASH_VERSION) {
-  if (typeof value !== "string" || typeof key !== "string") throw new TypeError("teHashSource needs a string value and key");
-  const domain = teDomainForVersion(version);
-  return teSha256Hex(`${domain}\nsource\n${key}\n${value}`);
+  return teHashValueForVersion("source", "teHashSource", value, key, version);
 }
 
 async function teHashTargetForVersion(value, key, version = TE_HASH_VERSION) {
-  if (typeof value !== "string" || typeof key !== "string") throw new TypeError("teHashTarget needs a string value and key");
-  const domain = teDomainForVersion(version);
-  return teSha256Hex(`${domain}\ntarget\n${key}\n${value}`);
+  return teHashValueForVersion("target", "teHashTarget", value, key, version);
 }
 
 async function teHashSource(value, key) {
@@ -29,10 +29,4 @@ async function teHashSource(value, key) {
 
 async function teHashTarget(value, key) {
   return teHashTargetForVersion(value, key, TE_HASH_VERSION);
-}
-
-// SHA-1 of the Git blob representation, matching `git hash-object` and the
-// blob SHAs used in web-presence-locales/runtime/manifest.json.
-async function teGitBlobSha(text) {
-  return teGitBlobShaForText(text);
 }

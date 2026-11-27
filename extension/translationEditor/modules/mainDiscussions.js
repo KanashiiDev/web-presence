@@ -224,22 +224,7 @@ function teRenderMainDetail(discussion) {
   category.className = "te-disc-detail-category";
   category.textContent = `${discussion.category?.name || ""}`;
 
-  const meta = document.createElement("div");
-  meta.className = "te-disc-detail-meta";
-  const avatar = teDiscAvatarNode(discussion.author);
-  if (avatar) meta.appendChild(avatar);
-  const metaText = document.createElement("span");
-  metaText.textContent = `${teDiscAuthorLogin(discussion.author)} · ${teDiscFormatDate(discussion.createdAt)} · `;
-  metaText.title = teDiscAbsoluteDate(discussion.createdAt);
-
-  const link = document.createElement("a");
-  link.className = "te-disc-external";
-  link.href = discussion.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = `#${discussion.number}`;
-  metaText.appendChild(link);
-  meta.appendChild(metaText);
+  const meta = teDiscMetaNode(discussion, "te-disc-detail-meta", true);
   header.append(category, meta);
   detail.push(header);
   detail.push(teDiscBodyNode(teStripTranslationMarker(discussion.body)));

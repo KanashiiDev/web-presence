@@ -9,6 +9,18 @@ const TE_DISC_SEARCH_SIZE = 30;
 const TE_DISC_KEY_MARKER = "translation-key";
 const TE_DISC_KEY_TITLE_PREFIX = "[Translation] ";
 const TE_DISC_MARKER_REGEX = /<!--\s*translation-key:\s*(\S+?)\s*-->/;
+const TE_DISC_AUTHOR_FIELDS = "author { login avatarUrl(size: 40) }";
+const TE_DISC_BASE_FIELDS = `
+  __typename
+  id
+  number
+  title
+  body
+  url
+  createdAt
+  ${TE_DISC_AUTHOR_FIELDS}
+  category { id name }
+`;
 
 // Single source of truth for category restrictions.
 const TRANSLATION_DISCUSSION_CATEGORY = "Translations Key Related";
@@ -17,7 +29,6 @@ const GENERAL_DISCUSSION_CATEGORIES = ["Translations General", "Translations Key
 const teDiscState = {
   repoId: null,
   categories: null,
-  accessPromise: null,
   byId: new Map(),
   byKey: new Map(),
   inflight: new Map(),
@@ -26,37 +37,42 @@ const teDiscState = {
 function teResetDiscussionsState() {
   teDiscState.repoId = null;
   teDiscState.categories = null;
-  teDiscState.accessPromise = null;
   teDiscState.byId.clear();
   teDiscState.byKey.clear();
   teDiscState.inflight.clear();
+}
+
+// Concurrent callers share one in-flight request. Identity checks prevent a
+// reset from letting an older promise clear a newer pending entry.
+async function teDiscSingleFlight(key, factory) {
+  const pending = teDiscState.inflight.get(key);
+  if (pending) return pending;
+  const promise = factory();
+  teDiscState.inflight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    if (teDiscState.inflight.get(key) === promise) teDiscState.inflight.delete(key);
+  }
 }
 
 const TE_DISC_COMMENT_FIELDS = `
   id
   body
   createdAt
-  author { login avatarUrl(size: 40) }
+  ${TE_DISC_AUTHOR_FIELDS}
   replies(first: 100) {
     nodes {
       id
       body
       createdAt
-      author { login avatarUrl(size: 40) }
+      ${TE_DISC_AUTHOR_FIELDS}
     }
   }
 `;
 
 const TE_DISC_FIELDS = `
-  __typename
-  id
-  number
-  title
-  body
-  url
-  createdAt
-  author { login avatarUrl(size: 40) }
-  category { id name }
+  ${TE_DISC_BASE_FIELDS}
   comments(first: 100) {
     totalCount
     pageInfo { hasNextPage endCursor }
@@ -67,15 +83,7 @@ const TE_DISC_FIELDS = `
 // The forum list only needs summary fields; comments are fetched on demand
 // when a discussion is opened.
 const TE_DISC_LIST_FIELDS = `
-  __typename
-  id
-  number
-  title
-  body
-  url
-  createdAt
-  author { login avatarUrl(size: 40) }
-  category { id name }
+  ${TE_DISC_BASE_FIELDS}
   comments { totalCount }
 `;
 
@@ -94,8 +102,7 @@ const TE_DISC_LIST_QUERY = `
   query TeDiscList($owner: String!, $repo: String!, $first: Int!, $after: String, $categoryId: ID) {
     repository(owner: $owner, name: $repo) {
       discussions(first: $first, after: $after, categoryId: $categoryId, orderBy: { field: UPDATED_AT, direction: DESC }) {
-        totalCount
-        pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+        pageInfo { hasNextPage endCursor }
         nodes { ${TE_DISC_LIST_FIELDS} }
       }
     }
@@ -159,16 +166,15 @@ function teDiscNormalizeError(err) {
   if (err?.teDiscCode) return err;
   const message = String(err?.message || err || "Unknown error");
   const status = err?.status;
-  const lower = message.toLowerCase();
 
   if (status === 401 || /bad credentials|requires authentication/i.test(message)) {
     teInvalidateGithubToken();
     return teDiscError("auth", message);
   }
   if (status === 403 && /not accessible|forbidden|permission/i.test(message)) return teDiscError("permission", message);
-  if (status === 429 || /rate limit|secondary rate|abuse/i.test(lower)) return teDiscError("rateLimit", message);
+  if (status === 429 || /rate limit|secondary rate|abuse/i.test(message)) return teDiscError("rateLimit", message);
   if (status === 404 && /not found|could not resolve/i.test(message)) return teDiscError("repo", message);
-  if (!status && /network|timeout|aborted|failed to fetch|fetch failed/i.test(lower)) return teDiscError("network", message);
+  if (!status && /network|timeout|aborted|failed to fetch|fetch failed/i.test(message)) return teDiscError("network", message);
   return teDiscError("api", message);
 }
 
@@ -206,9 +212,7 @@ async function teDiscCall(query, variables = {}, token = null) {
 // the repository node id and categories; concurrent callers share one request.
 async function teEnsureDiscussionsAccess() {
   if (teDiscState.repoId && teDiscState.categories) return teDiscState;
-  if (teDiscState.accessPromise) return teDiscState.accessPromise;
-
-  const promise = (async () => {
+  return teDiscSingleFlight("access", async () => {
     const token = await teGetGithubTokenCached();
     if (!token) throw teDiscError("auth", i18n.t("translationEditor.discussion.errorAuth"));
 
@@ -229,14 +233,7 @@ async function teEnsureDiscussionsAccess() {
     teDiscState.repoId = repository.id;
     teDiscState.categories = categories;
     return teDiscState;
-  })();
-
-  teDiscState.accessPromise = promise;
-  try {
-    return await promise;
-  } finally {
-    if (teDiscState.accessPromise === promise) teDiscState.accessPromise = null;
-  }
+  });
 }
 
 function teDiscAuthor(author) {
@@ -339,16 +336,13 @@ async function teFetchDiscussionList({ categoryId = "", after = null, first = TE
   const data = await teDiscCall(TE_DISC_LIST_QUERY, { owner: TE_DISC_OWNER, repo: TE_DISC_REPO, first, after, categoryId: resolvedCategoryId });
   const connection = data?.repository?.discussions;
   if (!connection) throw teDiscError("api", i18n.t("translationEditor.discussions.listError", { error: "repository unavailable" }));
-  const nodes = (connection.nodes || [])
-    .filter((discussion) => discussion?.id)
-    .map((discussion) => teNormalizeDiscussion(discussion, false))
-    .filter(Boolean);
+  const nodes = (connection.nodes || []).filter((discussion) => discussion?.id).map((discussion) => teNormalizeDiscussion(discussion, false));
   nodes.forEach((discussion) => {
     const cached = teDiscState.byId.get(discussion.id);
     // A page summary must never overwrite an already loaded detail.
     if (!cached?.detailLoaded) teDiscState.byId.set(discussion.id, discussion);
   });
-  return { nodes, pageInfo: connection.pageInfo || {}, totalCount: connection.totalCount || 0 };
+  return { nodes, pageInfo: connection.pageInfo || {} };
 }
 
 async function teFetchDiscussionById(id) {
@@ -369,11 +363,7 @@ async function teFindTranslationDiscussion(key, { force = false } = {}) {
     if (cached) return cached;
   }
 
-  const inflightKey = `key:${key}:${force ? "force" : "cached"}`;
-  const pending = teDiscState.inflight.get(inflightKey);
-  if (pending) return pending;
-
-  const promise = (async () => {
+  return teDiscSingleFlight(`key:${key}:${force ? "force" : "cached"}`, async () => {
     await teEnsureDiscussionsAccess();
     const escapedKey = String(key).replace(/["\\]/g, "\\$&");
     const search = `repo:${TE_DISC_OWNER}/${TE_DISC_REPO} in:body "${escapedKey}"`;
@@ -384,14 +374,13 @@ async function teFindTranslationDiscussion(key, { force = false } = {}) {
     const discussion = await teFetchDiscussionById(match.id);
     if (discussion) teRememberTranslationDiscussion(key, discussion);
     return discussion;
-  })();
+  });
+}
 
-  teDiscState.inflight.set(inflightKey, promise);
-  try {
-    return await promise;
-  } finally {
-    if (teDiscState.inflight.get(inflightKey) === promise) teDiscState.inflight.delete(inflightKey);
-  }
+function teCreatedDiscussionFromData(data) {
+  const discussion = teNormalizeDiscussion(data?.createDiscussion?.discussion);
+  if (!discussion?.id) throw teDiscError("api", i18n.t("translationEditor.discussion.errorGeneric", { error: "discussion not returned" }));
+  return discussion;
 }
 
 async function teCreateTranslationDiscussion(key, message) {
@@ -405,8 +394,7 @@ async function teCreateTranslationDiscussion(key, message) {
       body: teBuildTranslationBody(key, message),
     },
   });
-  const discussion = teNormalizeDiscussion(data?.createDiscussion?.discussion);
-  if (!discussion?.id) throw teDiscError("api", i18n.t("translationEditor.discussion.errorGeneric", { error: "discussion not returned" }));
+  const discussion = teCreatedDiscussionFromData(data);
   teRememberTranslationDiscussion(key, discussion);
   return discussion;
 }
@@ -418,8 +406,7 @@ async function teCreateStandaloneDiscussion({ title, categoryId, body }) {
   const data = await teDiscCall(TE_DISC_CREATE_MUTATION, {
     input: { repositoryId: access.repoId, categoryId: resolvedCategoryId, title, body },
   });
-  const discussion = teNormalizeDiscussion(data?.createDiscussion?.discussion);
-  if (!discussion?.id) throw teDiscError("api", i18n.t("translationEditor.discussion.errorGeneric", { error: "discussion not returned" }));
+  const discussion = teCreatedDiscussionFromData(data);
   teDiscState.byId.set(discussion.id, discussion);
   return discussion;
 }

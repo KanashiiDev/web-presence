@@ -58,7 +58,7 @@ async function teWriteFreshnessCache(key, value) {
   return teFreshnessWriteChain;
 }
 
-async function teEvaluateNamespaceFreshness({ source, target, meta }) {
+async function teEvaluateNamespaceFreshness({ source, target, meta, sourceHashes = null }) {
   const sourceKeys = Object.keys(source).sort();
   const missingKeys = sourceKeys.filter((key) => !(key in target));
   const keyStatus = Object.create(null);
@@ -67,7 +67,7 @@ async function teEvaluateNamespaceFreshness({ source, target, meta }) {
 
   for (const key of sourceKeys) {
     if (!(key in target)) continue;
-    const currentSourceHash = await teHashSource(source[key], key);
+    const currentSourceHash = sourceHashes && Object.prototype.hasOwnProperty.call(sourceHashes, key) ? sourceHashes[key] : await teHashSource(source[key], key);
     const accepted = meta?.keys?.[key]?.sourceHash;
     let status;
     if (accepted === undefined) {
@@ -95,7 +95,7 @@ async function teEvaluateNamespaceFreshness({ source, target, meta }) {
   };
 }
 
-async function teCheckLanguageOpen({ source, target, meta, ns, enBlobSha, targetBlobSha, useCache = true }) {
+async function teCheckLanguageOpen({ source, target, meta, ns, enBlobSha, targetBlobSha, useCache = true, sourceHashes = null }) {
   const key = teFreshnessCacheKey(enBlobSha || "none", targetBlobSha || "none", {
     ns,
     metaFingerprint: await teMetaFingerprint(meta),
@@ -110,7 +110,7 @@ async function teCheckLanguageOpen({ source, target, meta, ns, enBlobSha, target
     enBlobSha,
     targetBlobSha,
     ns,
-    ...(await teEvaluateNamespaceFreshness({ source, target, meta })),
+    ...(await teEvaluateNamespaceFreshness({ source, target, meta, sourceHashes })),
   };
   if (useCache) await teWriteFreshnessCache(key, result);
   return { ...result, fromCache: false };
@@ -130,31 +130,11 @@ async function teCompareDraft({ draft, source, target }) {
     const currentTargetHash = await teHashTarget(key in target ? target[key] : "", key);
     const statuses = [];
     if (currentSource === null || currentSource !== change.sourceHash) statuses.push("source-changed");
-    if (currentTargetHash === null || currentTargetHash !== change.baseTargetHash) statuses.push("target-changed");
+    if (currentTargetHash !== change.baseTargetHash) statuses.push("target-changed");
     if (key in target && target[key] === value) statuses.push("draft-applied");
     const status = statuses.length ? statuses.join("+") : "ok";
     results[key] = { status, currentSourceHash: currentSource, currentTargetHash };
     if (status !== "ok") changed = true;
   }
   return { changed, keys: results };
-}
-
-async function teCheckSubmissionSourceFreshness({ changes, source }) {
-  const results = Object.create(null);
-  let requiresReview = false;
-  for (const [key, change] of Object.entries(changes || {})) {
-    if (!(key in source)) {
-      results[key] = "source-key-missing";
-      requiresReview = true;
-      continue;
-    }
-    const current = await teHashSource(source[key], key);
-    if (current !== change.sourceHash) {
-      results[key] = "outdated";
-      requiresReview = true;
-    } else {
-      results[key] = "fresh";
-    }
-  }
-  return { requiresReview, keys: results };
 }

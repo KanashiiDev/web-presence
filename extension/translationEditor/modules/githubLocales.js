@@ -20,14 +20,14 @@ let teContentCache = null;
 // Called after a verified processor result: drop derived caches so the next
 // read goes through the immutable-ref path. The last verified manifest is kept
 // as the safe fallback if the API rate-limits or is offline.
-async function teInvalidateLocaleSnapshot({ notifyBackground = true } = {}) {
+async function teInvalidateLocaleSnapshot() {
   // Keep immutable content entries: they are keyed by SHA and remain valid.
   try {
     await browser.storage.local.remove(TE_LOCALE_CACHE_KEY);
   } catch (_err) {
     /* storage failures must not block editing */
   }
-  if (notifyBackground && typeof browser !== "undefined" && browser.runtime?.sendMessage) {
+  if (typeof browser !== "undefined" && browser.runtime?.sendMessage) {
     try {
       await browser.runtime.sendMessage({ type: "REFRESH_LOCALES" });
     } catch (_err) {
@@ -48,12 +48,12 @@ async function teEditorGithubToken() {
   return null;
 }
 
-async function teResolveLocalesHead(force = false) {
+async function teResolveHead(owner, repo, branch, force) {
   const token = await teEditorGithubToken();
   return fetchGitHubHead({
-    owner: TE_REPO.owner,
-    repo: TE_REPO.name,
-    branch: TE_REPO.branch,
+    owner,
+    repo,
+    branch,
     token,
     // Authenticated requests still have a ~60s edge cache; keep polling gentle.
     minIntervalMs: token ? 30000 : TE_API_MIN_INTERVAL_MS,
@@ -61,16 +61,12 @@ async function teResolveLocalesHead(force = false) {
   });
 }
 
+async function teResolveLocalesHead(force = false) {
+  return teResolveHead(TE_REPO.owner, TE_REPO.name, TE_REPO.branch, force);
+}
+
 async function teResolveSourceHead(force = false) {
-  const token = await teEditorGithubToken();
-  return fetchGitHubHead({
-    owner: TE_SOURCE_OWNER,
-    repo: TE_SOURCE_REPO,
-    branch: TE_SOURCE_BRANCH,
-    token,
-    minIntervalMs: token ? 30000 : TE_API_MIN_INTERVAL_MS,
-    force,
-  });
+  return teResolveHead(TE_SOURCE_OWNER, TE_SOURCE_REPO, TE_SOURCE_BRANCH, force);
 }
 
 async function teReadContentCache() {
@@ -98,10 +94,14 @@ async function tePersistContentCache() {
   }
 }
 
-function teFindCachedContent(path) {
+// Cache keys are `${repo}@${sha}:${path}`. A path alone is not enough: the
+// English mirror and the source repo both store `locales/en/<ns>.json`.
+function teFindCachedContent(path, repo, expectedSha = null) {
+  const prefix = `${repo}@`;
   const suffix = `:${path}`;
   const match = Object.entries(teContentCache.entries)
-    .filter(([key, value]) => key.endsWith(suffix) && typeof value?.text === "string")
+    .filter(([key, value]) => key.startsWith(prefix) && key.endsWith(suffix) && typeof value?.text === "string")
+    .filter(([, value]) => !expectedSha || String(value.sha || "").toLowerCase() === String(expectedSha).toLowerCase())
     .sort((a, b) => (b[1]?.storedAt || 0) - (a[1]?.storedAt || 0))[0];
   return match ? { text: match[1].text, blobSha: match[1].sha, fromCache: true } : null;
 }
@@ -110,28 +110,27 @@ function teFindCachedContent(path) {
 // integrity guarantee; when the caller supplies an expected blob SHA (from the
 // manifest) we additionally verify the bytes. API calls are used only to
 // resolve the head SHA, never to read file contents.
-async function teFetchRawAtRef({ owner, repo, sha, path, expectedSha = null, allowStale = false, root = null }) {
+async function teFetchRawAtRef({ owner, repo, sha, path, expectedSha = null, allowStale = false }) {
   const cache = await teReadContentCache();
   const key = `${repo}@${sha}:${path}`;
   const entry = cache.entries[key];
-  if (entry && typeof entry.text === "string") {
+  if (entry && typeof entry.text === "string" && (!expectedSha || String(entry.sha || "").toLowerCase() === String(expectedSha).toLowerCase())) {
     return { text: entry.text, blobSha: entry.sha, fromCache: true };
   }
-  const base = root || `https://raw.githubusercontent.com/${owner}/${repo}`;
-  const url = `${base}/${sha}/${path}`;
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${path}`;
   let response;
   try {
     response = await fetchWithTimeout(url, { cache: "no-store" }, 12000);
   } catch (err) {
     if (allowStale) {
-      const stale = teFindCachedContent(path);
+      const stale = teFindCachedContent(path, repo, expectedSha);
       if (stale) return stale;
     }
     throw err;
   }
   if (!response.ok) {
     if (allowStale) {
-      const stale = teFindCachedContent(path);
+      const stale = teFindCachedContent(path, repo, expectedSha);
       if (stale) return stale;
     }
     const err = new Error(`Raw fetch ${path}: HTTP ${response.status}`);
@@ -169,8 +168,7 @@ async function teFetchGithubText(path) {
   }
 }
 
-async function teFetchGithubJson(path) {
-  const text = await teFetchGithubText(path);
+function teParseGithubJson(text, path) {
   try {
     return JSON.parse(text);
   } catch (err) {
@@ -178,20 +176,22 @@ async function teFetchGithubJson(path) {
   }
 }
 
+async function teFetchGithubJson(path) {
+  const text = await teFetchGithubText(path);
+  return teParseGithubJson(text, path);
+}
+
 async function teFetchGithubFile(lang, namespace) {
   const text = await teFetchGithubText(`locales/${teNormalizeLang(lang)}/${namespace}.json`);
-  try {
-    return { text, json: JSON.parse(text) };
-  } catch (err) {
-    throw new Error(i18n.t("translationEditor.error.invalidJson", { path: `locales/${lang}/${namespace}.json`, error: err.message }));
-  }
+  return { text, json: teParseGithubJson(text, `locales/${lang}/${namespace}.json`) };
 }
 
 // Authoritative English strings come from the main repository, never from the
 // derived and possibly stale mirror inside web-presence-locales.
-async function teFetchMainSource(namespace, manifest = null) {
+async function teFetchMainSource(namespace, manifest = null, resolvedHead = null) {
   const path = `locales/en/${namespace}.json`;
-  const head = await teResolveSourceHead();
+  const head = resolvedHead || (await teResolveSourceHead());
+  const previous = teLastGoodSource.get(namespace);
   if (head.ok && head.sha) {
     try {
       const result = await teFetchRawAtRef({
@@ -208,14 +208,12 @@ async function teFetchMainSource(namespace, manifest = null) {
       return source;
     } catch (err) {
       // SHA verification or network failure: reuse the last verified source only.
-      const previous = teLastGoodSource.get(namespace);
       if (previous) return previous;
       const error = new Error(i18n.t("translationEditor.error.fetchFailed", { path, status: err.status || err.message }));
       error.status = err.status;
       throw error;
     }
   }
-  const previous = teLastGoodSource.get(namespace);
   if (previous) return previous;
   throw new Error(i18n.t("translationEditor.error.fetchFailed", { path, status: "head unavailable" }));
 }
@@ -248,43 +246,56 @@ async function teFetchManifest() {
   throw new Error("Runtime manifest unavailable and no verified snapshot is known");
 }
 
+// Re-fetch the same path at the immutable head after a snapshot miss. Callers
+// keep their own parse, validation and null-vs-throw policy.
+async function teFetchAtHeadAfterMissing(path, { allowStale = true, expectedSha = null } = {}) {
+  const head = await teResolveLocalesHead();
+  if (!head.ok || !head.sha) return null;
+  return teFetchRawAtRef({
+    owner: TE_REPO.owner,
+    repo: TE_REPO.name,
+    sha: head.sha,
+    path,
+    expectedSha,
+    allowStale,
+  });
+}
+
 async function teFetchMetaAtSnapshot(manifest, lang) {
   const normalized = teNormalizeLang(lang);
   const path = `locales/${normalized}/.meta.json`;
-  try {
-    const result = await teFetchRawAtRef({
-      owner: TE_REPO.owner,
-      repo: TE_REPO.name,
-      sha: manifest.snapshot,
-      path,
-      allowStale: true,
-    });
-    const meta = JSON.parse(result.text);
-    if (meta && !teIsSupportedHashVersion(meta.hashVersion)) {
-      throw new Error(i18n.t("translationEditor.error.unsupportedHashVersion", { version: String(meta.hashVersion) }));
+  let result = null;
+  let fromFallback = false;
+  if (manifest.languages?.[normalized]) {
+    try {
+      result = await teFetchRawAtRef({
+        owner: TE_REPO.owner,
+        repo: TE_REPO.name,
+        sha: manifest.snapshot,
+        path,
+        allowStale: true,
+      });
+    } catch (err) {
+      if (err.status !== 404) throw err;
     }
-    return { ...meta, fromFallback: false };
-  } catch (err) {
-    if (err.status !== 404) throw err;
   }
-  // A newly processed language can exist on main before the manifest snapshot
-  // advances. Fall back to the immutable head SHA, never to a branch URL.
-  const head = await teResolveLocalesHead();
-  if (!head.ok || !head.sha) return null;
-  try {
-    const verified = await teFetchRawAtRef({
-      owner: TE_REPO.owner,
-      repo: TE_REPO.name,
-      sha: head.sha,
-      path,
-      allowStale: true,
-    });
-    const fallbackMeta = JSON.parse(verified.text);
-    if (!teIsSupportedHashVersion(fallbackMeta?.hashVersion)) return null;
-    return { ...fallbackMeta, fromFallback: true };
-  } catch (_err) {
-    return null;
+  if (!result) {
+    // A language absent from the manifest has no files at the snapshot, and
+    // metadata added after it exists only at head. Read it from the immutable
+    // head SHA, never from a branch URL.
+    try {
+      result = await teFetchAtHeadAfterMissing(path);
+    } catch (_err) {
+      return null;
+    }
+    if (!result) return null;
+    fromFallback = true;
   }
+  const meta = JSON.parse(result.text);
+  if (meta && !teIsSupportedHashVersion(meta.hashVersion)) {
+    throw new Error(i18n.t("translationEditor.error.unsupportedHashVersion", { version: String(meta.hashVersion) }));
+  }
+  return { ...meta, fromFallback };
 }
 
 // Key renames are recorded in the English mirror metadata by sync-source.js.
@@ -302,16 +313,9 @@ async function teFetchSourceMetaAtSnapshot(manifest) {
   } catch (err) {
     if (err.status !== 404) throw err;
   }
-  const head = await teResolveLocalesHead();
-  if (!head.ok || !head.sha) return null;
   try {
-    const verified = await teFetchRawAtRef({
-      owner: TE_REPO.owner,
-      repo: TE_REPO.name,
-      sha: head.sha,
-      path,
-      allowStale: true,
-    });
+    const verified = await teFetchAtHeadAfterMissing(path);
+    if (!verified) return null;
     return JSON.parse(verified.text);
   } catch (_err) {
     return null;
@@ -347,23 +351,16 @@ async function teFetchSnapshotTarget(manifest, lang, namespace, allowMissing) {
     if (allowMissing) return { text: null, json: {}, fromFallback: false };
     // The locale file may already be on main while the manifest snapshot still
     // points at an older commit. Read it from the immutable head SHA.
-    const head = await teResolveLocalesHead();
-    if (!head.ok || !head.sha) throw new Error(`Translation ${lang}/${namespace}: head unavailable`);
+    let verified;
     try {
-      const verified = await teFetchRawAtRef({
-        owner: TE_REPO.owner,
-        repo: TE_REPO.name,
-        sha: head.sha,
-        path,
-        expectedSha: declared?.sha || null,
-        allowStale: false,
-      });
-      text = verified.text;
-      blobSha = verified.blobSha;
-      fromFallback = true;
+      verified = await teFetchAtHeadAfterMissing(path, { expectedSha: declared?.sha || null, allowStale: false });
     } catch (fallbackErr) {
       throw new Error(`Translation ${lang}/${namespace}: ${fallbackErr.message}`);
     }
+    if (!verified) throw new Error(`Translation ${lang}/${namespace}: head unavailable`);
+    text = verified.text;
+    blobSha = verified.blobSha;
+    fromFallback = true;
   }
   let json;
   try {
@@ -391,7 +388,7 @@ function teRegisteredLanguages(metadata) {
     ...Object.keys(metadata).filter((lang) => lang !== "en"),
     ...PARSER_LOCALE_LANGS.filter((lang) => !Object.prototype.hasOwnProperty.call(metadata, lang)),
   ];
-  return [...new Set(langs.map(teNormalizeLang))];
+  return [...new Set(langs.map(teNormalizeLang))].sort();
 }
 
 function teLanguageNamespaces(lang, metadata) {
@@ -412,10 +409,11 @@ function teWordsToTranslate(sourceFlat, metaKeys) {
 // stored in the runtime cache. Otherwise newly added keys are invisible to the
 // dropdown while the editor already counts them.
 async function teFetchAllSources(manifest = null) {
+  const head = await teResolveSourceHead();
   const entries = await Promise.all(
     TE_NAMESPACES.map(async (namespace) => {
       try {
-        return [namespace, teFlattenTranslations((await teFetchMainSource(namespace, manifest)).json)];
+        return [namespace, teFlattenTranslations((await teFetchMainSource(namespace, manifest, head)).json)];
       } catch (_err) {
         // A namespace that cannot be fetched keeps zero stats; others still load.
         return [namespace, null];
@@ -520,33 +518,33 @@ function teLanguageStatsFields(stats) {
   };
 }
 
+function teBuildLanguageEntry(lang, metadata, stats) {
+  // Only an explicit `published:false` in languages.json is a blocker.
+  // "Not registered yet" must NOT block: it is the only way a new language
+  // can ever reach the 90% publication threshold.
+  const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
+  const override = metadata[lang]?.published === false;
+  return {
+    lang,
+    label: parserLangLabel(lang, parserDisplayLocales()),
+    namespaces: teLanguageNamespaces(lang, metadata),
+    pending: !registered,
+    published: !override,
+    ...teLanguageStatsFields(stats),
+  };
+}
+
 async function teLoadGithubLanguages() {
   const cache = await teReadLocaleCache();
-  if (cache?.metadata?.content && cache.langs && Object.keys(cache.langs).length) {
-    const metadata = cache.metadata.content;
-    const langs = teRegisteredLanguages(metadata);
-    const sources = await teFetchAllSources(cache.manifest?.content || null);
-    if (sources.extension && cache.manifest?.content) {
-      const drafts = await teLoadAllDrafts();
-      const statsByLang = await teLanguageProgressValues(langs, metadata, sources, cache.manifest.content, drafts);
-      return langs.map((lang) => {
-        const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
-        // Only an explicit `published:false` in languages.json is a blocker.
-        // "Not registered yet" must NOT block: it is the only way a new language
-        // can ever reach the 90% publication threshold.
-        const override = metadata[lang]?.published === false;
-        return {
-          lang,
-          label: parserLangLabel(lang, parserDisplayLocales()),
-          namespaces: teLanguageNamespaces(lang, metadata),
-          pending: !registered,
-          published: !override,
-          ...teLanguageStatsFields(statsByLang[lang]),
-        };
-      });
-    }
-  }
-  return teLoadGithubLanguagesLive();
+  if (!cache?.metadata?.content || !cache.langs || !Object.keys(cache.langs).length) return teLoadGithubLanguagesLive();
+  const metadata = cache.metadata.content;
+  const langs = teRegisteredLanguages(metadata);
+  const manifest = await teFetchManifest();
+  const sources = await teFetchAllSources(manifest);
+  if (!sources.extension) return teLoadGithubLanguagesLive();
+  const drafts = await teLoadAllDrafts();
+  const statsByLang = await teLanguageProgressValues(langs, metadata, sources, manifest, drafts);
+  return langs.map((lang) => teBuildLanguageEntry(lang, metadata, statsByLang[lang]));
 }
 
 async function teLoadGithubLanguagesLive() {
@@ -555,18 +553,7 @@ async function teLoadGithubLanguagesLive() {
   const langs = teRegisteredLanguages(metadata);
   const statsByLang = await teLanguageProgressValues(langs, metadata, sources, manifest, drafts);
 
-  return langs.map((lang) => {
-    const registered = Object.prototype.hasOwnProperty.call(metadata, lang);
-    const override = metadata[lang]?.published === false;
-    return {
-      lang,
-      label: parserLangLabel(lang, parserDisplayLocales()),
-      namespaces: teLanguageNamespaces(lang, metadata),
-      pending: !registered,
-      published: !override,
-      ...teLanguageStatsFields(statsByLang[lang]),
-    };
-  });
+  return langs.map((lang) => teBuildLanguageEntry(lang, metadata, statsByLang[lang]));
 }
 
 // The locales repo records only value-identical (safe) renames, scoped by

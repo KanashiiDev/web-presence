@@ -11,6 +11,12 @@ function teDraftStorageKey(lang, file) {
   return `${TE_DRAFT_STORAGE_PREFIX}${teDraftKey(lang, file)}`;
 }
 
+function teParseDraftKey(key) {
+  const separator = key.indexOf("/");
+  if (separator < 0) return null;
+  return { lang: key.slice(0, separator), file: key.slice(separator + 1) };
+}
+
 // One-time migration from the old single-object layout. Per-file keys avoid a
 // read-modify-write of every language on each keystroke and prevent lost
 // updates between draft writes and submit/load metadata updates.

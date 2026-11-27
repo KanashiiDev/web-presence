@@ -75,7 +75,7 @@ async function fetchGitHubHead({ owner, repo, branch = "main", token = null, min
   const key = `${owner}/${repo}/${branch}`;
   let state = GITHUB_HEAD_CACHE.get(key);
   if (!state) {
-    state = { sha: null, etag: null, nextAt: 0, lastError: null };
+    state = { sha: null, etag: null, nextAt: 0, lastError: null, pending: null };
     GITHUB_HEAD_CACHE.set(key, state);
   }
   const now = Date.now();
@@ -84,57 +84,66 @@ async function fetchGitHubHead({ owner, repo, branch = "main", token = null, min
   if (!force && state.sha && now < state.nextAt) {
     return { sha: state.sha, etag: state.etag, fromCache: true, ok: true };
   }
+  if (!force && state.pending) return state.pending;
 
-  const headers = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (state.etag) headers["If-None-Match"] = state.etag;
+  const request = (async () => {
+    const headers = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (state.etag) headers["If-None-Match"] = state.etag;
 
-  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(branch)}`;
-  let response;
-  try {
-    response = await fetchWithTimeout(url, { headers, cache: "no-store" }, timeout);
-  } catch (err) {
-    state.nextAt = now + 60000;
-    state.lastError = err.message;
-    return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: err.message };
-  }
-
-  if (response.status === 304) {
-    state.nextAt = now + minIntervalMs;
-    return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha };
-  }
-
-  if (!response.ok) {
-    // Rate limits and transient API failures must fall back to the last known
-    // good SHA, not to a mutable branch URL. Back off before retrying.
-    const retryAfter = Number(response.headers.get("Retry-After"));
-    const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(Math.max(retryAfter * 1000, 60000), 300000) : 60000;
-    state.nextAt = now + delay;
-    state.lastError = `HTTP ${response.status}`;
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(branch)}`;
+    let response;
     try {
-      await response.text();
-    } catch (_err) {
-      /* body is irrelevant */
+      response = await fetchWithTimeout(url, { headers, cache: "no-store" }, timeout);
+    } catch (err) {
+      state.nextAt = now + 60000;
+      state.lastError = err.message;
+      return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: err.message };
     }
-    return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: state.lastError };
-  }
 
+    if (response.status === 304) {
+      state.nextAt = now + minIntervalMs;
+      return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha };
+    }
+
+    if (!response.ok) {
+      // Rate limits and transient API failures must fall back to the last known
+      // good SHA, not to a mutable branch URL. Back off before retrying.
+      const retryAfter = Number(response.headers.get("Retry-After"));
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(Math.max(retryAfter * 1000, 60000), 300000) : 60000;
+      state.nextAt = now + delay;
+      state.lastError = `HTTP ${response.status}`;
+      try {
+        await response.text();
+      } catch (_err) {
+        /* body is irrelevant */
+      }
+      return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: state.lastError };
+    }
+
+    try {
+      const data = await response.json();
+      const sha = data?.object?.sha;
+      if (typeof sha !== "string" || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error("Invalid head SHA");
+      state.sha = sha;
+      state.etag = response.headers.get("ETag") || state.etag;
+      state.nextAt = now + minIntervalMs;
+      state.lastError = null;
+      return { sha, etag: state.etag, fromCache: false, ok: true };
+    } catch (err) {
+      state.nextAt = now + 60000;
+      state.lastError = err.message;
+      return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: err.message };
+    }
+  })();
+  state.pending = request;
   try {
-    const data = await response.json();
-    const sha = data?.object?.sha;
-    if (typeof sha !== "string" || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error("Invalid head SHA");
-    state.sha = sha;
-    state.etag = response.headers.get("ETag") || state.etag;
-    state.nextAt = now + minIntervalMs;
-    state.lastError = null;
-    return { sha, etag: state.etag, fromCache: false, ok: true };
-  } catch (err) {
-    state.nextAt = now + 60000;
-    state.lastError = err.message;
-    return { sha: state.sha, etag: state.etag, fromCache: true, ok: !!state.sha, error: err.message };
+    return await request;
+  } finally {
+    if (state.pending === request) state.pending = null;
   }
 }
 

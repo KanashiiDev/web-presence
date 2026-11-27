@@ -549,13 +549,58 @@ function parseLocalesObjectText(text) {
 
 // Canonical language list for parser locale tables and the translation editor.
 // "en" is the mandatory base column and is never offered.
-const PARSER_LOCALE_LANGS = ["de", "es", "fr", "ja", "ko", "pl", "nl", "ru", "tr", "uk", "vi", "zh-cn", "zh-tw", "pt-br", "it", "id"];
+const PARSER_LOCALE_LANGS = [
+  "bg",
+  "bn",
+  "ca",
+  "cs",
+  "da",
+  "de",
+  "el",
+  "es",
+  "et",
+  "fi",
+  "fil",
+  "fr",
+  "hi",
+  "hr",
+  "hu",
+  "id",
+  "it",
+  "ja",
+  "ko",
+  "lt",
+  "lv",
+  "ms",
+  "nl",
+  "no",
+  "pl",
+  "pt-br",
+  "pt-pt",
+  "ro",
+  "ru",
+  "sk",
+  "sl",
+  "sr",
+  "sv",
+  "ta",
+  "th",
+  "tr",
+  "uk",
+  "vi",
+  "zh-cn",
+  "zh-tw",
+];
 
 // Pin labels that may vary across ICU versions.
 const PARSER_LANG_LABEL_FALLBACKS = {
   "pt-br": { en: "Brazilian Portuguese", "pt-br": "Português (Brasil)" },
+  "pt-pt": { en: "European Portuguese", "pt-pt": "Português (Portugal)" },
   "zh-cn": { en: "Chinese (China)", "zh-cn": "简体中文" },
   "zh-tw": { en: "Chinese (Taiwan)", "zh-tw": "繁體中文" },
+  fil: { en: "Filipino", fil: "Filipino" },
+  no: { en: "Norwegian", no: "Norsk" },
+  sr: { en: "Serbian", sr: "Српски" },
 };
 
 function normalizeLangCode(lang) {
@@ -584,14 +629,52 @@ function parserDisplayLocales() {
 }
 
 // Uses the same locale priority as the settings language picker.
+const _displayNamesCache = new Map();
+
+function _getDisplayNames(locales) {
+  const key = locales.join("|");
+  let dn = _displayNamesCache.get(key);
+  if (dn === undefined) {
+    try {
+      dn = new Intl.DisplayNames(locales, { type: "language" });
+    } catch (_err) {
+      dn = null;
+    }
+    _displayNamesCache.set(key, dn);
+  }
+  return dn;
+}
+
 function parserLangLabel(lang, displayLocales) {
   const code = normalizeLangCode(lang);
-  const locales = Array.isArray(displayLocales) ? displayLocales : [normalizeLangCode(displayLocales) || "en"];
-  const fallback = PARSER_LANG_LABEL_FALLBACKS[code];
-  const primary = normalizeLangCode(locales[0]);
-  if (fallback && fallback[primary]) return fallback[primary];
+  if (!code) return "";
+
+  const raw = Array.isArray(displayLocales) ? displayLocales : [displayLocales || "en"];
+  const locales = raw.map(normalizeLangCode).filter(Boolean);
+  if (!locales.length) locales.push("en");
+
+  // 1) Pinned labels: try the full UI locale first, then its base language.
+  const pins = PARSER_LANG_LABEL_FALLBACKS[code];
+  if (pins) {
+    for (const loc of locales) {
+      const base = loc.split("-")[0];
+      const hit = pins[loc] ?? pins[base];
+      if (hit) return hit;
+    }
+  }
+
+  // 2) Intl.DisplayNames, dropping locales the runtime can't handle.
+  let supported;
   try {
-    return new Intl.DisplayNames(locales, { type: "language" }).of(code) || code;
+    supported = Intl.DisplayNames.supportedLocalesOf(locales);
+  } catch (_err) {
+    supported = [];
+  }
+  const dn = _getDisplayNames(supported.length ? supported : ["en"]);
+
+  // 3) Last resort: the raw code.
+  try {
+    return dn?.of(code) || code;
   } catch (_err) {
     return code;
   }

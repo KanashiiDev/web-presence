@@ -3,35 +3,8 @@
 //
 // Locale values contain only plain text and {placeholders} (no HTML).
 
-// {name}, {0}
-const TE_QA_PLACEHOLDER_PATTERN = /\{\w+\}/g;
-
 // Escaped sequences, URLs (without trailing sentence punctuation), real newline/tab.
 const TE_QA_SPECIAL_PATTERN = /\\n|\\t|\\\\|\\"|https?:\/\/[^\s"'<>]*[^\s"'<>.,;:!?)]|\n|\t/g;
-
-// Closing quotes/brackets and whitespace that may follow the final punctuation: `"Done."`, `(Saved.)`
-const TE_QA_ENDING_TRAILING_PATTERN = /(?:\s|["'\p{Pf})\]\u300D\u300F\uFF09])+$/u;
-const TE_QA_ENDING_ELLIPSIS_PATTERN = /(?:\.{3}|\u2026)$/;
-
-// Language-specific punctuation mapped to a common form so "。" equals "." etc.
-const TE_QA_ENDING_PUNCTUATION = {
-  ".": ".",
-  "。": ".",
-  "．": ".",
-  "｡": ".",
-  "।": ".",
-  "۔": ".",
-  "!": "!",
-  "！": "!",
-  "?": "?",
-  "？": "?",
-  "؟": "?",
-  ":": ":",
-  "：": ":",
-  ";": ";",
-  "；": ";",
-  "…": "…",
-};
 
 // Opening quotes/brackets and inverted marks ignored when looking for the first letter.
 const TE_QA_LEADING_PATTERN = /^(?:\s|["'\p{Pi}(\[\u00BF\u00A1\u300C\u300E\uFF08])+/u;
@@ -71,23 +44,6 @@ function teQaResult(rule, severity, key, message, details) {
   return { rule, severity, key, message, details: details || {} };
 }
 
-// Missing placeholder -> warning (some languages legitimately drop e.g. {count}).
-// Placeholder not present in source -> error (would render literally / break at runtime).
-// Returns an array of results.
-function teValidatePlaceholderIntegrity(source, target, key) {
-  const expected = teCountQaTokens(source, TE_QA_PLACEHOLDER_PATTERN);
-  const actual = teCountQaTokens(target, TE_QA_PLACEHOLDER_PATTERN);
-  const diff = teQaCompareCounts(expected, actual);
-  const results = [];
-  if (diff.missing.length) {
-    results.push(teQaResult("placeholder-integrity", "error", key, "Placeholder missing", { ...diff, extra: [] }));
-  }
-  if (diff.extra.length) {
-    results.push(teQaResult("placeholder-integrity", "error", key, "Placeholder not in source", { ...diff, missing: [] }));
-  }
-  return results;
-}
-
 function teNormalizeSpecialToken(token) {
   if (token === "\n") return "\\n";
   if (token === "\t") return "\\t";
@@ -123,10 +79,7 @@ function teValidateDoubleSpace(source, target, key) {
 // Returns one of ". ! ? : ; …" or null when the text has no ending punctuation.
 // Ignores trailing whitespace and closing quotes/brackets; treats "..." and "…" as equal.
 function teEndingPunctuation(text) {
-  const trimmed = String(text ?? "").replace(TE_QA_ENDING_TRAILING_PATTERN, "");
-  if (!trimmed) return null;
-  if (TE_QA_ENDING_ELLIPSIS_PATTERN.test(trimmed)) return "…";
-  return TE_QA_ENDING_PUNCTUATION[trimmed[trimmed.length - 1]] || null;
+  return teQaEnding(text);
 }
 
 function teInitialCase(text) {
@@ -259,27 +212,24 @@ function teValidateSourceFreshness(change) {
 }
 
 function teCollectQaIssues(source, target, key, options = {}) {
-  if (!target || source === target) return [];
   const issues = [];
-  const validators = [
-    () => teValidateUnsafeValue(target, key),
-    // Placeholder rules now come from the canonical shared validateKey module
-    // (see modules/qa.js). The function stays exported for direct tests.
-    () => teValidateSpecialTokens(source, target, key),
-    () => teValidateWhitespace(source, target, key),
-    () => teValidateDoubleSpace(source, target, key),
-    () => teValidateCapitalization(source, target, key),
-    () => teValidateEndingPunctuation(source, target, key),
-    () => teValidateLength(source, target, key),
-  ];
-  validators.forEach((run) => {
-    const result = run();
-    if (Array.isArray(result)) issues.push(...result);
-    else if (result) issues.push(result);
-  });
+  // Freshness is a property of the change, not of the target value: a cleared
+  // translation can still be based on an outdated English source.
   if (options.change) {
     const freshness = teValidateSourceFreshness(options.change);
     if (freshness) issues.push(freshness);
   }
+  if (!target || source === target) return issues;
+  const push = (result) => {
+    if (Array.isArray(result)) issues.push(...result);
+    else if (result) issues.push(result);
+  };
+  push(teValidateUnsafeValue(target, key));
+  push(teValidateSpecialTokens(source, target, key));
+  push(teValidateWhitespace(source, target, key));
+  push(teValidateDoubleSpace(source, target, key));
+  push(teValidateCapitalization(source, target, key));
+  push(teValidateEndingPunctuation(source, target, key));
+  push(teValidateLength(source, target, key));
   return issues;
 }

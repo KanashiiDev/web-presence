@@ -52,9 +52,10 @@ function teCreateDiscussionButton(row) {
   button.textContent = teDiscussionButtonLabel(row.key);
   button.title = i18n.t("translationEditor.discussion.buttonTitle", { key: row.key });
   button.addEventListener("click", () => {
-    teRunWhenAuthenticated(() => teOpenTranslationDiscussion(row.key)).catch((err) => {
+    const logPanelError = (err) => {
       if (typeof logError === "function") logError("[Translation Editor]: discussion panel failed", err);
-    });
+    };
+    teRunWhenAuthenticated(() => teOpenTranslationDiscussion(row.key), logPanelError).catch(logPanelError);
   });
   return button;
 }
@@ -116,32 +117,7 @@ async function teOpenTranslationDiscussion(key) {
       heading.className = "te-translation-disc-heading";
       heading.textContent = key;
 
-      const meta = document.createElement("div");
-      meta.className = "te-translation-disc-meta";
-
-      const avatar = teDiscAvatarNode(discussion.author);
-      if (avatar) meta.appendChild(avatar);
-
-      const author = document.createElement("div");
-      author.className = "te-disc-disc-author";
-      author.textContent = `${teDiscAuthorLogin(discussion.author)}`;
-
-      meta.appendChild(author);
-
-      const link = document.createElement("a");
-      link.className = "te-disc-external";
-      link.href = discussion.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = `#${discussion.number}`;
-
-      const metaText = document.createElement("span");
-      metaText.textContent = `· ${teDiscFormatDate(discussion.createdAt)} · `;
-      metaText.title = teDiscAbsoluteDate(discussion.createdAt);
-
-      metaText.appendChild(link);
-      meta.appendChild(metaText);
-
+      const meta = teDiscMetaNode(discussion, "te-translation-disc-meta");
       header.append(heading, meta);
 
       const original = document.createElement("div");

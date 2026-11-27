@@ -6,6 +6,37 @@ const TE_LANG_PARAM = "lang";
 const TE_HOME_SECTION = "home";
 const TE_STATUS = { UNTRANSLATED: "untranslated", TRANSLATED: "translated", OUTDATED: "outdated", PR_PENDING: "prPending" };
 const TE_STATUS_BY_LABEL = { Untranslated: TE_STATUS.UNTRANSLATED, Translated: TE_STATUS.TRANSLATED, Outdated: TE_STATUS.OUTDATED, "PR Pending": TE_STATUS.PR_PENDING };
+// Values are flagsapi.com country codes (ISO 3166-1 alpha-2), not language codes.
+const TE_FLAG_CODE_BY_LANG = {
+  be: "BY",
+  bn: "BD",
+  cs: "CZ",
+  da: "DK",
+  el: "GR",
+  en: "GB",
+  et: "EE",
+  fa: "IR",
+  fil: "PH",
+  he: "IL",
+  hi: "IN",
+  hy: "AM",
+  ja: "JP",
+  ka: "GE",
+  ko: "KR",
+  ms: "MY",
+  my: "MM",
+  nb: "NO",
+  ne: "NP",
+  nn: "NO",
+  sl: "SI",
+  sq: "AL",
+  sr: "RS",
+  sv: "SE",
+  ta: "LK",
+  uk: "UA",
+  vi: "VN",
+  zh: "CN",
+};
 const teCollator = typeof Intl !== "undefined" && Intl.Collator ? new Intl.Collator() : null;
 
 const teState = {
@@ -45,12 +76,9 @@ const teElements = {
   conflictBanner: document.getElementById("conflictBanner"),
   nextUntranslatedBtn: document.getElementById("nextUntranslatedBtn"),
   reloadBtn: document.getElementById("reloadBtn"),
-  exportDraftsBtn: document.getElementById("exportDraftsBtn"),
-  importDraftsBtn: document.getElementById("importDraftsBtn"),
   exportLocaleBtn: document.getElementById("exportLocaleBtn"),
   importLocaleBtn: document.getElementById("importLocaleBtn"),
   downloadSourceBtn: document.getElementById("downloadSourceBtn"),
-  importDraftsInput: document.getElementById("importDraftsInput"),
   importLocaleInput: document.getElementById("importLocaleInput"),
   submitBtn: document.getElementById("submitBtn"),
   progressText: document.getElementById("progressText"),
@@ -300,6 +328,16 @@ function teCreateRow(row) {
     pill.textContent = teStatusLabel(row.status);
   }
 
+  // Every edit path must refresh the same row-derived UI in the same order.
+  function teRefreshRowUi() {
+    teRefreshRowStatus();
+    teUpdateQaBadge(row, qaColumn);
+    teRefreshRestore();
+    teUpdateProgress();
+    teUpdateFilterCounts();
+    teUpdateConflictBanner();
+  }
+
   const targetCell = document.createElement("div");
   targetCell.className = "col-target";
 
@@ -310,7 +348,10 @@ function teCreateRow(row) {
   target.title = target.value;
   target.readOnly = !!row.prPending;
   target.addEventListener("focus", () => {
-    if (!row.prPending) teState.editingKey = row.key;
+    if (!row.prPending) {
+      teState.editingKey = row.key;
+      teTable.updatePinned();
+    }
   });
   target.addEventListener("input", () => {
     if (row.prPending) return;
@@ -329,17 +370,15 @@ function teCreateRow(row) {
     }
     row.status = teComputeStatus(row);
     target.title = row.target;
-    teRefreshRowStatus();
-    teUpdateQaBadge(row, qaColumn);
-    teRefreshRestore();
-    teUpdateProgress();
-    teUpdateFilterCounts();
-    teUpdateConflictBanner();
+    teRefreshRowUi();
     element.style.display = teRowMatchesFilter(row, teState.filter, teState.query) ? "" : "none";
     teScheduleSave();
   });
   target.addEventListener("blur", (event) => {
-    if (teState.editingKey === row.key) teState.editingKey = "";
+    if (teState.editingKey === row.key) {
+      teState.editingKey = "";
+      teTable.updatePinned();
+    }
     if (event.relatedTarget && element.contains(event.relatedTarget)) return;
     requestAnimationFrame(() => {
       if (document.activeElement?.classList?.contains("target-input")) return;
@@ -357,12 +396,7 @@ function teCreateRow(row) {
     teRestoreRowTarget(row);
     target.value = row.target;
     target.title = row.target;
-    teRefreshRowStatus();
-    teUpdateQaBadge(row, qaColumn);
-    teRefreshRestore();
-    teUpdateProgress();
-    teUpdateFilterCounts();
-    teUpdateConflictBanner();
+    teRefreshRowUi();
     teRender();
     teScheduleSave();
     teCommitPendingSave();
@@ -380,12 +414,7 @@ function teCreateRow(row) {
     row.lineChangeAcknowledged = true;
     row.originalBaseTargetHash = row.draftBaseTargetHash;
     row.status = teComputeStatus(row);
-    teRefreshRowStatus();
-    teUpdateQaBadge(row, qaColumn);
-    teRefreshRestore();
-    teUpdateProgress();
-    teUpdateFilterCounts();
-    teUpdateConflictBanner();
+    teRefreshRowUi();
     teRender();
     try {
       // Capture the target once: re-reading teState after the storage await
@@ -514,9 +543,7 @@ function teUpdateProgress() {
     if (Object.prototype.hasOwnProperty.call(counts, row.status)) counts[row.status]++;
     else counts.Untranslated++;
   });
-  // Never render 100% while rows are still untranslated: rounding 99.8% up
-  // would hide the remaining work.
-  const percent = total ? Math.min(counts.Translated === total ? 100 : 99, Math.round((counts.Translated / total) * 100)) : 0;
+  const percent = teCappedPercent(counts.Translated, total);
   const width = (count) => (total ? `${(count / total) * 100}%` : "0%");
   teElements.progressText.textContent = i18n.t("translationEditor.progress", { translated: counts.Translated, total, percent });
   // Every segment uses the same denominator, so the bar and the label agree.
@@ -560,6 +587,28 @@ async function teLoadLastLang() {
 function teSetSaveStatus(status) {
   teElements.saveStatus.textContent = teSaveStatusLabel(status);
   teElements.saveStatus.className = `save-status ${status === "Save failed" ? "failed" : status === "Saving" ? "saving" : ""}`;
+}
+
+let teSidebarBusyCount = 0;
+let teSidebarDisabledSnapshot = null;
+
+function teSetSidebarBusy(busy) {
+  if (busy) {
+    if (teSidebarBusyCount++ === 0) {
+      teSidebarDisabledSnapshot = new Map();
+      teElements.sidebar?.querySelectorAll("button").forEach((button) => {
+        teSidebarDisabledSnapshot.set(button, button.disabled);
+        button.disabled = true;
+      });
+    }
+    return;
+  }
+  if (teSidebarBusyCount > 0) teSidebarBusyCount--;
+  if (teSidebarBusyCount || !teSidebarDisabledSnapshot) return;
+  teSidebarDisabledSnapshot.forEach((disabled, button) => {
+    if (button.isConnected) button.disabled = disabled;
+  });
+  teSidebarDisabledSnapshot = null;
 }
 
 async function teRefreshSubmitCount() {
@@ -653,17 +702,6 @@ function teSubmitStatusText(status) {
   return exact ? i18n.t(exact) : i18n.t("translationEditor.submitStatus.other", { key: value });
 }
 
-// The processor writes a marker + markdown body. Clean it for plain-text UI;
-// never build HTML from a comment body.
-function teCleanResultDetail(detail) {
-  return String(detail || "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/^##\s*/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 // Defensive extraction of "Keys not applied" bullets. Returns null when the
 // expected section is absent so callers can fall back to the raw detail.
 function teParseResultKeys(detail) {
@@ -684,28 +722,38 @@ function teParseResultKeys(detail) {
   }
 }
 
+function teSetFilter(filter) {
+  teState.filter = filter;
+  teElements.filterTabs.querySelectorAll("[data-filter]").forEach((button) => button.classList.toggle("active", button.dataset.filter === filter));
+  teRender();
+}
+
 function teConflictGroups() {
   const pending = tePendingFreshnessKeys();
   const groups = [];
   if (pending.missing.length)
     groups.push({
-      title: i18n.t("translationEditor.validation.missingKey", { key: "" }).replace(/:\s*$/, ""),
+      title: i18n.t("translationEditor.conflicts.missingKeys"),
       keys: pending.missing,
+      filter: "untranslated",
     });
   if (pending.outdated.length)
     groups.push({
-      title: i18n.t("translationEditor.qa.name.freshness"),
+      title: i18n.t("translationEditor.conflicts.freshness"),
       keys: pending.outdated,
+      filter: "outdated",
     });
   if (pending.unverified.length)
     groups.push({
-      title: i18n.t("translationEditor.qa.unverified", { key: "" }).replace(/^:\s*/, ""),
+      title: i18n.t("translationEditor.conflicts.unverifiedKeys"),
       keys: pending.unverified,
+      filter: "outdated",
     });
   if (teState.draftWarning) {
     groups.push({
       title: teState.draftWarning,
       keys: teState.draftWarningKeys?.length ? teState.draftWarningKeys : [],
+      filter: "outdated",
     });
   }
   return groups;
@@ -738,14 +786,21 @@ function teUpdateConflictBanner() {
   if (!hasPrConflicts && groups.length) {
     const details = document.createElement("div");
     details.className = "te-conflict-details";
-    groups.forEach(({ title, keys }) => {
+    groups.forEach(({ title, keys, filter }) => {
       const group = document.createElement("div");
       group.className = "te-conflict-group";
       const heading = document.createElement("div");
       heading.className = "te-conflict-group-title";
       heading.textContent = title;
       group.appendChild(heading);
-      if (keys.length) {
+      if (filter) {
+        const redirect = document.createElement("span");
+        redirect.className = "te-conflict-group-redirect";
+        redirect.dataset.filter = filter;
+        redirect.appendChild(createSVG(svg_paths.redirectIconPaths));
+        redirect.addEventListener("click", () => teSetFilter(filter));
+        group.appendChild(redirect);
+      } else if (keys.length) {
         const keyLine = document.createElement("div");
         keyLine.className = "te-conflict-group-keys";
         keyLine.textContent = keys.slice(0, 8).join(", ") + (keys.length > 8 ? ` +${keys.length - 8}` : "");
@@ -958,7 +1013,12 @@ function teSetLanguageSelect(lang) {
   teFillFileSelect();
 }
 
-function teCreateOverviewCard({ name, code, progress, words, publishedProgress, badge, onSelect }) {
+function teLangFlagCode(lang) {
+  const normalized = teNormalizeLang(lang);
+  return TE_FLAG_CODE_BY_LANG[normalized] || normalized.split("-").pop().toUpperCase();
+}
+
+function teCreateOverviewCard({ name, code, flagCode = "", progress, words, publishedProgress, badge, onSelect }) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = "te-home-lang";
@@ -973,7 +1033,16 @@ function teCreateOverviewCard({ name, code, progress, words, publishedProgress, 
   const percentEl = document.createElement("span");
   percentEl.className = "te-home-lang-percent";
   percentEl.textContent = `${percent}%`;
-  head.append(nameEl, percentEl);
+  if (flagCode) {
+    const flagEl = document.createElement("img");
+    flagEl.className = "te-home-lang-flag";
+    flagEl.alt = "";
+    flagEl.addEventListener("error", () => flagEl.remove());
+    flagEl.src = `https://flagsapi.com/${teLangFlagCode(flagCode)}/flat/24.png`;
+    head.append(flagEl, nameEl, percentEl);
+  } else {
+    head.append(nameEl, percentEl);
+  }
 
   const codeEl = document.createElement("div");
   codeEl.className = "te-home-lang-code";
@@ -1028,6 +1097,7 @@ function teRenderHome() {
     const card = teCreateOverviewCard({
       name: entry.label || entry.lang,
       code: entry.lang,
+      flagCode: entry.lang,
       progress: entry.progress,
       words: entry.wordsRemaining,
       publishedProgress: entry.publishedProgress,
@@ -1102,23 +1172,29 @@ async function teGoHome() {
   await teApplyRoute();
 }
 
+async function teRenameKeys(entries, renames, transform) {
+  if (!entries || !renames || !Object.keys(renames).length) return entries;
+  let next = { ...entries };
+  for (const [oldKey, newKey] of Object.entries(renames)) {
+    if (!Object.prototype.hasOwnProperty.call(next, oldKey) || Object.prototype.hasOwnProperty.call(next, newKey)) continue;
+    next = { ...next, [newKey]: await transform(next[oldKey], newKey) };
+    delete next[oldKey];
+  }
+  return next;
+}
+
 // Only value-identical renames are recorded by sync-source.js in .source.json.
 // Carry the draft over, but recompute both key-dependent hashes for the new key
 // so a safe rename is not reported as a source/target change.
 async function teRemapDraftRenames(entries, renames, source) {
-  if (!entries || !renames || !Object.keys(renames).length) return entries;
-  let next = { ...entries };
-  for (const [oldKey, newKey] of Object.entries(renames)) {
-    if (!(oldKey in next) || newKey in next) continue;
-    const entry = { ...next[oldKey] };
+  return teRenameKeys(entries, renames, async (entry, newKey) => {
+    const next = { ...entry };
     if (source && typeof source[newKey] === "string") {
-      entry.sourceHash = await teHashSource(source[newKey], newKey);
-      if (typeof entry.target === "string") entry.baseTargetHash = await teHashTarget(entry.target, newKey);
+      next.sourceHash = await teHashSource(source[newKey], newKey);
+      if (typeof next.target === "string") next.baseTargetHash = await teHashTarget(next.target, newKey);
     }
-    next = { ...next, [newKey]: entry };
-    delete next[oldKey];
-  }
-  return next;
+    return next;
+  });
 }
 
 function teApplyDraftToRows(rows, draftEntries) {
@@ -1152,13 +1228,23 @@ function teResetRowsToOriginal(rows) {
   });
 }
 
-async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrNumber = null) {
-  const lang = teElements.languageSelect.value;
-  const namespace = teElements.fileSelect.value;
+async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrNumber = null, draftTarget = null, pollMode = false) {
+  if (pollMode) return teLoadCurrentFileInner(forcePrRefresh, silent, pollPrNumber, draftTarget, pollMode);
+  teSetSidebarBusy(true);
+  try {
+    return await teLoadCurrentFileInner(forcePrRefresh, silent, pollPrNumber, draftTarget, pollMode);
+  } finally {
+    teSetSidebarBusy(false);
+  }
+}
+
+async function teLoadCurrentFileInner(forcePrRefresh = false, silent = false, pollPrNumber = null, draftTarget = null, pollMode = false) {
+  const lang = draftTarget?.lang || teElements.languageSelect.value;
+  const namespace = draftTarget?.namespace || teElements.fileSelect.value;
   if (!lang || !namespace) return;
   const file = `${namespace}.json`;
-  const seq = ++teLoadSeq;
-  const isStale = () => seq !== teLoadSeq;
+  const seq = pollMode ? null : ++teLoadSeq;
+  const isStale = () => seq !== null && seq !== teLoadSeq;
 
   if (!silent) {
     teElements.emptyState.textContent = i18n.t("translationEditor.loading");
@@ -1169,7 +1255,8 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
     const loaded = await teLoadGithubRows(lang, namespace, isNewLanguage);
     if (isStale()) return;
     const { rows, source, target, meta, renames, enBlobSha, targetBlobSha } = loaded;
-    teState.targetFromFallback = loaded.targetFromFallback === true;
+    if (pollMode) tePollTargetFromFallback = loaded.targetFromFallback === true;
+    else teState.targetFromFallback = loaded.targetFromFallback === true;
 
     // A language absent from the locales repo loads with an empty target by
     // design. Freshness would flag every key as missing and unverified, which
@@ -1183,10 +1270,11 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
         ns: namespace,
         enBlobSha,
         targetBlobSha,
+        sourceHashes: Object.fromEntries(rows.map((row) => [row.key, row.currentSourceHash])),
       });
     }
     if (isStale()) return;
-    teState.freshness = freshness;
+    if (!pollMode) teState.freshness = freshness;
     if (freshness) teApplyFreshness(rows, freshness);
 
     let draft = null;
@@ -1197,8 +1285,10 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
       draftLoadFailed = true;
     }
     if (isStale()) return;
-    teState.draftWarning = "";
-    teState.draftWarningKeys = [];
+    if (!pollMode) {
+      teState.draftWarning = "";
+      teState.draftWarningKeys = [];
+    }
     if (draft?.entries) {
       draft = { ...draft, entries: await teRemapDraftRenames(draft.entries, renames, source) };
       // Rebase stale hashes onto the source/target files we just loaded, so a
@@ -1270,16 +1360,26 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
         else {
           const stored = await browser.storage.local.get("translationPrCache");
           openPrs = stored.translationPrCache?.data || [];
+          if (check.pr?.state === "closed" && !check.pr.merged && draft?.status === "submitted" && draft.submissionIds?.length) {
+            if (isStale()) return;
+            if (!pollMode) {
+              teState.draftWarning = i18n.t("translationEditor.submitModal.failed", { error: `PR #${pollPrNumber} was closed without being merged` });
+              teState.draftWarningKeys = [];
+            }
+            await teUpdateDraft(lang, file, { status: "draft", prUrl: "", prNumber: null, submissionIds: [], entries: draft.entries || {} });
+            draft = null;
+            openPrs = [];
+          }
         }
       } else {
         openPrs = await teLoadOpenPrs(forcePrRefresh || draft?.status === "submitted");
       }
       teApplyPrState(rows, lang, namespace, openPrs);
-      teState.prError = teOpenPrsHadPartialFailure() ? "Some pull requests could not be checked; pending keys may be incomplete." : "";
+      if (!pollMode) teState.prError = teOpenPrsHadPartialFailure() ? "Some pull requests could not be checked; pending keys may be incomplete." : "";
     } catch (err) {
       prLoadFailed = true;
       teApplyPrState(rows, lang, namespace, []);
-      teState.prError = err.message;
+      if (!pollMode) teState.prError = err.message;
     }
     if (isStale()) return;
 
@@ -1304,12 +1404,14 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
           await teInvalidateOpenPrsCache();
           // The result comment is only a hint; invalidate derived translation
           // caches so the next read is verified against an immutable ref.
-          await teInvalidateLocaleSnapshot({ notifyBackground: true });
+          await teInvalidateLocaleSnapshot();
           if (isStale()) return;
           teResetRowsToOriginal(rows);
         } else {
-          teState.draftWarning = failed.map((entry) => teSubmitStatusText(entry.result.status)).join(" | ");
-          teState.draftWarningKeys = failed.flatMap((entry) => teParseResultKeys(entry.result.detail) || []);
+          if (!pollMode) {
+            teState.draftWarning = failed.map((entry) => teSubmitStatusText(entry.result.status)).join(" | ");
+            teState.draftWarningKeys = failed.flatMap((entry) => teParseResultKeys(entry.result.detail) || []);
+          }
           // A failed submission did not refresh the metadata hash, so the
           // per-key confirmation is no longer valid for this source state.
           if (isStale()) return;
@@ -1332,12 +1434,22 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
         // proof the submission was consumed, so clear the stale draft.
         try {
           const token = await githubContributeService.getToken();
-          const pr = await githubContributeService.request(`/repos/${TE_REPO.owner}/${TE_REPO.name}/pulls/${draft.prNumber}`, {}, token);
+          const pr = await githubContributeService.request(`/repos/${TE_REPO.owner}/${TE_REPO.name}/pulls/${draft.prNumber}`, { cache: "no-store" }, token);
           if (pr?.merged) {
             if (isStale()) return;
             await teClearDraft(lang, file);
             if (isStale()) return;
             teResetRowsToOriginal(rows);
+          } else if (pr?.state === "closed") {
+            if (isStale()) return;
+            if (!pollMode) {
+              teState.draftWarning = i18n.t("translationEditor.submitModal.failed", { error: `PR #${draft.prNumber} was closed without being merged` });
+              teState.draftWarningKeys = [];
+            }
+            const entries = (await teLoadDraft(lang, file))?.entries || {};
+            await teUpdateDraft(lang, file, { status: "draft", prUrl: "", prNumber: null, submissionIds: [], entries });
+            if (isStale()) return;
+            teApplyPrState(rows, lang, namespace, []);
           }
         } catch (_err) {
           // Keep the draft when PR state cannot be verified.
@@ -1347,25 +1459,29 @@ async function teLoadCurrentFile(forcePrRefresh = false, silent = false, pollPrN
 
     // One synchronous state transition: the old table never gets paired with
     // the new file key, so a keystroke cannot write into the wrong draft.
-    teState.currentLang = lang;
-    teState.currentFile = file;
-    teState.rows = rows;
-    await teSaveLastLang(lang);
-    if (isStale()) return;
-    teState.editingKey = "";
-    teState.dataVersion++;
-    teElements.documentTitle.textContent = `${teState.languages.find((entry) => entry.lang === lang)?.label || lang} / ${namespace}.json`;
-    teElements.viewport.scrollTop = 0;
-    teSetSaveStatus(draftLoadFailed ? "Save failed" : "Saved");
-    await teRefreshSubmitCount();
-    if (isStale()) return;
-    teRender();
+    if (!pollMode) {
+      teState.currentLang = lang;
+      teState.currentFile = file;
+      teState.rows = rows;
+      await teSaveLastLang(lang);
+      if (isStale()) return;
+      teState.editingKey = "";
+      teTable.updatePinned();
+      teState.dataVersion++;
+      teElements.documentTitle.textContent = `${teState.languages.find((entry) => entry.lang === lang)?.label || lang} / ${namespace}.json`;
+      teElements.viewport.scrollTop = 0;
+      teSetSaveStatus(draftLoadFailed ? "Save failed" : "Saved");
+      await teRefreshSubmitCount();
+      if (isStale()) return;
+      teRender();
+    }
   } catch (err) {
-    if (isStale()) return;
+    if (isStale() || pollMode) return;
     teState.currentLang = "";
     teState.currentFile = "";
     teState.rows = [];
     teState.editingKey = "";
+    teTable.updatePinned();
     teState.prError = "";
     teState.draftWarning = "";
     teState.draftWarningKeys = [];
@@ -1428,7 +1544,6 @@ function teIssueSection(issues, title, variant) {
       const label = document.createElement("div");
       label.className = "te-qa-group-key";
       label.textContent = groupKey;
-      label.title = groupKey;
       group.appendChild(label);
     }
     groupIssues.slice(0, 20).forEach((issue) => {
@@ -1454,7 +1569,6 @@ function teSubmitFileRow(file) {
   const path = document.createElement("span");
   path.className = "te-submit-path";
   path.textContent = file.namespace ? file.path : i18n.t("translationEditor.submitModal.metadata");
-  path.title = file.path;
   line.appendChild(path);
 
   const count = document.createElement("span");
@@ -1555,6 +1669,15 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
       confirm.disabled = false;
       return;
     }
+    // Every translation PR uses the same fork branch. A second submission
+    // would be merged into the still-open PR and make the first one look lost.
+    const drafts = await teLoadAllDrafts();
+    const openSubmission = Object.values(drafts || {}).find((draft) => draft?.status === "submitted" && draft?.prNumber);
+    if (openSubmission) {
+      await showAlert(i18n.t("translationEditor.submitModal.openPrExists", { number: openSubmission.prNumber }), openSubmission.prUrl || "", "warn");
+      confirm.disabled = false;
+      return;
+    }
     // A branch can carry submissions for several languages; keep the PR
     // metadata language-neutral so it never misrepresents the PR contents.
     const languages = [...new Set(files.map((file) => file.lang).filter(Boolean))];
@@ -1568,8 +1691,7 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
       "",
       `*Submitted via Web Presence v${browser.runtime.getManifest().version}*`,
     ].join("\n");
-    // While the PR is being created and processed, neither the close button
-    // nor an outside click may dismiss the modal and abort the flow.
+    // An outside click must not abort PR creation.
     modal.dataset.locked = "1";
     try {
       const result = await teSubmitSubmissions({
@@ -1582,6 +1704,7 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
           status.textContent = i18n.t(key) === key ? value : i18n.t(key);
         },
       });
+      delete modal.dataset.locked;
       for (const file of files) {
         await teUpdateDraft(lang, `${file.namespace}.json`, {
           status: "submitted",
@@ -1591,53 +1714,15 @@ function teShowSubmitModal({ lang, files, blocked = [], errors, warnings, issues
         });
       }
       await teInvalidateOpenPrsCache();
-      teStartPendingPolling();
-
-      // Keep the modal open until the worker publishes a result. The PR merge
-      // and processor run asynchronously, so poll the immutable result file.
-      const ids = files.map((file) => ({ id: file.id, prNumber: result.prNumber }));
-      const deadline = Date.now() + 2 * 60 * 1000;
-      const finalResults = [];
-      teElements.submitBtn.disabled = true;
-      status.textContent = i18n.t("translationEditor.submitModal.waitingForResult");
-      while (Date.now() < deadline && modal.isConnected) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        if (!modal.isConnected) break;
-        const results = await teLoadSubmissionResults(ids);
-        if (results.length) {
-          finalResults.push(...results);
-          break;
-        }
-      }
       teElements.submitBtn.disabled = false;
-      if (!modal.isConnected) return;
       modal.remove();
-      if (finalResults.length && finalResults.every((entry) => ["applied", "already-applied"].includes(entry.result.status))) {
-        // The processor comment is a hint only; refresh from immutable refs.
-        await teInvalidateLocaleSnapshot({ notifyBackground: true });
-      }
       await teLoadCurrentFile(true);
-
-      if (!finalResults.length) {
-        await showAlert(i18n.t("translationEditor.submitModal.processing", { url: result.prUrl }));
-        return;
-      }
-      const failed = finalResults.filter((entry) => !["applied", "already-applied"].includes(entry.result.status));
-      if (failed.length) {
-        // The PR comment is the authoritative feedback channel; show it
-        // directly so the contributor sees the skipped keys and their reasons.
-        const detail = failed.map((entry) => `${entry.id}: ${teCleanResultDetail(entry.result.detail) || teSubmitStatusText(entry.result.status)}`).join("\n\n");
-        await showAlert(
-          i18n.t("translationEditor.submitModal.failed", {
-            error: failed.map((entry) => teSubmitStatusText(entry.result.status)).join(", "),
-          }),
-          detail,
-          "warn",
-        );
-        return;
-      }
+      teStartPendingPolling();
       const statusLabel = i18n.t(result.updated ? "translationEditor.submitModal.updated" : "translationEditor.submitModal.created");
-      await showAlert(i18n.t("translationEditor.submitModal.success", { status: statusLabel, url: result.prUrl }));
+      await showAlert(
+        i18n.t("translationEditor.submitModal.success", { status: statusLabel, url: result.prUrl }),
+        i18n.t("translationEditor.submitModal.processing", { url: result.prUrl }),
+      );
     } catch (err) {
       status.textContent = i18n.t("translationEditor.submitModal.failed", { error: err.message });
       delete modal.dataset.locked;
@@ -1875,34 +1960,24 @@ function teShowDiscussionsView() {
 
 function teSwitchView(view) {
   if (view === "discussions") {
-    teRunWhenAuthenticated(teShowDiscussionsView).catch((err) => {
+    const logViewError = (err) => {
       if (typeof logError === "function") logError("[Translation Editor]: discussions view failed", err);
-    });
+    };
+    teRunWhenAuthenticated(teShowDiscussionsView, logViewError).catch(logViewError);
     return;
   }
   teShowEditorView();
 }
 
-async function teExportDrafts() {
-  await teCommitPendingSave();
-  const allDrafts = await teLoadAllDrafts();
-  const lang = teState.currentLang || teElements.languageSelect.value || "";
-  const grouped = teCollectDraftsForExport(allDrafts, lang || null);
-  const count = Object.values(grouped).reduce((total, drafts) => total + Object.values(drafts).reduce((sum, entries) => sum + Object.keys(entries).length, 0), 0);
-  if (!count) {
-    await showAlert(i18n.t("translationEditor.submitModal.noLanguageChanges"));
-    return;
-  }
-  const blob = new Blob([teSerializeDraftExport(grouped)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
+function teDownloadText(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `web-presence-drafts-${lang || "all"}.json`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  await showAlert(i18n.t("translationEditor.exportedDrafts", { count }));
 }
 
 async function teFetchTargetFileForTransfer(lang, namespace) {
@@ -1926,76 +2001,15 @@ async function teGetRenamesFor(namespace) {
   }
 }
 
-function teRemapPlainValues(entries, renames) {
-  if (!renames || !Object.keys(renames).length) return entries;
-  const next = { ...entries };
-  for (const [oldKey, newKey] of Object.entries(renames)) {
-    if (Object.prototype.hasOwnProperty.call(next, oldKey) && !Object.prototype.hasOwnProperty.call(next, newKey)) {
-      next[newKey] = next[oldKey];
-      delete next[oldKey];
-    }
-  }
-  return next;
-}
-
-async function teImportDraftsFromFile(file) {
-  const text = await file.text();
-  const parsed = teParseDraftExport(text);
-  if (!parsed.ok) {
-    await showAlert(i18n.t("translationEditor.importModal.invalidFile", { error: parsed.errors.join(", ") }));
-    return;
-  }
-  const acceptedByLang = Object.create(null);
-  const rejected = [];
-  const errors = [];
-  for (const { lang, drafts } of parsed.data.languages) {
-    for (const [fileKey, entries] of Object.entries(drafts)) {
-      const namespace = fileKey.replace(/\.json$/, "");
-      try {
-        const [sourceRaw, targetFile, renames] = await Promise.all([
-          teFetchMainSource(namespace),
-          teFetchTargetFileForTransfer(lang, namespace),
-          teGetRenamesFor(namespace),
-        ]);
-        const result = await teBuildDraftEntriesFromImport({
-          entries: teRemapPlainValues(entries, renames),
-          source: teFlattenTranslations(sourceRaw.json),
-          target: teFlattenTranslations(targetFile.json),
-        });
-        if (Object.keys(result.accepted).length) {
-          if (!acceptedByLang[lang]) acceptedByLang[lang] = Object.create(null);
-          acceptedByLang[lang][namespace] = result.accepted;
-        }
-        rejected.push(...result.rejected);
-      } catch (err) {
-        errors.push(`${lang}/${namespace}: ${err.message}`);
-      }
-    }
-  }
-  const acceptedCount = Object.values(acceptedByLang).reduce(
-    (total, drafts) => total + Object.values(drafts).reduce((sum, entries) => sum + Object.keys(entries).length, 0),
-    0,
-  );
-  if (!acceptedCount) {
-    await showAlert(i18n.t("translationEditor.importModal.nothingToImport"));
-    return;
-  }
-  teShowImportModal({ acceptedByLang, rejected, errors, acceptedCount });
+async function teRemapPlainValues(entries, renames) {
+  return teRenameKeys(entries, renames, (value) => value);
 }
 
 async function teDownloadSourceFile() {
   const namespace = teElements.fileSelect.value;
   if (!namespace) return;
   const sourceRaw = await teFetchMainSource(namespace);
-  const blob = new Blob([sourceRaw.text], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `en.${namespace}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  teDownloadText(sourceRaw.text, `en.${namespace}.json`);
 }
 
 async function teExportLocaleFile() {
@@ -2017,15 +2031,7 @@ async function teExportLocaleFile() {
     ...teFlattenTranslations(targetFile.json),
     ...draftValues,
   });
-  const blob = new Blob([text], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${lang}.${namespace}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  teDownloadText(text, `${lang}.${namespace}.json`);
 }
 
 async function teImportLocaleFile(file) {
@@ -2041,7 +2047,7 @@ async function teImportLocaleFile(file) {
   const [sourceRaw, targetFile, renames] = await Promise.all([teFetchMainSource(namespace), teFetchTargetFileForTransfer(lang, namespace), teGetRenamesFor(namespace)]);
   const entries = Object.fromEntries(Object.entries(parsed.entries).map(([key, value]) => [key, { target: value }]));
   const result = await teBuildDraftEntriesFromImport({
-    entries: teRemapPlainValues(entries, renames),
+    entries: await teRemapPlainValues(entries, renames),
     source: teFlattenTranslations(sourceRaw.json),
     target: teFlattenTranslations(targetFile.json),
   });
@@ -2064,10 +2070,6 @@ function teShowImportModal({ acceptedByLang, rejected, errors, acceptedCount }) 
     warning.className = "contribute-status warning";
     warning.textContent = i18n.t("translationEditor.importModal.rejected", {
       count: rejected.length,
-      keys: rejected
-        .slice(0, 10)
-        .map((entry) => entry.key)
-        .join(", "),
     });
     body.appendChild(warning);
   }
@@ -2105,11 +2107,9 @@ function teShowImportModal({ acceptedByLang, rejected, errors, acceptedCount }) 
     const activeLang = teState.currentLang || teElements.languageSelect.value;
     if (activeLang && acceptedByLang[activeLang]) {
       await teLoadCurrentFile(true);
-    } else {
-      await showAlert(i18n.t("translationEditor.exportedDrafts", { count: acceptedCount }));
     }
   });
-  const modal = createContentModal(i18n.t("translationEditor.importModal.title"), body, "", [confirm]);
+  const modal = createContentModal(i18n.t("translationEditor.importLocale"), body, "", [confirm]);
   void teActivateStatusScroll(body);
 }
 
@@ -2118,6 +2118,8 @@ const TE_PENDING_POLL_MAX_MS = 60 * 1000;
 let tePendingPollTimer = null;
 let tePendingPollDelay = TE_PENDING_POLL_MS;
 let tePendingPollActive = false;
+let tePollTargetFromFallback = false;
+let tePollDraftKey = null;
 let tePollBusy = false;
 
 async function tePollPendingSubmissions() {
@@ -2127,12 +2129,16 @@ async function tePollPendingSubmissions() {
   tePollBusy = true;
   try {
     const drafts = await teLoadAllDrafts();
-    const submitted = Object.values(drafts || {}).find((draft) => draft?.status === "submitted" && draft?.submissionIds?.length);
+    const submittedEntry = Object.entries(drafts || {}).find(([, draft]) => draft?.status === "submitted" && draft?.submissionIds?.length);
+    const submitted = submittedEntry?.[1];
+    if (submittedEntry) tePollDraftKey = teParseDraftKey(submittedEntry[0]);
     // Keep polling after the draft is cleared until the manifest snapshot
     // actually contains the published language files.
-    const hasPending = !!submitted || teState.targetFromFallback;
+    const hasPending = !!submitted || teState.targetFromFallback || tePollTargetFromFallback;
     if (!hasPending) {
       tePendingPollActive = false;
+      tePollTargetFromFallback = false;
+      tePollDraftKey = null;
       if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
       tePendingPollTimer = null;
       tePendingPollDelay = TE_PENDING_POLL_MS;
@@ -2144,7 +2150,7 @@ async function tePollPendingSubmissions() {
     // Never refresh mid-edit
     if (teState.editingKey) return;
     await teCommitPendingSave();
-    await teLoadCurrentFile(false, true, submitted?.prNumber || null);
+    await teLoadCurrentFile(false, true, submitted?.prNumber || null, tePollDraftKey, true);
   } catch (_err) {
     // Transient network errors: the next tick retries.
   } finally {
@@ -2211,24 +2217,6 @@ function teBindEvents() {
     teLoadCurrentFile(true);
   });
   teElements.nextUntranslatedBtn.addEventListener("click", teGoToNextUntranslated);
-  teElements.exportDraftsBtn?.addEventListener("click", async () => {
-    try {
-      await teExportDrafts();
-    } catch (err) {
-      await showAlert(i18n.t("translationEditor.loadError", { error: err.message }));
-    }
-  });
-  teElements.importDraftsBtn?.addEventListener("click", () => teElements.importDraftsInput?.click());
-  teElements.importDraftsInput?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      await teImportDraftsFromFile(file);
-    } catch (err) {
-      await showAlert(i18n.t("translationEditor.importModal.invalidFile", { error: err.message }));
-    }
-  });
   teElements.exportLocaleBtn?.addEventListener("click", async () => {
     try {
       await teExportLocaleFile();
@@ -2260,10 +2248,7 @@ function teBindEvents() {
 
   teElements.filterTabs.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-filter]");
-    if (!tab) return;
-    teState.filter = tab.dataset.filter;
-    teElements.filterTabs.querySelectorAll("[data-filter]").forEach((button) => button.classList.toggle("active", button === tab));
-    teRender();
+    if (tab) teSetFilter(tab.dataset.filter);
   });
 
   teElements.viewTabs?.addEventListener("click", (event) => {
@@ -2278,9 +2263,10 @@ function teBindEvents() {
     });
   });
   teElements.discNewBtn?.addEventListener("click", () => {
-    teRunWhenAuthenticated(teShowNewDiscussionModal).catch((err) => {
+    const logNewError = (err) => {
       if (typeof logError === "function") logError("[Translation Editor]: new discussion failed", err);
-    });
+    };
+    teRunWhenAuthenticated(teShowNewDiscussionModal, logNewError).catch(logNewError);
   });
   // Flush the debounced draft when the page is hidden or closed, otherwise the
   // last 250 ms of typing is lost.
@@ -2301,6 +2287,9 @@ function teBindEvents() {
   });
   window.addEventListener("pagehide", () => {
     if (teState.saveTimer) teCommitPendingSave();
+    tePendingPollActive = false;
+    if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
+    tePendingPollTimer = null;
   });
   window.addEventListener("popstate", async () => {
     await teCommitPendingSave();
@@ -2318,7 +2307,13 @@ function teBindEvents() {
   });
 }
 
-window.addEventListener("load", async () => {
+async function teInitializeEditor() {
+  const showHome = teIsHomeActive();
+  const homeSpinner = showHome ? createSpinner() : null;
+  if (homeSpinner) {
+    teSetViewVisibility(true);
+    teElements.homeList.appendChild(homeSpinner);
+  }
   await i18n.load("extension");
   await loadParserDisplayLocales();
   applyTranslations();
@@ -2341,7 +2336,8 @@ window.addEventListener("load", async () => {
     teState.languages = await teLoadGithubLanguages();
   } catch (err) {
     const message = i18n.t("translationEditor.languagesError", { error: err.message });
-    if (teIsHomeActive()) {
+    if (showHome) {
+      homeSpinner?.remove();
       teSetViewVisibility(true);
       teElements.homeList.replaceChildren();
       const error = document.createElement("div");
@@ -2366,10 +2362,15 @@ window.addEventListener("load", async () => {
   }
   if (initialLang && teState.languages.some((entry) => entry.lang === initialLang)) teSetLanguageSelect(initialLang);
   await teApplyRoute();
+  homeSpinner?.remove();
   teStartPendingPolling();
-  window.addEventListener("pagehide", () => {
-    tePendingPollActive = false;
-    if (tePendingPollTimer) clearTimeout(tePendingPollTimer);
-    tePendingPollTimer = null;
-  });
+}
+
+window.addEventListener("load", async () => {
+  teSetSidebarBusy(true);
+  try {
+    await teInitializeEditor();
+  } finally {
+    teSetSidebarBusy(false);
+  }
 });

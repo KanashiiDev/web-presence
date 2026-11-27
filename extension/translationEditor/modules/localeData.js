@@ -1,5 +1,3 @@
-const TE_NAMESPACES = ["extension", "server", "shared"];
-
 function teFlattenTranslations(translations, prefix = "") {
   const result = Object.create(null);
   Object.entries(translations || {}).forEach(([key, value]) => {
@@ -15,12 +13,13 @@ function teFlattenTranslations(translations, prefix = "") {
 
 function teComputeStatus(row) {
   if (row.prPending) return "PR Pending";
+  const stale = row.keyStatus === "outdated" || row.keyStatus === "unverified";
   // The contributor explicitly confirmed that the old translation is still
   // correct for the new English source.
-  if (row.reconfirmed && (row.keyStatus === "outdated" || row.keyStatus === "unverified")) return "Translated";
+  if (row.reconfirmed && stale) return "Translated";
   const mainChanged = row.edited && (row.draftSourceHash !== row.currentSourceHash || (row.draftBaseTargetHash && row.draftBaseTargetHash !== row.currentTargetHash));
   if (mainChanged) return "Outdated";
-  if (row.keyStatus === "outdated" || row.keyStatus === "unverified") return "Outdated";
+  if (stale) return "Outdated";
   return row.target ? "Translated" : "Untranslated";
 }
 
@@ -36,18 +35,27 @@ function teRestoreRowTarget(row) {
   row.status = teComputeStatus(row);
 }
 
+function teMakeDraftEntry(target, sourceHash, baseTargetHash, flags = {}) {
+  return {
+    target,
+    sourceHash,
+    baseTargetHash,
+    ...(typeof flags.originalBaseTargetHash === "string" ? { originalBaseTargetHash: flags.originalBaseTargetHash } : {}),
+    ...(flags.lineChangeAcknowledged ? { lineChangeAcknowledged: true } : {}),
+    ...(flags.reconfirmed === true ? { reconfirmed: true, ...(typeof flags.localOnly === "boolean" ? { localOnly: flags.localOnly } : {}) } : {}),
+  };
+}
+
 function teBuildDraftEntriesFromRows(rows) {
   const entries = {};
   rows.forEach((row) => {
     if (!row.prPending && (row.target !== row.originalTarget || row.reconfirmed)) {
-      entries[row.key] = {
-        target: row.target,
-        sourceHash: row.draftSourceHash,
-        baseTargetHash: row.draftBaseTargetHash,
-        ...(typeof row.originalBaseTargetHash === "string" ? { originalBaseTargetHash: row.originalBaseTargetHash } : {}),
-        ...(row.lineChangeAcknowledged ? { lineChangeAcknowledged: true } : {}),
-        ...(row.reconfirmed ? { reconfirmed: true, localOnly: row.localOnly === true } : {}),
-      };
+      entries[row.key] = teMakeDraftEntry(row.target, row.draftSourceHash, row.draftBaseTargetHash, {
+        originalBaseTargetHash: row.originalBaseTargetHash,
+        lineChangeAcknowledged: row.lineChangeAcknowledged,
+        reconfirmed: !!row.reconfirmed,
+        localOnly: row.localOnly === true,
+      });
     }
   });
   return entries;

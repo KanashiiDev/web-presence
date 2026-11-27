@@ -671,7 +671,7 @@ html.setup-dialog-open #mainFooterButtons {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 10000;
 }
 
 .mv3-fixWrap {

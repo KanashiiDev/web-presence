@@ -56,17 +56,17 @@ function teQaEnding(text) {
 
 function teQaUnsafeKey(key) {
   if (typeof key !== "string" || !TE_QA_KEY_RE.test(key)) return true;
-  return TE_QA_UNSAFE_KEYS.includes(key) || key.includes("__proto__") || key.includes("/") || key.includes("\\") || key.includes("\0");
+  return TE_QA_UNSAFE_KEYS.includes(key);
 }
 
 /**
  * Validate one translation key against its English source.
- * @returns {{errors: Array<{code,severity,key,message}>, warnings: Array<{code,severity,key,message}>}}
+ * @returns {{errors: Array<{code,severity,key,message,details}>, warnings: Array<{code,severity,key,message,details}>}}
  */
 function teValidateKey({ key, source, value }) {
   const errors = [];
   const warnings = [];
-  const add = (severity, code, message) => (severity === "error" ? errors : warnings).push({ code, severity, key, message });
+  const add = (severity, code, message, details = {}) => (severity === "error" ? errors : warnings).push({ code, severity, key, message, details });
 
   if (typeof value !== "string") {
     add("error", "non-string", "Translation value must be a string");
@@ -75,18 +75,18 @@ function teValidateKey({ key, source, value }) {
   if (teQaUnsafeKey(key)) add("error", "unsafe-key", "Unsafe translation key");
   if (TE_QA_CONTROL_RE.test(value)) add("error", "control-character", "Translation contains an invalid control character");
   if (value.length > TE_QA_MAX_VALUE_LENGTH) add("error", "value-too-long", "Translation value is too long");
-  if (TE_QA_HTML_TAG_RE.test(value)) add("warning", "unsafe-value", "Translation contains HTML-like markup");
-  if (TE_QA_JAVASCRIPT_URL_RE.test(value)) add("error", "unsafe-value", "Translation contains a javascript: URL");
-  if (TE_QA_BIDI_ZERO_WIDTH_RE.test(value)) add("error", "unsafe-value", "Translation contains a bidi or zero-width character");
+  if (TE_QA_HTML_TAG_RE.test(value)) add("warning", "unsafe-value", "Translation contains HTML-like markup", { kind: "html" });
+  if (TE_QA_JAVASCRIPT_URL_RE.test(value)) add("error", "unsafe-value", "Translation contains a javascript: URL", { kind: "url" });
+  if (TE_QA_BIDI_ZERO_WIDTH_RE.test(value)) add("error", "unsafe-value", "Translation contains a bidi or zero-width character", { kind: "bidi" });
 
   if (value.trim() !== "") {
     const sourcePlaceholders = teQaPlaceholders(source);
     const targetPlaceholders = teQaPlaceholders(value);
     for (const placeholder of sourcePlaceholders) {
-      if (!targetPlaceholders.has(placeholder)) add("error", "missing-placeholder", `Missing placeholder {${placeholder}}`);
+      if (!targetPlaceholders.has(placeholder)) add("error", "missing-placeholder", `Missing placeholder {${placeholder}}`, { token: placeholder });
     }
     for (const placeholder of targetPlaceholders) {
-      if (!sourcePlaceholders.has(placeholder)) add("error", "extra-placeholder", `Unknown placeholder {${placeholder}}`);
+      if (!sourcePlaceholders.has(placeholder)) add("error", "extra-placeholder", `Unknown placeholder {${placeholder}}`, { token: placeholder });
     }
   }
 
